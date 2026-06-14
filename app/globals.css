@@ -17,6 +17,8 @@
   --gold: #f4b400; /* badge premium */
   --green: #16a34a; /* sucesso / pago */
   --red: #d32f2f; /* erro / destrutivo / estoque zerado */
+  --on-ink: #ffffff; /* texto/icone sobre superficie ink */
+  --ink-hover: #2a2a2a; /* hover de elementos ink */
 
   /* Raio */
   --r-sm: 8px;
@@ -95,6 +97,13 @@ a {
 
 button {
   font-family: inherit;
+}
+
+/* Foco visivel por teclado (acessibilidade WCAG 2.4.7) */
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
 }
 
 /* Numeros tabulares para precos e tabelas */
