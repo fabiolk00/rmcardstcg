@@ -4,52 +4,6 @@
   flex-direction: column;
 }
 
-.topbar {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg);
-}
-
-.topbarInner {
-  display: flex;
-  height: 64px;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-}
-
-.brand {
-  font-size: 18px;
-  font-weight: 800;
-  letter-spacing: -0.03em;
-}
-
-.nav {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: 14px;
-  color: var(--ink-2);
-}
-
-.nav a {
-  display: inline-flex;
-  min-height: 44px;
-  align-items: center;
-  padding-inline: var(--space-3);
-  border-radius: var(--r-sm);
-}
-
-.nav a:hover {
-  background: var(--bg-soft);
-  color: var(--ink);
-}
-
-.footer {
-  margin-top: auto;
-  border-top: 1px solid var(--border);
-  padding-block: var(--space-6);
-  color: var(--ink-3);
+.main {
+  flex: 1;
 }

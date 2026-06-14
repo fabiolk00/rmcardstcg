@@ -1,16 +1,99 @@
+import Link from "next/link";
 import { getActiveProducts } from "@/lib/data/products";
+import { CATEGORIES, type Category } from "@/lib/data/types";
 import { ProductGrid } from "@/components/product/ProductGrid";
+import { Icon, type IconName } from "@/components/ui/Icon";
 import styles from "./page.module.css";
+
+const CATEGORY_ICON: Record<Category, IconName> = {
+  "Booster Box": "box",
+  "Elite Trainer Box": "archive",
+  "Booster Pack": "layers",
+  "Coleção Especial": "shield",
+  Tin: "package",
+  Acessórios: "sleeves",
+  "Single Card": "card",
+};
 
 export default async function LandingPage() {
   const products = await getActiveProducts();
+  const counts = CATEGORIES.map((category) => ({
+    category,
+    count: products.filter((p) => p.category === category).length,
+  }));
+  const featured = products.filter((p) => p.stock > 0).slice(0, 8);
+
   return (
-    <section>
-      <div className={styles.intro}>
-        <h1>Produtos</h1>
-        <p className={styles.introSub}>Vitrine (placeholder — landing completa no slice F3).</p>
-      </div>
-      <ProductGrid products={products} />
-    </section>
+    <>
+      <section className={styles.hero}>
+        <div className={styles.eyebrow}>
+          <span className={styles.dot} /> Pronta-entrega
+        </div>
+        <h1 className={styles.heroTitle}>
+          Sua coleção começa <span className={styles.accent}>aqui.</span>
+        </h1>
+        <p className={styles.heroSub}>
+          Booster Boxes, Elite Trainer Boxes e cartas avulsas com preço justo, entrega rápida em
+          todo o Brasil e garantia de originalidade.
+        </p>
+        <div className={styles.heroCta}>
+          <Link href="/colecoes" className={styles.btnDark}>
+            Ver coleção completa <Icon name="arrow" size={16} />
+          </Link>
+          <Link href="#produtos" className={styles.btnGhost}>
+            Em destaque
+          </Link>
+        </div>
+        <div className={styles.stats}>
+          <div className={styles.stat}>
+            <span className={styles.statV}>12k+</span>
+            <span className={styles.statL}>Clientes ativos</span>
+          </div>
+          <div className={styles.stat}>
+            <span className={styles.statV}>4.9★</span>
+            <span className={styles.statL}>Avaliação média</span>
+          </div>
+          <div className={styles.stat}>
+            <span className={styles.statV}>48h</span>
+            <span className={styles.statL}>Entrega expressa</span>
+          </div>
+        </div>
+      </section>
+
+      <section className={styles.cats} aria-label="Categorias">
+        <div className={styles.catGrid}>
+          {counts.map(({ category, count }) => (
+            <Link
+              key={category}
+              href={`/colecoes?cat=${encodeURIComponent(category)}`}
+              className={styles.catTile}
+            >
+              <span className={styles.catIcon}>
+                <Icon name={CATEGORY_ICON[category]} size={18} />
+              </span>
+              <span className={styles.catText}>
+                <span className={styles.catName}>{category}</span>
+                <span className={styles.catCount}>
+                  {count} {count === 1 ? "produto" : "produtos"}
+                </span>
+              </span>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      <section id="produtos" className={styles.products}>
+        <div className={styles.sectionHead}>
+          <div>
+            <div className={styles.sectionEyebrow}>Em destaque</div>
+            <h2 className={styles.sectionTitle}>Nossos produtos.</h2>
+          </div>
+          <Link href="/colecoes" className={styles.seeAll}>
+            Ver coleção completa <Icon name="arrow" size={16} />
+          </Link>
+        </div>
+        <ProductGrid products={featured} />
+      </section>
+    </>
   );
 }

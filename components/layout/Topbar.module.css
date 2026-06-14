@@ -1,0 +1,115 @@
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.inner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  height: 64px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+}
+
+.logo {
+  height: 40px;
+  width: auto;
+}
+
+.nav {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: var(--r-sm);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.link:hover {
+  background: var(--bg-soft);
+  color: var(--ink);
+}
+
+.active {
+  background: var(--bg-soft);
+  color: var(--ink);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.auth {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.btnGhost,
+.btnDark {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: var(--r-pill);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.btnGhost {
+  background: var(--bg);
+  color: var(--ink);
+  border: 1px solid var(--border);
+}
+
+.btnGhost:hover {
+  border-color: var(--ink);
+}
+
+.btnDark {
+  background: var(--ink);
+  color: var(--on-ink);
+  border: 1px solid var(--ink);
+}
+
+.btnDark:hover {
+  background: var(--ink-hover);
+  border-color: var(--ink-hover);
+}
+
+@media (max-width: 720px) {
+  .nav {
+    display: none;
+  }
+}
+
+@media (max-width: 400px) {
+  .inner {
+    gap: var(--space-3);
+  }
+
+  .logo {
+    height: 32px;
+  }
+
+  .btnGhost,
+  .btnDark {
+    padding: 0 12px;
+    font-size: 13px;
+  }
+}
