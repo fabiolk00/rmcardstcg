@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400" role="img" aria-label="Imagem do produto">
+  <rect width="400" height="400" fill="#F7F7F5" />
+  <rect x="139" y="109" width="122" height="172" rx="12" fill="#FFFFFF" stroke="#E8E8E6" stroke-width="2" />
+  <circle cx="200" cy="165" r="26" fill="none" stroke="#8C8C8C" stroke-width="2" />
+  <path d="M158 255 l30 -42 24 30 18 -22 24 34" fill="none" stroke="#8C8C8C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+  <text x="200" y="330" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="18" font-weight="700" fill="#8C8C8C">RM Cards</text>
+</svg>
