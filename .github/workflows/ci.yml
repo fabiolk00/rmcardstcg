@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # Placeholders dummy. O CI NUNCA usa segredo real.
+    # Sao suficientes para typecheck, lint e build mock-first.
+    env:
+      # App
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      NEXT_PUBLIC_WHATSAPP_NUMBER: "5500000000000"
+      # Clerk
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_ci_placeholder
+      CLERK_SECRET_KEY: sk_test_ci_placeholder
+      CLERK_WEBHOOK_SECRET: whsec_ci_placeholder
+      NEXT_PUBLIC_CLERK_SIGN_IN_URL: /entrar
+      NEXT_PUBLIC_CLERK_SIGN_UP_URL: /criar-conta
+      NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL: /
+      NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL: /
+      # Supabase / Postgres
+      DATABASE_URL: postgresql://user:pass@localhost:5432/rmcards
+      DIRECT_URL: postgresql://user:pass@localhost:5432/rmcards
+      NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ci_placeholder
+      SUPABASE_SERVICE_ROLE_KEY: service_role_ci_placeholder
+      # Asaas
+      ASAAS_API_URL: https://api-sandbox.asaas.com/v3
+      ASAAS_API_KEY: asaas_ci_placeholder
+      ASAAS_WEBHOOK_TOKEN: asaas_webhook_ci_placeholder
+      # Resend
+      RESEND_API_KEY: resend_ci_placeholder
+      RESEND_FROM_EMAIL: ci@example.com
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint (zero warnings)
+        run: pnpm lint
+
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Build
+        run: pnpm build
+
+# Pos-MVP (a partir de F8, quando existir banco): adicionar passo opcional
+#   - name: Migrations em dia
+#     run: pnpm drizzle-kit check
