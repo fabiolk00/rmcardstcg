@@ -131,17 +131,39 @@ export async function createOrder(input: CreateOrderInput): Promise<Order> {
   return toOrder(row);
 }
 
+/** Resultado da atualizacao de status — distingue nao-encontrado de reenvio. */
+export type PaymentStatusUpdate =
+  | { found: false }
+  | { found: true; changed: boolean; previousStatus: PaymentStatus; status: PaymentStatus };
+
 /**
  * Atualiza o status de pagamento de um pedido (usado pelo webhook do Asaas).
- * Usa updateMany para nao lancar quando o id nao existe — retorna se afetou algo.
+ *
+ * Idempotencia: le o status atual e so escreve quando muda. Reenviar o mesmo
+ * evento (o Asaas reenfileira ate receber 2xx) nao reescreve nem dispara efeito;
+ * o retorno informa se houve mudanca real ou se foi um reprocessamento.
+ *
+ * Limitacao conhecida (exige migration): sem guardar asaas_payment_id/valor nao
+ * da pra dedupar por evento nem verificar o pagamento real. Ver handoff do F14.
  */
 export async function setOrderPaymentStatus(
   orderId: number,
   status: PaymentStatus,
-): Promise<boolean> {
-  const result = await prisma.order.updateMany({
+): Promise<PaymentStatusUpdate> {
+  const existing = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: { paymentStatus: true },
+  });
+  if (!existing) return { found: false };
+
+  const previousStatus = existing.paymentStatus as PaymentStatus;
+  if (previousStatus === status) {
+    return { found: true, changed: false, previousStatus, status };
+  }
+
+  await prisma.order.update({
     where: { id: orderId },
     data: { paymentStatus: status },
   });
-  return result.count > 0;
+  return { found: true, changed: true, previousStatus, status };
 }

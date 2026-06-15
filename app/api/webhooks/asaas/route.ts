@@ -71,6 +71,8 @@ export async function POST(req: Request) {
   // Eventos que nao mexem no status (PAYMENT_OVERDUE, PAYMENT_UPDATED, ...): so confirma.
   const status = event ? EVENT_TO_STATUS[event] : undefined;
   if (!status) {
+    // Observabilidade: registra eventos novos/nao tratados sem reenfileirar.
+    if (event) console.info(`[asaas-webhook] evento sem acao: ${event}`);
     return NextResponse.json({ received: true, ignored: event ?? null });
   }
 
@@ -84,14 +86,24 @@ export async function POST(req: Request) {
   }
 
   try {
-    const updated = await setOrderPaymentStatus(orderId, status);
-    if (!updated) {
+    const result = await setOrderPaymentStatus(orderId, status);
+    if (!result.found) {
       console.warn(`[asaas-webhook] pedido #${orderId} nao encontrado (evento ${event}).`);
+      return NextResponse.json({ received: true, matched: false });
     }
-    return NextResponse.json({ received: true, orderId, status, updated });
+    if (!result.changed) {
+      // Idempotencia: reenvio do mesmo evento; o pedido ja estava nesse status.
+      console.info(
+        `[asaas-webhook] pedido #${orderId} ja estava "${status}" (evento ${event} reprocessado).`,
+      );
+    }
+    return NextResponse.json({ received: true, orderId, status, changed: result.changed });
   } catch (err) {
-    // Erro transitorio (ex.: banco): 500 para o Asaas reenviar.
-    console.error("[asaas-webhook] falha ao atualizar pedido:", err);
+    // Erro transitorio (ex.: banco): 500 para o Asaas reenviar. Loga so a mensagem.
+    console.error(
+      "[asaas-webhook] falha ao atualizar pedido:",
+      err instanceof Error ? err.message : err,
+    );
     return NextResponse.json({ error: "falha interna" }, { status: 500 });
   }
 }

@@ -12,8 +12,33 @@ import styles from "./CheckoutView.module.css";
 
 // UFs para o select de estado.
 const UFS = [
-  "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG",
-  "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO",
+  "AC",
+  "AL",
+  "AP",
+  "AM",
+  "BA",
+  "CE",
+  "DF",
+  "ES",
+  "GO",
+  "MA",
+  "MT",
+  "MS",
+  "MG",
+  "PA",
+  "PB",
+  "PR",
+  "PE",
+  "PI",
+  "RJ",
+  "RN",
+  "RS",
+  "RO",
+  "RR",
+  "SC",
+  "SP",
+  "SE",
+  "TO",
 ] as const;
 
 type Form = {
@@ -113,32 +138,75 @@ export function CheckoutView() {
         <h2 className={styles.sectionTitle}>Dados de contato</h2>
         <div className={styles.grid}>
           <Field className={styles.full} label="Nome completo">
-            <input className={styles.input} value={form.name} onChange={set("name")} autoComplete="name" />
+            <input
+              className={styles.input}
+              value={form.name}
+              onChange={set("name")}
+              autoComplete="name"
+            />
           </Field>
           <Field label="E-mail">
-            <input className={styles.input} type="email" value={form.email} onChange={set("email")} autoComplete="email" />
+            <input
+              className={styles.input}
+              type="email"
+              value={form.email}
+              onChange={set("email")}
+              autoComplete="email"
+            />
           </Field>
           <Field label="Telefone">
-            <input className={styles.input} value={form.phone} onChange={set("phone")} placeholder="(41) 99999-9999" autoComplete="tel" />
+            <input
+              className={styles.input}
+              value={form.phone}
+              onChange={set("phone")}
+              placeholder="(41) 99999-9999"
+              autoComplete="tel"
+            />
           </Field>
           <Field label="CPF/CNPJ">
-            <input className={styles.input} value={form.cpfCnpj} onChange={set("cpfCnpj")} placeholder="000.000.000-00" />
+            <input
+              className={styles.input}
+              value={form.cpfCnpj}
+              onChange={set("cpfCnpj")}
+              placeholder="000.000.000-00"
+            />
           </Field>
         </div>
 
         <h2 className={styles.sectionTitle}>Endereço de entrega</h2>
         <div className={styles.grid}>
           <Field label="CEP">
-            <input className={styles.input} value={form.cep} onChange={set("cep")} placeholder="80000-000" autoComplete="postal-code" />
+            <input
+              className={styles.input}
+              value={form.cep}
+              onChange={set("cep")}
+              placeholder="80000-000"
+              autoComplete="postal-code"
+            />
           </Field>
           <Field label="Cidade">
-            <input className={styles.input} value={form.city} onChange={set("city")} autoComplete="address-level2" />
+            <input
+              className={styles.input}
+              value={form.city}
+              onChange={set("city")}
+              autoComplete="address-level2"
+            />
           </Field>
           <Field className={styles.full} label="Endereço (rua, número, complemento)">
-            <input className={styles.input} value={form.street} onChange={set("street")} autoComplete="street-address" />
+            <input
+              className={styles.input}
+              value={form.street}
+              onChange={set("street")}
+              autoComplete="street-address"
+            />
           </Field>
           <Field label="Estado (UF)">
-            <select className={styles.select} value={form.state} onChange={set("state")} autoComplete="address-level1">
+            <select
+              className={styles.select}
+              value={form.state}
+              onChange={set("state")}
+              autoComplete="address-level1"
+            >
               <option value="">—</option>
               {UFS.map((uf) => (
                 <option key={uf} value={uf}>
