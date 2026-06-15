@@ -12,7 +12,7 @@ import {
   setOrderAsaasRefs,
 } from "@/lib/data/orders";
 import { finalPriceCents } from "@/lib/data/pricing";
-import { getProductById } from "@/lib/data/products";
+import { getProductsByIds } from "@/lib/data/products";
 import type { Order, OrderItem } from "@/lib/data/types";
 import { AsaasError } from "@/lib/services/asaas/client";
 import { isAsaasConfigured } from "@/lib/services/asaas/config";
@@ -158,11 +158,16 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
   // real de estoque e garantida atomicamente pela reserva (nao por read antecipado).
   const orderItems: OrderItem[] = [];
   const lines: CartLine[] = [];
+  // Batch: carrega todos os produtos do carrinho numa unica query (evita N+1;
+  // antes era um getProductById por item). A disponibilidade real de estoque
+  // continua garantida atomicamente pela reserva, nao por este read.
+  const products = await getProductsByIds(input.items.map((i) => i.productId));
+  const productById = new Map(products.map((p) => [p.id, p]));
   for (const { productId, quantity } of input.items) {
     if (!Number.isInteger(quantity) || quantity < 1) {
       return { ok: false, error: "Quantidade inválida no carrinho." };
     }
-    const product = await getProductById(productId);
+    const product = productById.get(productId);
     if (!product || !product.isActive) {
       return { ok: false, error: "Um dos produtos não está mais disponível." };
     }

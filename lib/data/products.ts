@@ -62,6 +62,17 @@ export async function getProductById(id: string): Promise<Product | null> {
   return row ? toProduct(row) : null;
 }
 
+/**
+ * Produtos por uma lista de ids, em UMA query (evita N+1 no checkout, que antes
+ * fazia um findUnique por item do carrinho). A ordem do retorno nao e garantida;
+ * o chamador indexa por id.
+ */
+export async function getProductsByIds(ids: string[]): Promise<Product[]> {
+  if (ids.length === 0) return [];
+  const rows = await prisma.product.findMany({ where: { id: { in: ids } } });
+  return rows.map(toProduct);
+}
+
 // ===========================================================================
 // CRUD persistido de produto (admin). Cada mutacao roda numa transacao Prisma
 // com writeAuditLog na MESMA transacao (invariante 3). O SERVIDOR e a fonte de
