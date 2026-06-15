@@ -281,6 +281,13 @@ export type PaymentStatusUpdate =
       changed: boolean;
       previousStatus: PaymentStatus;
       status: PaymentStatus;
+      /**
+       * Pedido COMPLETO (com itens) ja com o paymentStatus = `status` aplicado,
+       * para o e-mail de confirmacao sem uma leitura extra (getOrderById). Lido na
+       * MESMA query inicial; o paymentStatus e ajustado para o novo `status` porque
+       * o row foi lido ANTES do compare-and-swap.
+       */
+      order: Order;
     };
 
 /**
@@ -315,16 +322,12 @@ export async function applyPaymentStatusTx(
   status: PaymentStatus,
   payment: PaymentRef,
 ): Promise<PaymentStatusUpdate> {
+  // Leitura UNICA e completa (com itens): serve tanto a verificacao/CAS quanto o
+  // e-mail de confirmacao, evitando um getOrderById extra por pedido pago. As
+  // flags de estoque saem deste MESMO row (sem 2 leituras, sem N+1 por item).
   const existing = await tx.order.findUnique({
     where: { id: orderId },
-    select: {
-      paymentStatus: true,
-      asaasPaymentId: true,
-      totalCents: true,
-      stockReserved: true,
-      stockCommitted: true,
-      items: { select: { productId: true, quantity: true } },
-    },
+    include: withItems,
   });
   if (!existing) return { found: false };
 
@@ -347,11 +350,21 @@ export async function applyPaymentStatusTx(
 
   const previousStatus = existing.paymentStatus as PaymentStatus;
 
+  // Snapshot de estoque derivado do mesmo row (nao uma segunda leitura).
+  const stockSnapshot: StockSnapshot = {
+    stockReserved: existing.stockReserved,
+    stockCommitted: existing.stockCommitted,
+    items: existing.items.map((it) => ({ productId: it.productId, quantity: it.quantity })),
+  };
   // Conciliacao de estoque idempotente (guardada por flags), independente do CAS.
-  await reconcileStockForPaymentStatus(tx, orderId, status, existing);
+  await reconcileStockForPaymentStatus(tx, orderId, status, stockSnapshot);
+
+  // Pedido p/ o e-mail: o row foi lido ANTES do CAS, entao reflete o paymentStatus
+  // NOVO (`status`), nao o antigo. So o paymentStatus muda; itens/totais ja batem.
+  const order: Order = { ...toOrder(existing), paymentStatus: status };
 
   if (previousStatus === status) {
-    return { found: true, ok: true, changed: false, previousStatus, status };
+    return { found: true, ok: true, changed: false, previousStatus, status, order };
   }
 
   // Compare-and-swap: so escreve se o status ainda for o que lemos.
@@ -359,7 +372,7 @@ export async function applyPaymentStatusTx(
     where: { id: orderId, paymentStatus: previousStatus },
     data: { paymentStatus: status },
   });
-  return { found: true, ok: true, changed: res.count > 0, previousStatus, status };
+  return { found: true, ok: true, changed: res.count > 0, previousStatus, status, order };
 }
 
 /**

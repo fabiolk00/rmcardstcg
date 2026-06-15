@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 
 import { NextResponse } from "next/server";
 
-import { getOrderById, setOrderPaymentStatus } from "@/lib/data/orders";
+import { setOrderPaymentStatus } from "@/lib/data/orders";
 import { getPendingOrdersForReconciliation } from "@/lib/data/reconciliation";
 import type { PaymentStatus } from "@/lib/data/types";
 import { isAsaasConfigured } from "@/lib/services/asaas/config";
@@ -73,10 +73,11 @@ export async function POST(req: Request) {
       if (result.found && result.ok && result.changed) {
         changed += 1;
         // Espelha o efeito do webhook: e-mail de confirmacao em pagamento novo.
+        // setOrderPaymentStatus ja devolve o pedido completo (mesma leitura),
+        // sem getOrderById extra.
         if (status === "paid") {
           try {
-            const order = await getOrderById(`#${c.id}`);
-            if (order) await sendPaymentConfirmationEmail(order);
+            await sendPaymentConfirmationEmail(result.order);
           } catch (mailErr) {
             console.error(
               "[reconcile] falha ao enviar e-mail de pagamento:",

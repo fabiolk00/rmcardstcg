@@ -3,7 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
-import { applyPaymentStatusTx, getOrderById } from "@/lib/data/orders";
+import { applyPaymentStatusTx } from "@/lib/data/orders";
 import type { PaymentStatus } from "@/lib/data/types";
 import {
   ASAAS_PROVIDER,
@@ -44,6 +44,10 @@ const EVENT_TO_STATUS: Record<string, PaymentStatus> = {
   PAYMENT_CHARGEBACK_REQUESTED: "cancelled",
 };
 
+// Teto de payload do webhook. Eventos do Asaas sao pequenos (poucos KB); 256KB e
+// folgado. Defesa contra DoS por corpo gigante: corta ANTES de bufferizar/parsear.
+const MAX_WEBHOOK_BYTES = 256 * 1024;
+
 function tokenMatches(received: string | null): boolean {
   const expected = process.env.ASAAS_WEBHOOK_TOKEN;
   if (!expected || !received) return false;
@@ -72,9 +76,28 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "token invalido" }, { status: 401 });
   }
 
+  // Teto de payload (rejeita ANTES de parsear). Primeiro o Content-Length
+  // declarado (corte barato); depois o tamanho REAL do corpo, porque o header
+  // pode faltar ou mentir.
+  const declaredLength = Number(req.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_WEBHOOK_BYTES) {
+    return NextResponse.json({ error: "payload muito grande" }, { status: 413 });
+  }
+
+  let raw: string;
+  try {
+    raw = await req.text();
+  } catch {
+    return NextResponse.json({ error: "payload invalido" }, { status: 400 });
+  }
+  // Bytes reais do corpo (UTF-8), nao caracteres — content-length conta bytes.
+  if (Buffer.byteLength(raw, "utf8") > MAX_WEBHOOK_BYTES) {
+    return NextResponse.json({ error: "payload muito grande" }, { status: 413 });
+  }
+
   let body: unknown;
   try {
-    body = await req.json();
+    body = JSON.parse(raw);
   } catch {
     return NextResponse.json({ error: "payload invalido" }, { status: 400 });
   }
@@ -154,10 +177,11 @@ export async function POST(req: Request) {
 
     // Pagamento recem-confirmado: dispara o e-mail (mock-first: no-op sem Resend).
     // FORA da transacao para que falha de e-mail nao force rollback/reenvio.
+    // applyPaymentStatusTx ja devolve o pedido completo (mesma leitura), sem
+    // getOrderById extra.
     if (result.changed && status === "paid") {
       try {
-        const order = await getOrderById(`#${orderId}`);
-        if (order) await sendPaymentConfirmationEmail(order);
+        await sendPaymentConfirmationEmail(result.order);
       } catch (mailErr) {
         console.error(
           "[asaas-webhook] falha ao enviar e-mail de pagamento:",
