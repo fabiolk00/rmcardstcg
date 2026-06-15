@@ -178,7 +178,11 @@ export async function createOrderWithReservation(
   // Com redencao de cupom, isolamos em Serializable + retry para fechar a corrida
   // do limite por usuario (Q7); sem cupom, READ COMMITTED + colapso por checkoutKey.
   const txOptions = redeem
-    ? { timeout: 15000, maxWait: 5000, isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    ? {
+        timeout: 15000,
+        maxWait: 5000,
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      }
     : { timeout: 15000, maxWait: 5000 };
   const maxAttempts = redeem ? 3 : 1;
 
@@ -463,7 +467,10 @@ export async function updateOrderShippingStatus(
 ): Promise<AdminOrderUpdate> {
   return prisma.$transaction(
     async (tx) => {
-      const existing = await tx.order.findUnique({ where: { id: orderId }, select: adminOrderSelect });
+      const existing = await tx.order.findUnique({
+        where: { id: orderId },
+        select: adminOrderSelect,
+      });
       if (!existing) return { ok: false, reason: "not_found" } as const;
 
       const from = existing.shippingStatus as ShippingStatus;
@@ -517,7 +524,10 @@ export async function updateOrderInternalNote(
   const normalized = note && note.trim().length > 0 ? note.trim() : null;
   return prisma.$transaction(
     async (tx) => {
-      const existing = await tx.order.findUnique({ where: { id: orderId }, select: adminOrderSelect });
+      const existing = await tx.order.findUnique({
+        where: { id: orderId },
+        select: adminOrderSelect,
+      });
       if (!existing) return { ok: false, reason: "not_found" } as const;
 
       if ((existing.internalNote ?? null) === normalized) {
@@ -560,7 +570,10 @@ export async function adjustOrderPaymentStatus(
   const trimmedReason = reason.trim();
   return prisma.$transaction(
     async (tx) => {
-      const existing = await tx.order.findUnique({ where: { id: orderId }, select: adminOrderSelect });
+      const existing = await tx.order.findUnique({
+        where: { id: orderId },
+        select: adminOrderSelect,
+      });
       if (!existing) return { ok: false, reason: "not_found" } as const;
 
       const from = existing.paymentStatus as PaymentStatus;

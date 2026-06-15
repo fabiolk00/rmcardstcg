@@ -45,7 +45,9 @@ export async function getAuditActor(): Promise<AuditActor> {
 }
 
 /** Snapshot jsonb absente -> NULL no banco (coluna nullable). */
-function toJson(value: Prisma.InputJsonValue | null | undefined): Prisma.InputJsonValue | typeof Prisma.DbNull {
+function toJson(
+  value: Prisma.InputJsonValue | null | undefined,
+): Prisma.InputJsonValue | typeof Prisma.DbNull {
   return value ?? Prisma.DbNull;
 }
 
@@ -65,7 +67,10 @@ export type AuditEntry = {
  * `action`/`entityType` sao os enums Prisma gerados (ex.: 'product.update').
  * before/after sao snapshots do dominio (camelCase, *Cents inteiros) ou null.
  */
-export async function writeAuditLog(tx: Prisma.TransactionClient, entry: AuditEntry): Promise<void> {
+export async function writeAuditLog(
+  tx: Prisma.TransactionClient,
+  entry: AuditEntry,
+): Promise<void> {
   await tx.auditLog.create({
     data: {
       actorClerkUserId: entry.actor.clerkUserId,

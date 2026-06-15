@@ -122,7 +122,10 @@ export async function POST(req: Request) {
           return { duplicate: true as const };
         }
 
-        const result = await applyPaymentStatusTx(tx, orderId, status, { id: paymentId, valueCents });
+        const result = await applyPaymentStatusTx(tx, orderId, status, {
+          id: paymentId,
+          valueCents,
+        });
         await markWebhookEventProcessed(tx, ASAAS_PROVIDER, eventId);
         return { duplicate: false as const, result };
       },
@@ -140,7 +143,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ received: true, matched: false });
     }
     if (!result.ok) {
-      console.warn(`[asaas-webhook] evento ${event} rejeitado p/ pedido #${orderId}: ${result.reason}.`);
+      console.warn(
+        `[asaas-webhook] evento ${event} rejeitado p/ pedido #${orderId}: ${result.reason}.`,
+      );
       return NextResponse.json({ received: true, verified: false });
     }
     if (!result.changed) {
@@ -165,7 +170,10 @@ export async function POST(req: Request) {
   } catch (err) {
     // Erro transitorio: 500 p/ o Asaas reenviar. Como ledger + efeito sao a MESMA
     // transacao (que fez rollback), o reenvio reprocessa com seguranca.
-    console.error("[asaas-webhook] falha ao atualizar pedido:", err instanceof Error ? err.message : err);
+    console.error(
+      "[asaas-webhook] falha ao atualizar pedido:",
+      err instanceof Error ? err.message : err,
+    );
     return NextResponse.json({ error: "falha interna" }, { status: 500 });
   }
 }

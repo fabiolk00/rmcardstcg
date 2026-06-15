@@ -105,7 +105,9 @@ function parsePayload(p: CouponFormPayload): CouponInput | { error: string } {
   };
 }
 
-export async function createCouponAction(payload: CouponFormPayload): Promise<CouponMutationResult> {
+export async function createCouponAction(
+  payload: CouponFormPayload,
+): Promise<CouponMutationResult> {
   const guard = await requireAdmin();
   if (!guard.ok) return fail(guard.error);
 
