@@ -104,7 +104,10 @@ export async function POST(req: Request) {
   }
 
   // Valor do evento (reais) -> centavos, para conferir com o total do pedido.
-  const valueCents = typeof payment?.value === "number" ? Math.round(payment.value * 100) : null;
+  // Prevent IEEE 754 rounding errors: use .toFixed(2) before multiplying
+  const valueCents = typeof payment?.value === "number"
+    ? Math.round(parseFloat(payment.value.toFixed(2)) * 100)
+    : null;
   const eventId = asaasEventId(paymentId, event ?? "");
 
   try {
