@@ -19,6 +19,8 @@
   --red: #d32f2f; /* erro / destrutivo / estoque zerado */
   --on-ink: #ffffff; /* texto/icone sobre superficie ink */
   --ink-hover: #2a2a2a; /* hover de elementos ink */
+  --green-strong: #15803d; /* texto verde de status sobre fundo claro (contraste AA) */
+  --red-strong: #b42318; /* texto vermelho de status/erro sobre fundo claro (contraste AA) */
 
   /* Raio */
   --r-sm: 8px;

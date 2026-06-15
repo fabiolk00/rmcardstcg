@@ -59,7 +59,7 @@
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-2);
   background: var(--bg-soft);
   border-bottom: 1px solid var(--border);
 }
@@ -100,8 +100,8 @@
 
 .pay_paid,
 .ship_delivered {
-  background: var(--green);
-  color: var(--on-ink);
+  background: var(--bg-soft);
+  color: var(--green-strong);
 }
 
 .pay_pending,
@@ -113,6 +113,6 @@
 
 .pay_cancelled,
 .ship_cancelled {
-  background: var(--red);
-  color: var(--on-ink);
+  background: var(--bg-soft);
+  color: var(--red-strong);
 }

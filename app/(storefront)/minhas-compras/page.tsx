@@ -59,12 +59,14 @@ export default async function MinhasComprasPage() {
         <table className={styles.table}>
           <thead>
             <tr>
-              <th>Pedido</th>
-              <th>Data</th>
-              <th>Itens</th>
-              <th>Pagamento</th>
-              <th>Envio</th>
-              <th className={styles.right}>Total</th>
+              <th scope="col">Pedido</th>
+              <th scope="col">Data</th>
+              <th scope="col">Itens</th>
+              <th scope="col">Pagamento</th>
+              <th scope="col">Envio</th>
+              <th scope="col" className={styles.right}>
+                Total
+              </th>
             </tr>
           </thead>
           <tbody>

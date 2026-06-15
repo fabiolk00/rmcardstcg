@@ -5,67 +5,106 @@
 
 .sidebar {
   display: flex;
-  width: 240px;
+  width: 248px;
   flex-shrink: 0;
   flex-direction: column;
   gap: var(--space-6);
-  border-right: 1px solid var(--border);
-  background: var(--bg-soft);
+  background: var(--ink);
+  color: var(--on-ink);
   padding: var(--space-6) var(--space-4);
 }
 
 .brand {
-  font-size: 18px;
-  font-weight: 800;
-  letter-spacing: -0.03em;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-2);
 }
 
-.nav {
+.brandMark {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  background: var(--on-ink);
+}
+
+.brandLogo {
+  width: 28px;
+  height: auto;
+}
+
+.brandText {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
-  font-size: 14px;
-  color: var(--ink-2);
 }
 
-.nav a {
+.brandName {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.brandSub {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.foot {
   display: flex;
-  min-height: 44px;
   align-items: center;
-  padding-inline: var(--space-3);
-  border-radius: var(--r-sm);
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: auto;
 }
 
-.nav a:hover {
-  background: var(--bg);
-  color: var(--ink);
+.viewStore {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.viewStore:hover {
+  color: var(--on-ink);
+}
+
+.demoBadge {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.55);
 }
 
 .main {
   display: flex;
-  min-width: 0;
   flex: 1;
+  min-width: 0;
   flex-direction: column;
 }
 
 .topbar {
   display: flex;
-  height: 56px;
   align-items: center;
-  border-bottom: 1px solid var(--border);
+  height: 60px;
   padding-inline: var(--space-6);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
 }
 
-.crumb {
-  font-size: 13px;
-  color: var(--ink-3);
+.topbarTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-2);
 }
 
 .content {
-  padding: var(--space-8) var(--space-6);
+  padding: var(--space-7) var(--space-6);
 }
 
-@media (max-width: 600px) {
+@media (max-width: 720px) {
   .shell {
     flex-direction: column;
   }
@@ -74,12 +113,15 @@
     width: 100%;
     flex-direction: row;
     align-items: center;
-    justify-content: space-between;
     gap: var(--space-4);
   }
 
-  .nav {
-    flex-direction: row;
-    gap: var(--space-2);
+  .foot {
+    margin-top: 0;
+    margin-left: auto;
+  }
+
+  .viewStore span {
+    display: none;
   }
 }
