@@ -1,0 +1,43 @@
+{
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "agent": null,
+  "hooks": {
+    "TaskCompleted": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ./scripts/qa-gate.sh"
+          }
+        ]
+      }
+    ],
+    "TeammateIdle": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ./scripts/qa-gate.sh --idle"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(pnpm typecheck)",
+      "Bash(pnpm lint)",
+      "Bash(pnpm format:check)",
+      "Bash(pnpm build)",
+      "Bash(pnpm test:*)",
+      "Bash(pnpm vitest:*)",
+      "Read",
+      "Grep",
+      "Glob",
+      "Edit",
+      "Write"
+    ]
+  }
+}
