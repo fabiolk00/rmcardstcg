@@ -1,4 +1,4 @@
-import type { Coupon } from "@/lib/data/coupons";
+import type { Coupon, CouponRejection } from "@/lib/data/coupons";
 
 /**
  * Calculo do abatimento de cupom — funcao PURA, server-side (fonte de verdade).
@@ -21,4 +21,23 @@ export function couponDiscountCents(coupon: Coupon, merchandiseCents: number): n
   }
 
   return Math.max(0, Math.min(raw, merchandiseCents));
+}
+
+/**
+ * Mensagem amigavel por motivo de rejeicao do cupom. Os motivos que revelam a
+ * EXISTENCIA/estado do codigo (not_found, inactive, not_started, expired,
+ * max_redemptions) colapsam numa unica mensagem generica, para a resposta nao
+ * virar um oraculo de enumeracao de cupons validos (mitiga, mas nao substitui,
+ * rate limiting). below_min e per_user_limit ficam especificos: sao acionaveis e
+ * so ocorrem para quem ja tem um codigo valido em maos.
+ */
+export function couponErrorMessage(reason: CouponRejection): string {
+  switch (reason) {
+    case "below_min":
+      return "Seu pedido não atinge o valor mínimo para este cupom.";
+    case "per_user_limit":
+      return "Você já utilizou este cupom o número máximo de vezes.";
+    default:
+      return "Cupom inválido ou indisponível.";
+  }
 }

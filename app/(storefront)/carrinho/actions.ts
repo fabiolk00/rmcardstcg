@@ -2,9 +2,9 @@
 
 import { auth } from "@clerk/nextjs/server";
 
-import { couponDiscountCents } from "@/lib/cart/coupon";
+import { couponDiscountCents, couponErrorMessage } from "@/lib/cart/coupon";
 import { cartTotals, type CartLine } from "@/lib/cart/totals";
-import { redeemCoupon, validateCoupon, type CouponRejection } from "@/lib/data/coupons";
+import { redeemCoupon, validateCoupon } from "@/lib/data/coupons";
 import {
   createOrderWithReservation,
   findOrderByCheckoutKey,
@@ -92,28 +92,6 @@ function pixDueDate(): string {
 
 /** Erro de redencao de cupom — sinaliza rollback da transacao do checkout. */
 class CouponRedeemError extends Error {}
-
-/** Mensagem amigavel por motivo de rejeicao do cupom. */
-function couponErrorMessage(reason: CouponRejection): string {
-  switch (reason) {
-    case "not_found":
-      return "Cupom inválido.";
-    case "inactive":
-      return "Este cupom não está mais ativo.";
-    case "not_started":
-      return "Este cupom ainda não está disponível.";
-    case "expired":
-      return "Este cupom expirou.";
-    case "below_min":
-      return "Seu pedido não atinge o valor mínimo para este cupom.";
-    case "max_redemptions":
-      return "Este cupom atingiu o limite de usos.";
-    case "per_user_limit":
-      return "Você já utilizou este cupom o número máximo de vezes.";
-    default:
-      return "Não foi possível aplicar o cupom.";
-  }
-}
 
 /** Best-effort: busca o QR PIX de uma cobranca existente; null se indisponivel. */
 async function fetchPix(paymentId: string): Promise<CheckoutPix | null> {
