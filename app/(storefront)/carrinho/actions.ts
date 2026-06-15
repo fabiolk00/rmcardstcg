@@ -128,7 +128,8 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
     paymentMethod: "PIX",
   });
 
-  // Confirmacao de "pedido recebido" (mock-first: no-op sem Resend). Nao bloqueia.
+  // Confirmacao de "pedido recebido" (mock-first: no-op sem Resend). O envio e
+  // tolerante a falha internamente, entao nao derruba o checkout.
   await sendOrderConfirmationEmail(order);
 
   // Sem Asaas configurado (dev sem chave): pedido criado, sem cobranca.
@@ -155,12 +156,20 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
       description: `Pedido ${order.id} — RM Cards`,
     });
 
-    // Grava o elo cobranca <-> pedido: o webhook so confirma o pagamento se o
-    // payment.id do evento bater com este. Sem isso o status nunca muda.
-    await setOrderAsaasRefs(Number(externalReference), {
-      paymentId: payment.id,
-      customerId: customer.id,
-    });
+    // Best-effort: grava o elo cobranca <-> pedido (o webhook so confirma se o
+    // payment.id bater). Se falhar, a cobranca ja existe e e pagavel — logamos
+    // p/ reconciliacao em vez de falhar e arriscar cobranca dupla na re-tentativa.
+    try {
+      await setOrderAsaasRefs(Number(externalReference), {
+        paymentId: payment.id,
+        customerId: customer.id,
+      });
+    } catch (refErr) {
+      console.error(
+        `[checkout] falha ao gravar refs Asaas do pedido ${order.id}:`,
+        refErr instanceof Error ? refErr.message : refErr,
+      );
+    }
 
     // O QR exige uma chave PIX cadastrada na conta Asaas. Se ainda nao houver,
     // a cobranca existe e e pagavel pela invoiceUrl — degrada sem travar o pedido.

@@ -182,10 +182,17 @@ export async function setOrderPaymentStatus(
   });
   if (!existing) return { found: false };
 
-  if (!existing.asaasPaymentId || existing.asaasPaymentId !== payment.id) {
+  if (!existing.asaasPaymentId) {
+    // Sem cobranca vinculada (ex.: falha ao gravar refs no checkout): nao da pra
+    // verificar. Sinaliza para reconciliacao manual.
+    console.error(`[orders] pedido #${orderId} sem asaasPaymentId ao receber evento de pagamento.`);
     return { found: true, ok: false, reason: "payment_mismatch" };
   }
-  if (payment.valueCents !== null && payment.valueCents !== existing.totalCents) {
+  if (existing.asaasPaymentId !== payment.id) {
+    return { found: true, ok: false, reason: "payment_mismatch" };
+  }
+  // Tolerancia de 1 centavo para arredondamento na ida/volta reais <-> centavos.
+  if (payment.valueCents !== null && Math.abs(payment.valueCents - existing.totalCents) > 1) {
     return { found: true, ok: false, reason: "value_mismatch" };
   }
 
@@ -194,9 +201,11 @@ export async function setOrderPaymentStatus(
     return { found: true, ok: true, changed: false, previousStatus, status };
   }
 
-  await prisma.order.update({
-    where: { id: orderId },
+  // Compare-and-swap: so escreve se o status ainda for o que lemos. Em corrida
+  // entre eventos concorrentes, o perdedor conta 0 e nao reaplica (nem reenvia e-mail).
+  const res = await prisma.order.updateMany({
+    where: { id: orderId, paymentStatus: previousStatus },
     data: { paymentStatus: status },
   });
-  return { found: true, ok: true, changed: true, previousStatus, status };
+  return { found: true, ok: true, changed: res.count > 0, previousStatus, status };
 }

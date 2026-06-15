@@ -22,6 +22,12 @@ import { formatBRL } from "@/lib/utils/currency";
  */
 export type OrderEmailKind = "created" | "paid";
 
+/** CEP "80000000" -> "80000-000" (so para exibir; nao valida). */
+function formatCep(cep: string): string {
+  const digits = cep.replace(/\D/g, "");
+  return digits.length === 8 ? `${digits.slice(0, 5)}-${digits.slice(5)}` : cep;
+}
+
 export function OrderEmail({ order, kind }: { order: Order; kind: OrderEmailKind }) {
   const paid = kind === "paid";
   const title = paid ? `Pagamento confirmado — pedido ${order.id}` : `Pedido ${order.id} recebido`;
@@ -77,7 +83,7 @@ export function OrderEmail({ order, kind }: { order: Order; kind: OrderEmailKind
           <Hr style={hr} />
           <Text style={muted}>
             Entrega para {order.address.street}, {order.address.city}-{order.address.state}, CEP{" "}
-            {order.address.cep}.
+            {formatCep(order.address.cep)}.
           </Text>
           <Text style={muted}>RM Cards — Pokemon TCG</Text>
         </Container>

@@ -23,6 +23,10 @@ export default async function AdminLayout({ children }: Readonly<{ children: Rea
       user.primaryEmailAddress?.emailAddress ?? user.emailAddresses[0]?.emailAddress ?? null;
     const role = (await getUserRole(user.id)) ?? (isAdminEmail(email) ? "admin" : "cliente");
     if (role !== "admin") redirect("/");
+  } else if (process.env.NODE_ENV === "production") {
+    // Fail-closed: sem Clerk configurado, /admin nunca fica aberto em producao
+    // (mock-first aberto vale so para dev). Configure as chaves Clerk no deploy.
+    redirect("/");
   }
 
   return (
