@@ -12,7 +12,8 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
-    "next": "15.1.6",
+    "@clerk/nextjs": "^6.39.0",
+    "next": "^15.2.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
@@ -21,7 +22,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "eslint": "^8.57.1",
-    "eslint-config-next": "15.1.6",
+    "eslint-config-next": "^15.2.3",
     "prettier": "^3.4.2",
     "typescript": "^5.7.0"
   },

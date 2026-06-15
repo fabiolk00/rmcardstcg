@@ -1,6 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { NavLinks } from "./NavLinks";
+import { AuthControls } from "./AuthControls";
+import { isClerkConfigured } from "@/lib/services/clerk/config";
 import styles from "./Topbar.module.css";
 
 export function Topbar() {
@@ -22,14 +24,18 @@ export function Topbar() {
 
         <div className={styles.spacer} />
 
-        <div className={styles.auth}>
-          <Link href="/entrar" className={styles.btnGhost}>
-            Entrar
-          </Link>
-          <Link href="/criar-conta" className={styles.btnDark}>
-            Criar conta
-          </Link>
-        </div>
+        {isClerkConfigured() ? (
+          <AuthControls />
+        ) : (
+          <div className={styles.auth}>
+            <Link href="/entrar" className={styles.btnGhost}>
+              Entrar
+            </Link>
+            <Link href="/criar-conta" className={styles.btnDark}>
+              Criar conta
+            </Link>
+          </div>
+        )}
       </div>
     </header>
   );

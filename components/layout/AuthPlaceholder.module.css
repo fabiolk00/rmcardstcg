@@ -1,0 +1,21 @@
+.box {
+  width: 100%;
+  max-width: 380px;
+  padding: var(--space-7);
+  text-align: center;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.title {
+  font-size: 22px;
+}
+
+.text {
+  margin-top: var(--space-3);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
