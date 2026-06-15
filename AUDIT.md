@@ -36,14 +36,14 @@ Os itens antes listados em "🔓 Abertos / adiados" foram tratados nesta rodada
 Postgres real). Funcionalidade nova relacionada: exclusão permanente de cupom
 (`8c624d1`, `/admin/cupons`).
 
-| Achado                                                                                   | Sev. | Domínio       | Commit    | Prova                                                                                                                                               |
-| ---------------------------------------------------------------------------------------- | ---- | ------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `inventory.ts` fazia 1 UPDATE por item                                                   | 🟡   | stock         | `0a2ca6d` | batch `UPDATE … FROM (VALUES …)` (agrega duplicados; `RETURNING` acha o item sem estoque); `tests/stock/batch`                                      |
-| Reconcile re-buscava `getOrderById` por pedido pago                                      | 🟡   | billing       | `5086430` | `applyPaymentStatusTx` retorna o `Order` (leitura única); `tests/concurrency/payment-status-order-return`                                           |
-| Webhook Asaas sem teto de payload                                                        | ⚪   | billing       | `5086430` | 413 por `Content-Length` declarado **e** por tamanho real; `tests/security/webhook-payload-cap`                                                     |
-| Sem ação **auditada** para alterar role (sync nunca rebaixa)                             | 🟡   | users         | `93d6d76` | `setUserRole` auditada + `/admin/usuarios` (anti-lockout; sync intacto); `tests/users/set-user-role`                                                |
-| `user.deleted` deixava `orders`/`redemptions` órfãos                                     | ⚪   | users         | `93d6d76` | soft-delete do espelho (`users.deleted_at`; leituras filtram); `tests/users/soft-delete`                                                            |
-| **Ressurreição `cancelled→paid`** (residual de `d78f2bb`) → "pago sem baixa" sob corrida | 🔴   | billing+stock | `8a0867b` | guarda de transição **terminal** em `applyPaymentStatusTx`; `tests/concurrency/payment-status-terminal` (determinístico) + suíte de corrida estável |
+| Achado                                                                                   | Sev. | Domínio       | Commit              | Prova                                                                                                                                                                                                                                                                     |
+| ---------------------------------------------------------------------------------------- | ---- | ------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `inventory.ts` fazia 1 UPDATE por item                                                   | 🟡   | stock         | `0a2ca6d`           | batch `UPDATE … FROM (VALUES …)` (agrega duplicados; `RETURNING` acha o item sem estoque); `tests/stock/batch`                                                                                                                                                            |
+| Reconcile re-buscava `getOrderById` por pedido pago                                      | 🟡   | billing       | `5086430`           | `applyPaymentStatusTx` retorna o `Order` (leitura única); `tests/concurrency/payment-status-order-return`                                                                                                                                                                 |
+| Webhook Asaas sem teto de payload                                                        | ⚪   | billing       | `5086430`           | 413 por `Content-Length` declarado **e** por tamanho real; `tests/security/webhook-payload-cap`                                                                                                                                                                           |
+| Sem ação **auditada** para alterar role (sync nunca rebaixa)                             | 🟡   | users         | `93d6d76`           | `setUserRole` auditada + `/admin/usuarios` (anti-lockout; sync intacto); `tests/users/set-user-role`                                                                                                                                                                      |
+| `user.deleted` deixava `orders`/`redemptions` órfãos                                     | ⚪   | users         | `93d6d76`           | soft-delete do espelho (`users.deleted_at`; leituras filtram); `tests/users/soft-delete`                                                                                                                                                                                  |
+| **Ressurreição `cancelled→paid`** (residual de `d78f2bb`) → "pago sem baixa" sob corrida | 🔴   | billing+stock | `8a0867b` `7023503` | guarda de transição em `applyPaymentStatusTx`: `8a0867b` fecha `cancelled→paid`; `7023503` generaliza p/ a máquina de estados completa (`PAYMENT_TRANSITIONS`) após sign-off do QA. `tests/concurrency/payment-status-terminal` (matriz determinística) + corrida estável |
 
 > **Achado do QA (independente):** ao rodar a suíte completa contra um Postgres
 > real, o `qa-gate` flagrou que a corrida `cron-cancel × webhook-paid` ainda deixava
@@ -51,8 +51,10 @@ Postgres real). Funcionalidade nova relacionada: exclusão permanente de cupom
 > **não** a transição de status: o CAS `WHERE payment_status = <valor lido>`
 > ressuscitava para `paid` um pedido já cancelado/estornado (reserva já revertida ⇒
 > o reconcile de `paid` não baixa). Reproduzido **deterministicamente** e fechado em
-> `8a0867b`. É o loop fix→QA→review→fix funcionando: o QA derrubou o estado anterior,
-> o fix novo passou.
+> `8a0867b`. No sign-off seguinte o `qa-gate` aprovou e observou que `paid→pending`/
+> `cancelled→pending` (inalcançáveis pelos callers atuais) também passariam pelo CAS;
+> `7023503` generalizou a guarda para a máquina de estados completa. É o loop
+> fix→QA→review→fix funcionando: o QA derrubou o estado anterior, o fix novo passou.
 
 ## 🔓 Abertos / adiados
 
