@@ -3,7 +3,11 @@ import { NextResponse } from "next/server";
 import { isClerkConfigured } from "@/lib/services/clerk/config";
 
 // Rotas que exigem login. Guard por ROLE de admin entra no F9.
-const isProtectedRoute = createRouteMatcher(["/admin(.*)", "/minhas-compras(.*)"]);
+const isProtectedRoute = createRouteMatcher([
+  "/admin(.*)",
+  "/minhas-compras(.*)",
+  "/checkout(.*)",
+]);
 
 // isClerkConfigured() e avaliado em build-time (NEXT_PUBLIC_* e inlined no bundle).
 // Mock-first: sem chave Clerk real, o middleware vira no-op e as rotas protegidas

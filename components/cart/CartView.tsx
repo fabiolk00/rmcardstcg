@@ -120,10 +120,10 @@ export function CartView() {
           <span className="tnum">{formatBRL(totals.totalCents)}</span>
         </div>
 
-        <button type="button" className={styles.checkout} disabled>
+        <Link href="/checkout" className={styles.checkout}>
           Finalizar compra
-        </button>
-        <p className={styles.checkoutHint}>Pagamento via PIX entra em breve.</p>
+        </Link>
+        <p className={styles.checkoutHint}>Pagamento via PIX.</p>
         <Link href="/colecoes" className={styles.continue}>
           Continuar comprando
         </Link>
