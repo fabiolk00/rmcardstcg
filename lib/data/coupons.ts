@@ -235,6 +235,59 @@ export async function setCouponActive(
   return { ok: true, coupon: result };
 }
 
+export type CouponDeleteResult = { ok: true; id: string } | { ok: false; error: string };
+
+/** Mensagem unica para "tem redencao": NUNCA exclui cupom com historico financeiro. */
+const COUPON_IN_USE =
+  "Cupom já foi utilizado e não pode ser excluído. Inative-o para tirá-lo de circulação." as const;
+
+/**
+ * Exclui um cupom PERMANENTEMENTE (o "D" do CRUD). Diferente de setCouponActive
+ * (inativacao reversivel), o registro deixa de existir.
+ *
+ * Guarda de integridade: so exclui se o cupom NUNCA foi redimido. coupon_redemptions
+ * guarda dados financeiros (discountCents) atrelados a pedidos reais e a FK e
+ * onDelete: Restrict — apagar um cupom usado destruiria historico fiscal/auditoria
+ * (ver AUDIT.md). Cupom ja usado deve ser INATIVADO, nao excluido.
+ *
+ * Grava audit_log (coupon_delete, before=snapshot, after=null) na MESMA transacao
+ * (invariante 3). A contagem de redencoes e o delete correm na mesma transacao; uma
+ * redencao inserida nesse meio dispara a FK Restrict (P2003), tratada como "em uso".
+ */
+export async function deleteCoupon(actor: AuditActor, id: string): Promise<CouponDeleteResult> {
+  try {
+    const outcome = await prisma.$transaction(async (tx) => {
+      const existing = await tx.coupon.findUnique({ where: { id } });
+      if (!existing) return "not_found" as const;
+
+      const redemptions = await tx.couponRedemption.count({ where: { couponId: id } });
+      if (redemptions > 0) return "in_use" as const;
+
+      const before = toCoupon(existing);
+      await tx.coupon.delete({ where: { id } });
+      await writeAuditLog(tx, {
+        actor,
+        action: AuditAction.coupon_delete,
+        entityType: AuditEntityType.coupon,
+        entityId: id,
+        before: couponSnapshot(before),
+        after: null,
+      });
+      return "ok" as const;
+    });
+
+    if (outcome === "not_found") return { ok: false, error: "Cupom não encontrado." };
+    if (outcome === "in_use") return { ok: false, error: COUPON_IN_USE };
+    return { ok: true, id };
+  } catch (err) {
+    // Corrida: redencao gravada entre a contagem e o delete -> FK Restrict.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2003") {
+      return { ok: false, error: COUPON_IN_USE };
+    }
+    throw err;
+  }
+}
+
 // ============================================================================
 // VALIDACAO + REDENCAO (checkout) — 100% server-side, atomica e idempotente.
 // ============================================================================

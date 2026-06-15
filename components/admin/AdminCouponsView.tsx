@@ -6,8 +6,10 @@ import { formatBRL } from "@/lib/utils/currency";
 import { Icon } from "@/components/ui/Icon";
 import { Pagination } from "@/components/ui/Pagination";
 import { CouponFormModal } from "./CouponFormModal";
+import { DeleteCouponModal } from "./DeleteCouponModal";
 import {
   createCouponAction,
+  deleteCouponAction,
   setCouponActiveAction,
   updateCouponAction,
   type CouponFormPayload,
@@ -45,6 +47,7 @@ export function AdminCouponsView({ coupons: initialCoupons }: { coupons: Coupon[
   const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<Coupon | null>(null);
   const [creating, setCreating] = useState(false);
+  const [deleting, setDeleting] = useState<Coupon | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -115,6 +118,17 @@ export function AdminCouponsView({ coupons: initialCoupons }: { coupons: Coupon[
         setToast(result.error);
       }
     });
+  };
+
+  // Exclusao permanente (o modal gerencia o estado de carregando e exibe o erro).
+  const handleDelete = async (): Promise<string | null> => {
+    if (!deleting) return null;
+    const result = await deleteCouponAction(deleting.id);
+    if (!result.ok) return result.error;
+    setCoupons((prev) => prev.filter((x) => x.id !== deleting.id));
+    setDeleting(null);
+    setToast("Cupom excluído.");
+    return null;
   };
 
   return (
@@ -247,6 +261,20 @@ export function AdminCouponsView({ coupons: initialCoupons }: { coupons: Coupon[
                     >
                       <Icon name="power" size={15} />
                     </button>
+                    <button
+                      type="button"
+                      className={styles.act}
+                      onClick={() => setDeleting(c)}
+                      disabled={pending || c.redeemedCount > 0}
+                      aria-label={`Excluir ${c.code}`}
+                      title={
+                        c.redeemedCount > 0
+                          ? "Cupom já utilizado — inative em vez de excluir"
+                          : "Excluir"
+                      }
+                    >
+                      <Icon name="trash" size={15} />
+                    </button>
                   </div>
                 </td>
               </tr>
@@ -279,6 +307,13 @@ export function AdminCouponsView({ coupons: initialCoupons }: { coupons: Coupon[
             setEditing(null);
           }}
           onSave={handleSave}
+        />
+      )}
+      {deleting && (
+        <DeleteCouponModal
+          coupon={deleting}
+          onClose={() => setDeleting(null)}
+          onConfirm={handleDelete}
         />
       )}
       {toast && (

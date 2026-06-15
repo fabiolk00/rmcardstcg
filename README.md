@@ -158,14 +158,14 @@ timestamps em `timestamptz(6)`. Definição em `prisma/schema.prisma`.
 
 ### Enums
 
-| Enum              | Valores                                                                                                                                                   |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Role`            | `cliente`, `admin`                                                                                                                                        |
-| `PaymentStatus`   | `pending`, `paid`, `cancelled`                                                                                                                            |
-| `ShippingStatus`  | `pending`, `sent`, `delivered`, `cancelled`                                                                                                               |
-| `CouponType`      | `percent`, `fixed`                                                                                                                                        |
-| `AuditEntityType` | `product`, `order`, `coupon`, `user`                                                                                                                      |
-| `AuditAction`     | `product.create/update/inactivate/reactivate/delete`, `order.payment_status_update/shipping_status_update/note_update`, `coupon.create/update/deactivate` |
+| Enum              | Valores                                                                                                                                                          |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Role`            | `cliente`, `admin`                                                                                                                                               |
+| `PaymentStatus`   | `pending`, `paid`, `cancelled`                                                                                                                                   |
+| `ShippingStatus`  | `pending`, `sent`, `delivered`, `cancelled`                                                                                                                      |
+| `CouponType`      | `percent`, `fixed`                                                                                                                                               |
+| `AuditEntityType` | `product`, `order`, `coupon`, `user`                                                                                                                             |
+| `AuditAction`     | `product.create/update/inactivate/reactivate/delete`, `order.payment_status_update/shipping_status_update/note_update`, `coupon.create/update/deactivate/delete` |
 
 ### `users` — espelho local do usuário Clerk
 
@@ -308,6 +308,11 @@ garante a coerência). O código é **único case-insensitive** via índice em
 | `created_at` / `updated_at` | timestamptz  |                                       |
 
 Índice: `is_active`.
+
+**CRUD (admin, `/admin/cupons`):** criar · editar · inativar/reativar · **excluir**.
+A exclusão é permanente e só é permitida para cupom **sem nenhuma redenção** — a FK
+`coupon_redemptions.coupon_id` é `onDelete: Restrict` e o histórico é fiscal/auditável;
+cupom já usado deve ser **inativado**. Toda mutação grava `audit_log` na mesma transação.
 
 ### `coupon_redemptions`
 

@@ -56,6 +56,7 @@ enum AuditAction {
   coupon_create                @map("coupon.create")
   coupon_update                @map("coupon.update")
   coupon_deactivate            @map("coupon.deactivate")
+  coupon_delete                @map("coupon.delete")
 }
 
 enum CouponType {

@@ -5,8 +5,10 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth/requireAdmin";
 import {
   createCoupon,
+  deleteCoupon,
   setCouponActive,
   updateCoupon,
+  type CouponDeleteResult,
   type CouponInput,
   type CouponMutationResult,
 } from "@/lib/data/coupons";
@@ -144,6 +146,17 @@ export async function setCouponActiveAction(
   if (!id) return fail("Cupom inválido.");
 
   const result = await setCouponActive(guard.actor, id, isActive);
+  if (result.ok) revalidatePath("/admin/cupons");
+  return result;
+}
+
+/** Exclusao permanente (o "D" do CRUD). Bloqueada para cupom ja redimido. */
+export async function deleteCouponAction(id: string): Promise<CouponDeleteResult> {
+  const guard = await requireAdmin();
+  if (!guard.ok) return { ok: false, error: guard.error };
+  if (!id) return { ok: false, error: "Cupom inválido." };
+
+  const result = await deleteCoupon(guard.actor, id);
   if (result.ok) revalidatePath("/admin/cupons");
   return result;
 }
