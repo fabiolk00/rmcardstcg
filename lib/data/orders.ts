@@ -1,6 +1,6 @@
 import { prisma } from "../db";
 import type { OrderItemModel, OrderModel } from "../generated/prisma/models";
-import type { Order, PaymentStatus, ShippingStatus } from "./types";
+import type { Order, OrderAddress, OrderItem, PaymentStatus, ShippingStatus } from "./types";
 
 /**
  * Camada de dados de pedidos — Postgres via Prisma (lib/db).
@@ -75,6 +75,60 @@ export async function getOrdersByUserId(userId: string): Promise<Order[]> {
     orderBy: { createdAt: "desc" },
   });
   return rows.map(toOrder);
+}
+
+/** Dados para criar um pedido (checkout). Totais/snapshots calculados no servidor. */
+export type CreateOrderInput = {
+  userId: string;
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  address: OrderAddress;
+  items: OrderItem[];
+  subtotalCents: number;
+  discountCents: number;
+  shippingCents: number;
+  totalCents: number;
+  paymentMethod: string;
+  shippingService?: string | null;
+  shippingDays?: string | null;
+};
+
+/**
+ * Cria um pedido (status de pagamento "pending") com seus itens, em uma unica
+ * transacao (o Prisma aninha o create dos itens). Retorna o pedido ja no formato
+ * do dominio — o id sequencial vira o externalReference da cobranca no Asaas.
+ */
+export async function createOrder(input: CreateOrderInput): Promise<Order> {
+  const row = await prisma.order.create({
+    data: {
+      userId: input.userId,
+      customerName: input.customerName,
+      customerEmail: input.customerEmail,
+      customerPhone: input.customerPhone,
+      addressCep: input.address.cep,
+      addressStreet: input.address.street,
+      addressCity: input.address.city,
+      addressState: input.address.state,
+      subtotalCents: input.subtotalCents,
+      discountCents: input.discountCents,
+      shippingCents: input.shippingCents,
+      totalCents: input.totalCents,
+      paymentMethod: input.paymentMethod,
+      shippingService: input.shippingService ?? null,
+      shippingDays: input.shippingDays ?? null,
+      items: {
+        create: input.items.map((it) => ({
+          productId: it.productId,
+          productName: it.productName,
+          quantity: it.quantity,
+          unitPriceCents: it.unitPriceCents,
+        })),
+      },
+    },
+    include: withItems,
+  });
+  return toOrder(row);
 }
 
 /**
