@@ -119,7 +119,11 @@ function couponErrorMessage(reason: CouponRejection): string {
 async function fetchPix(paymentId: string): Promise<CheckoutPix | null> {
   try {
     const qr = await getPixQrCode(paymentId);
-    return { payload: qr.payload, encodedImage: qr.encodedImage, expirationDate: qr.expirationDate };
+    return {
+      payload: qr.payload,
+      encodedImage: qr.encodedImage,
+      expirationDate: qr.expirationDate,
+    };
   } catch (qrErr) {
     console.warn(
       "[checkout] QR PIX indisponivel (cadastre uma chave PIX no Asaas):",
@@ -310,7 +314,10 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
       err instanceof AsaasError
         ? `Não foi possível gerar o PIX: ${err.message}`
         : "Não foi possível gerar a cobrança. Tente novamente.";
-    console.error("[checkout] falha ao criar cobranca Asaas:", err instanceof Error ? err.message : err);
+    console.error(
+      "[checkout] falha ao criar cobranca Asaas:",
+      err instanceof Error ? err.message : err,
+    );
     return { ok: false, error: message };
   }
 }

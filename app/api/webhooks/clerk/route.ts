@@ -138,7 +138,10 @@ export async function POST(req: Request) {
   } catch (err) {
     // Erro transitorio: 500 p/ o Clerk reenviar. Ledger + efeito sao a MESMA
     // transacao (rollback), entao o reenvio reprocessa com seguranca.
-    console.error("[clerk-webhook] falha ao sincronizar:", err instanceof Error ? err.message : err);
+    console.error(
+      "[clerk-webhook] falha ao sincronizar:",
+      err instanceof Error ? err.message : err,
+    );
     return NextResponse.json({ error: "falha interna" }, { status: 500 });
   }
 }

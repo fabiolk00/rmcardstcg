@@ -41,7 +41,10 @@ export async function upsertUserFromClerk(
 }
 
 /** Remove o usuario (evento user.deleted). updateMany-style: nao lanca se nao existir. */
-export async function deleteUserByClerkId(clerkUserId: string, db: DbClient = prisma): Promise<void> {
+export async function deleteUserByClerkId(
+  clerkUserId: string,
+  db: DbClient = prisma,
+): Promise<void> {
   await db.user.deleteMany({ where: { clerkUserId } });
 }
 

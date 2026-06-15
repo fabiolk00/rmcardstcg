@@ -45,7 +45,10 @@ export async function reserveStock(
  * conjunto com Order.stockReserved: so chamar quando stockReserved=true e flipar
  * para false na MESMA transacao.
  */
-export async function releaseStock(tx: Prisma.TransactionClient, items: StockItem[]): Promise<void> {
+export async function releaseStock(
+  tx: Prisma.TransactionClient,
+  items: StockItem[],
+): Promise<void> {
   for (const { productId, quantity } of items) {
     await tx.$executeRaw`
       UPDATE "products"
@@ -76,7 +79,10 @@ export async function commitStock(tx: Prisma.TransactionClient, items: StockItem
  * Idempotente via Order.stockCommitted (so executar quando true; flipar para
  * false na mesma transacao).
  */
-export async function restockUnits(tx: Prisma.TransactionClient, items: StockItem[]): Promise<void> {
+export async function restockUnits(
+  tx: Prisma.TransactionClient,
+  items: StockItem[],
+): Promise<void> {
   for (const { productId, quantity } of items) {
     await tx.$executeRaw`
       UPDATE "products"
