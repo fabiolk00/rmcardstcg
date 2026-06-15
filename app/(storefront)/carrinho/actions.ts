@@ -1,10 +1,11 @@
 "use server";
 
 import { auth } from "@clerk/nextjs/server";
+import { headers } from "next/headers";
 
-import { couponDiscountCents } from "@/lib/cart/coupon";
+import { couponDiscountCents, couponErrorMessage } from "@/lib/cart/coupon";
 import { cartTotals, type CartLine } from "@/lib/cart/totals";
-import { redeemCoupon, validateCoupon, type CouponRejection } from "@/lib/data/coupons";
+import { redeemCoupon, validateCoupon } from "@/lib/data/coupons";
 import {
   createOrderWithReservation,
   findOrderByCheckoutKey,
@@ -12,13 +13,14 @@ import {
   setOrderAsaasRefs,
 } from "@/lib/data/orders";
 import { finalPriceCents } from "@/lib/data/pricing";
-import { getProductById } from "@/lib/data/products";
+import { getProductsByIds } from "@/lib/data/products";
 import type { Order, OrderItem } from "@/lib/data/types";
 import { AsaasError } from "@/lib/services/asaas/client";
 import { isAsaasConfigured } from "@/lib/services/asaas/config";
 import { createCustomer, createPixCharge, getPixQrCode } from "@/lib/services/asaas/payments";
 import { isClerkConfigured } from "@/lib/services/clerk/config";
 import { sendOrderConfirmationEmail } from "@/lib/services/resend";
+import { checkRateLimit } from "@/lib/security/rateLimit";
 
 /**
  * Server action de checkout — cria o pedido (pending) + reserva de estoque e a
@@ -93,28 +95,6 @@ function pixDueDate(): string {
 /** Erro de redencao de cupom — sinaliza rollback da transacao do checkout. */
 class CouponRedeemError extends Error {}
 
-/** Mensagem amigavel por motivo de rejeicao do cupom. */
-function couponErrorMessage(reason: CouponRejection): string {
-  switch (reason) {
-    case "not_found":
-      return "Cupom inválido.";
-    case "inactive":
-      return "Este cupom não está mais ativo.";
-    case "not_started":
-      return "Este cupom ainda não está disponível.";
-    case "expired":
-      return "Este cupom expirou.";
-    case "below_min":
-      return "Seu pedido não atinge o valor mínimo para este cupom.";
-    case "max_redemptions":
-      return "Este cupom atingiu o limite de usos.";
-    case "per_user_limit":
-      return "Você já utilizou este cupom o número máximo de vezes.";
-    default:
-      return "Não foi possível aplicar o cupom.";
-  }
-}
-
 /** Best-effort: busca o QR PIX de uma cobranca existente; null se indisponivel. */
 async function fetchPix(paymentId: string): Promise<CheckoutPix | null> {
   try {
@@ -131,6 +111,77 @@ async function fetchPix(paymentId: string): Promise<CheckoutPix | null> {
     );
     return null;
   }
+}
+
+/**
+ * Chave de rate limit: usuario autenticado quando ha Clerk; senao o IP (best-effort
+ * via x-forwarded-for). headers() so existe em escopo de request — fora dele (testes)
+ * cai em "anon".
+ */
+async function clientKey(userId: string): Promise<string> {
+  if (userId !== "guest") return `u:${userId}`;
+  try {
+    const ip = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim();
+    if (ip) return `ip:${ip}`;
+  } catch {
+    // fora de escopo de request (ex.: teste)
+  }
+  return "anon";
+}
+
+export type CouponPreview =
+  | { ok: true; code: string; discountCents: number; finalTotalCents: number }
+  | { ok: false; error: string };
+
+/**
+ * Previa de cupom para a UI de checkout (server-only; a validacao do cupom vive no
+ * servidor). Recalcula desconto e total final do MESMO jeito que o checkout, para a
+ * tela exibir o valor que sera de fato cobrado — fim do "mostra X, cobra Y".
+ */
+export async function previewCoupon(input: {
+  items: { productId: string; quantity: number }[];
+  couponCode: string;
+}): Promise<CouponPreview> {
+  const code = input.couponCode?.trim();
+  if (!code) return { ok: false, error: "Informe um cupom." };
+  if (!input.items?.length) return { ok: false, error: "Seu carrinho está vazio." };
+
+  let userId = "guest";
+  if (isClerkConfigured()) {
+    const { userId: clerkId } = await auth();
+    if (!clerkId) return { ok: false, error: "Faça login para usar um cupom." };
+    userId = clerkId;
+  }
+
+  const limited = await checkRateLimit(`coupon-preview:${await clientKey(userId)}`, {
+    limit: 20,
+    windowMs: 60_000,
+  });
+  if (!limited.allowed) {
+    return { ok: false, error: "Muitas tentativas. Aguarde um instante." };
+  }
+
+  const products = await getProductsByIds(input.items.map((i) => i.productId));
+  const byId = new Map(products.map((p) => [p.id, p]));
+  const lines: CartLine[] = [];
+  for (const { productId, quantity } of input.items) {
+    const product = byId.get(productId);
+    if (!product || !product.isActive) {
+      return { ok: false, error: "Um dos produtos não está mais disponível." };
+    }
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      return { ok: false, error: "Quantidade inválida no carrinho." };
+    }
+    lines.push({ product, quantity });
+  }
+
+  const totals = cartTotals(lines);
+  const v = await validateCoupon({ code, merchandiseCents: totals.merchandiseCents, userId });
+  if (!v.ok) return { ok: false, error: couponErrorMessage(v.reason) };
+
+  const discountCents = couponDiscountCents(v.coupon, totals.merchandiseCents);
+  const finalTotalCents = Math.max(totals.shippingCents, totals.totalCents - discountCents);
+  return { ok: true, code: v.coupon.code, discountCents, finalTotalCents };
 }
 
 export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
@@ -154,15 +205,34 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
   const prior = await findOrderByCheckoutKey(input.checkoutKey);
   if (prior) return resultForExistingOrder(prior);
 
+  // Rate limit DEPOIS do short-circuit idempotente (retries da MESMA checkoutKey ja
+  // retornaram acima), p/ nao penalizar reenvio legitimo. Best-effort em memoria;
+  // em producao, injete um store compartilhado (ver lib/security/rateLimit).
+  const limited = await checkRateLimit(`checkout:${await clientKey(userId)}`, {
+    limit: 12,
+    windowMs: 60_000,
+  });
+  if (!limited.allowed) {
+    return {
+      ok: false,
+      error: "Muitas tentativas em pouco tempo. Aguarde um instante e tente de novo.",
+    };
+  }
+
   // Revalida cada item: existe e ativo. Monta snapshots + linhas. A disponibilidade
   // real de estoque e garantida atomicamente pela reserva (nao por read antecipado).
   const orderItems: OrderItem[] = [];
   const lines: CartLine[] = [];
+  // Batch: carrega todos os produtos do carrinho numa unica query (evita N+1;
+  // antes era um getProductById por item). A disponibilidade real de estoque
+  // continua garantida atomicamente pela reserva, nao por este read.
+  const products = await getProductsByIds(input.items.map((i) => i.productId));
+  const productById = new Map(products.map((p) => [p.id, p]));
   for (const { productId, quantity } of input.items) {
     if (!Number.isInteger(quantity) || quantity < 1) {
       return { ok: false, error: "Quantidade inválida no carrinho." };
     }
-    const product = await getProductById(productId);
+    const product = productById.get(productId);
     if (!product || !product.isActive) {
       return { ok: false, error: "Um dos produtos não está mais disponível." };
     }

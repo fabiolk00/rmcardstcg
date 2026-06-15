@@ -395,21 +395,41 @@ async function reconcileStockForPaymentStatus(
   snap: StockSnapshot,
 ): Promise<void> {
   const lines = snap.items.map((it) => ({ productId: it.productId, quantity: it.quantity }));
-  if (status === "paid" && snap.stockReserved && !snap.stockCommitted) {
-    await commitStock(tx, lines);
-    await tx.order.update({
-      where: { id: orderId },
-      data: { stockCommitted: true, stockReserved: false },
-    });
-  } else if (status === "cancelled") {
-    if (snap.stockReserved && !snap.stockCommitted) {
+  if (lines.length === 0) return;
+
+  // CAS no PROPRIO pedido (nao no snapshot lido sem lock): o flip da flag e a
+  // CONDICAO do UPDATE, que adquire o row-lock de "orders". Concorrentes (webhook
+  // paid x cron/reconcile cancel; ou refunds duplicados) bloqueiam e, ao reler,
+  // acham a flag ja virada -> 0 linhas -> no-op. So a transacao que efetivamente
+  // transiciona a flag mexe no estoque. claimed=1 garante a pre-condicao do efeito
+  // (reserva/baixa ainda intactas), entao os guards coluna-a-coluna do inventory
+  // sempre casam. Fecha a corrida de snapshot stale (duplo-restock e "pago sem baixa").
+  if (status === "paid") {
+    const claimed = await tx.$executeRaw`
+      UPDATE "orders" SET "stock_committed" = true, "stock_reserved" = false
+      WHERE "id" = ${orderId} AND "stock_reserved" = true AND "stock_committed" = false
+    `;
+    if (claimed === 1) await commitStock(tx, lines);
+    return;
+  }
+
+  if (status === "cancelled") {
+    // Estorno da reserva (pendente nao pago).
+    const released = await tx.$executeRaw`
+      UPDATE "orders" SET "stock_reserved" = false
+      WHERE "id" = ${orderId} AND "stock_reserved" = true AND "stock_committed" = false
+    `;
+    if (released === 1) {
       await releaseStock(tx, lines);
-      await tx.order.update({ where: { id: orderId }, data: { stockReserved: false } });
-    } else if (snap.stockCommitted) {
-      // Refund/chargeback de pedido JA PAGO: repoe o estoque baixado (Q3).
-      await restockUnits(tx, lines);
-      await tx.order.update({ where: { id: orderId }, data: { stockCommitted: false } });
+      return;
     }
+    // Refund/chargeback de pedido JA PAGO: repoe o estoque baixado (Q3). O CAS aqui
+    // e o unico guard (restockUnits nao tem predicado de coluna proprio).
+    const refunded = await tx.$executeRaw`
+      UPDATE "orders" SET "stock_committed" = false
+      WHERE "id" = ${orderId} AND "stock_committed" = true
+    `;
+    if (refunded === 1) await restockUnits(tx, lines);
   }
 }
 
@@ -624,28 +644,33 @@ export async function cancelOrderAndReleaseStock(orderId: number): Promise<{ rel
       const existing = await tx.order.findUnique({
         where: { id: orderId },
         select: {
-          stockReserved: true,
-          stockCommitted: true,
           items: { select: { productId: true, quantity: true } },
         },
       });
       if (!existing) return { released: false };
+      const lines = existing.items.map((it) => ({
+        productId: it.productId,
+        quantity: it.quantity,
+      }));
 
-      if (existing.stockReserved && !existing.stockCommitted) {
-        await releaseStock(
-          tx,
-          existing.items.map((it) => ({ productId: it.productId, quantity: it.quantity })),
-        );
-        await tx.order.update({
-          where: { id: orderId },
-          data: { stockReserved: false, paymentStatus: "cancelled" },
-        });
+      // CAS (mesmo principio de reconcileStockForPaymentStatus): estorna a reserva
+      // SO se ainda pendente-reservada-e-nao-committed, no proprio UPDATE que
+      // adquire o row-lock. Concorrente com o webhook paid, um dos lados vira no-op.
+      const released = await tx.$executeRaw`
+        UPDATE "orders" SET "stock_reserved" = false, "payment_status" = 'cancelled'
+        WHERE "id" = ${orderId}
+          AND "stock_reserved" = true AND "stock_committed" = false
+          AND "payment_status" = 'pending'
+      `;
+      if (released === 1) {
+        await releaseStock(tx, lines);
         return { released: true };
       }
-      await tx.order.updateMany({
-        where: { id: orderId, paymentStatus: "pending" },
-        data: { paymentStatus: "cancelled" },
-      });
+      // Sem reserva ativa a estornar: so coerencia de status (so atinge pending).
+      await tx.$executeRaw`
+        UPDATE "orders" SET "payment_status" = 'cancelled'
+        WHERE "id" = ${orderId} AND "payment_status" = 'pending'
+      `;
       return { released: false };
     },
     { timeout: 15000, maxWait: 5000 },

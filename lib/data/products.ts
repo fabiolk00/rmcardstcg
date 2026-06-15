@@ -62,6 +62,17 @@ export async function getProductById(id: string): Promise<Product | null> {
   return row ? toProduct(row) : null;
 }
 
+/**
+ * Produtos por uma lista de ids, em UMA query (evita N+1 no checkout, que antes
+ * fazia um findUnique por item do carrinho). A ordem do retorno nao e garantida;
+ * o chamador indexa por id.
+ */
+export async function getProductsByIds(ids: string[]): Promise<Product[]> {
+  if (ids.length === 0) return [];
+  const rows = await prisma.product.findMany({ where: { id: { in: ids } } });
+  return rows.map(toProduct);
+}
+
 // ===========================================================================
 // CRUD persistido de produto (admin). Cada mutacao roda numa transacao Prisma
 // com writeAuditLog na MESMA transacao (invariante 3). O SERVIDOR e a fonte de
@@ -190,14 +201,20 @@ async function uniqueSlug(
   excludeId?: string,
 ): Promise<string> {
   const base = slugify(name) || "produto";
-  let candidate = base;
+  // Uma unica query (evita N+1: antes era um findUnique por colisao). Pega os
+  // slugs ja usados na familia base / base-N e escolhe o menor sufixo livre.
+  const rows = await tx.product.findMany({
+    where: {
+      OR: [{ slug: base }, { slug: { startsWith: `${base}-` } }],
+      ...(excludeId ? { id: { not: excludeId } } : {}),
+    },
+    select: { slug: true },
+  });
+  const taken = new Set(rows.map((r) => r.slug));
+  if (!taken.has(base)) return base;
   for (let n = 2; n <= 1000; n += 1) {
-    const existing = await tx.product.findUnique({
-      where: { slug: candidate },
-      select: { id: true },
-    });
-    if (!existing || existing.id === excludeId) return candidate;
-    candidate = `${base}-${n}`;
+    const candidate = `${base}-${n}`;
+    if (!taken.has(candidate)) return candidate;
   }
   // Improvavel (1000 colisoes do mesmo nome): sufixo aleatorio garante unicidade.
   return `${base}-${crypto.randomUUID().slice(0, 8)}`;
@@ -264,6 +281,16 @@ export async function updateProduct(
     const current = await tx.product.findUnique({ where: { id } });
     if (!current) throw new ProductValidationError("Produto não encontrado.");
     const before = toProduct(current);
+
+    // O estoque novo nunca pode ficar abaixo das unidades ja reservadas em pedidos
+    // pendentes: violaria o CHECK reserved<=stock e a UI receberia um 500 opaco.
+    // Mensagem clara em pt-BR. (O CHECK no DB segue como rede final contra uma
+    // reserva concorrente entre esta leitura e o UPDATE.)
+    if (data.stock < current.reserved) {
+      throw new ProductValidationError(
+        `Não é possível definir o estoque (${data.stock}) abaixo das ${current.reserved} unidade(s) reservada(s) em pedidos pendentes.`,
+      );
+    }
 
     const skuClash = await tx.product.findFirst({
       where: { sku: { equals: data.sku, mode: "insensitive" }, id: { not: id } },

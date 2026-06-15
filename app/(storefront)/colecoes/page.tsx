@@ -1,11 +1,20 @@
+import { unstable_cache } from "next/cache";
+
 import { getActiveProducts } from "@/lib/data/products";
 import { CATEGORIES, type Category } from "@/lib/data/types";
 import { ColecoesView } from "@/components/product/ColecoesView";
 import styles from "./colecoes.module.css";
 
-// Le do banco a cada request (catalogo reflete edicoes do admin na hora).
-// Otimizacao futura: trocar por `export const revalidate = 60` (ISR).
+// Pagina dinamica (sem geracao em build-time, p/ nao exigir DB no build mock-first),
+// mas o catalogo e cacheado por 60s no Data Cache do Next: requests dentro da janela
+// reusam o resultado em vez de baterem no pooler (mitiga thundering herd). Edicoes do
+// admin refletem em ate 60s.
 export const dynamic = "force-dynamic";
+
+const getCachedActiveProducts = unstable_cache(() => getActiveProducts(), ["active-products"], {
+  revalidate: 60,
+  tags: ["products"],
+});
 
 function resolveCategory(raw: string | undefined): "all" | Category {
   if (!raw) return "all";
@@ -19,7 +28,7 @@ export default async function ColecoesPage({
   searchParams: Promise<{ cat?: string }>;
 }) {
   const { cat } = await searchParams;
-  const products = await getActiveProducts();
+  const products = await getCachedActiveProducts();
   const initialCategory = resolveCategory(cat);
 
   const avgRating =

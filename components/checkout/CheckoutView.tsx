@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 
-import { checkout, type CheckoutResult } from "@/app/(storefront)/carrinho/actions";
+import { checkout, previewCoupon, type CheckoutResult } from "@/app/(storefront)/carrinho/actions";
 import { useCart } from "@/lib/cart/CartContext";
 import { cartTotals } from "@/lib/cart/totals";
 import { finalPriceCents } from "@/lib/data/pricing";
@@ -74,6 +74,14 @@ export function CheckoutView() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Extract<CheckoutResult, { ok: true }> | null>(null);
   const [copied, setCopied] = useState(false);
+  // Previa de cupom (server-side): mantem o total exibido == total cobrado.
+  const [couponPreview, setCouponPreview] = useState<{
+    code: string;
+    discountCents: number;
+    finalTotalCents: number;
+  } | null>(null);
+  const [couponMsg, setCouponMsg] = useState<string | null>(null);
+  const [couponBusy, setCouponBusy] = useState(false);
 
   if (!hydrated) {
     return <p className={styles.loading}>Carregando…</p>;
@@ -97,6 +105,8 @@ export function CheckoutView() {
   }
 
   const totals = cartTotals(lines);
+  // Total exibido = total com cupom (previa do server) quando aplicado; senao o base.
+  const displayTotalCents = couponPreview ? couponPreview.finalTotalCents : totals.totalCents;
   const set = (key: keyof Form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm((f) => ({ ...f, [key]: e.target.value }));
 
@@ -136,6 +146,28 @@ export function CheckoutView() {
     }
     clear();
     setResult(res);
+  }
+
+  async function applyCoupon() {
+    const code = coupon.trim();
+    if (!code) return;
+    setCouponBusy(true);
+    setCouponMsg(null);
+    const res = await previewCoupon({
+      items: lines.map((l) => ({ productId: l.product.id, quantity: l.quantity })),
+      couponCode: code,
+    });
+    setCouponBusy(false);
+    if (res.ok) {
+      setCouponPreview({
+        code: res.code,
+        discountCents: res.discountCents,
+        finalTotalCents: res.finalTotalCents,
+      });
+    } else {
+      setCouponPreview(null);
+      setCouponMsg(res.error);
+    }
   }
 
   return (
@@ -230,7 +262,7 @@ export function CheckoutView() {
         )}
 
         <button type="submit" className={styles.submit} disabled={submitting}>
-          {submitting ? "Gerando PIX…" : `Pagar ${formatBRL(totals.totalCents)} via PIX`}
+          {submitting ? "Gerando PIX…" : `Pagar ${formatBRL(displayTotalCents)} via PIX`}
         </button>
         <Link href="/carrinho" className={styles.back}>
           Voltar ao carrinho
@@ -254,14 +286,33 @@ export function CheckoutView() {
         </ul>
         <div className={styles.field}>
           <span className={styles.label}>Cupom de desconto</span>
-          <input
-            className={styles.input}
-            value={coupon}
-            onChange={(e) => setCoupon(e.target.value.toUpperCase())}
-            placeholder="Tem um cupom? (opcional)"
-            autoCapitalize="characters"
-            aria-label="Código do cupom"
-          />
+          <div className={styles.copyRow}>
+            <input
+              className={styles.input}
+              value={coupon}
+              onChange={(e) => {
+                setCoupon(e.target.value.toUpperCase());
+                setCouponPreview(null);
+                setCouponMsg(null);
+              }}
+              placeholder="Tem um cupom? (opcional)"
+              autoCapitalize="characters"
+              aria-label="Código do cupom"
+            />
+            <button
+              type="button"
+              className={styles.copyBtn}
+              onClick={applyCoupon}
+              disabled={couponBusy || !coupon.trim()}
+            >
+              {couponBusy ? "…" : "Aplicar"}
+            </button>
+          </div>
+          {couponMsg && (
+            <p className={styles.error} role="alert">
+              {couponMsg}
+            </p>
+          )}
         </div>
         <dl className={styles.rows}>
           <div className={styles.row}>
@@ -274,6 +325,12 @@ export function CheckoutView() {
               <dd className="tnum">- {formatBRL(totals.discountCents)}</dd>
             </div>
           )}
+          {couponPreview && (
+            <div className={styles.row}>
+              <dt>Cupom ({couponPreview.code})</dt>
+              <dd className="tnum">- {formatBRL(couponPreview.discountCents)}</dd>
+            </div>
+          )}
           <div className={styles.row}>
             <dt>Frete</dt>
             <dd className="tnum">
@@ -283,7 +340,7 @@ export function CheckoutView() {
         </dl>
         <div className={styles.total}>
           <span>Total</span>
-          <span className="tnum">{formatBRL(totals.totalCents)}</span>
+          <span className="tnum">{formatBRL(displayTotalCents)}</span>
         </div>
       </aside>
     </div>

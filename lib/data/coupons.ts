@@ -323,6 +323,11 @@ export async function redeemCoupon(
   if (existing) return { ok: true, alreadyRedeemed: true };
 
   if (input.perUserLimit !== null) {
+    // Serializa redencoes do MESMO (cupom,usuario) sem depender de SSI: um segundo
+    // checkout concorrente bloqueia neste advisory lock ate o primeiro commitar e,
+    // ao desbloquear, reconta ja com a redencao gravada. Liberado no fim da tx.
+    const lockKey = `coupon:${input.couponId}:${input.userId}`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
     const used = await tx.couponRedemption.count({
       where: { couponId: input.couponId, userId: input.userId },
     });
