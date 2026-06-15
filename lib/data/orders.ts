@@ -274,7 +274,7 @@ export type PaymentRef = { id: string; valueCents: number | null };
 /** Resultado da atualizacao de status — distingue nao-encontrado, rejeitado e reenvio. */
 export type PaymentStatusUpdate =
   | { found: false }
-  | { found: true; ok: false; reason: "payment_mismatch" | "value_mismatch" | "terminal_state" }
+  | { found: true; ok: false; reason: "payment_mismatch" | "value_mismatch" | "invalid_transition" }
   | {
       found: true;
       ok: true;
@@ -289,6 +289,19 @@ export type PaymentStatusUpdate =
        */
       order: Order;
     };
+
+/**
+ * Maquina de estados de pagamento: transicoes VALIDAS de mudanca (o no-op X->X e
+ * tratado a parte). 'paid' so a partir de 'pending'; 'cancelled' de 'pending'
+ * (expiracao) ou 'paid' (refund); 'paid' e 'cancelled' sao TERMINAIS (nunca voltam
+ * a 'pending', e 'cancelled' nunca vira 'paid'). Aplicada em applyPaymentStatusTx
+ * ANTES do CAS para que uma corrida nao force uma transicao impossivel.
+ */
+const PAYMENT_TRANSITIONS: Record<PaymentStatus, readonly PaymentStatus[]> = {
+  pending: ["paid", "cancelled"],
+  paid: ["cancelled"],
+  cancelled: [],
+};
 
 /**
  * Atualiza o status de pagamento de um pedido (usado pelo webhook do Asaas).
@@ -350,17 +363,19 @@ export async function applyPaymentStatusTx(
 
   const previousStatus = existing.paymentStatus as PaymentStatus;
 
-  // Estado TERMINAL: um pedido CANCELADO nunca volta a 'paid'. Sem esta guarda, o
-  // CAS de status abaixo (WHERE payment_status = previousStatus) ressuscitaria um
-  // pedido que o cron/expire ja cancelou+estornou — o reconcile de 'paid' nao baixa
-  // (reserved ja foi estornado), deixando "pago sem baixa de estoque". Fecha a
-  // corrida cron-cancel x webhook-paid no proprio nivel da transicao, ANTES de
-  // tocar no estoque. (Pagamento real apos cancelamento exige reconciliacao manual.)
-  if (previousStatus === "cancelled" && status === "paid") {
+  // Guarda de transicao (ANTES de tocar no estoque). O CAS sozinho abaixo
+  // (WHERE payment_status = previousStatus) aceitaria QUALQUER alvo, entao uma
+  // transicao impossivel passaria sob corrida — ex.: ressuscitar 'cancelled'->'paid'
+  // (o cron/expire ja cancelou+estornou; o reconcile de 'paid' nao baixa porque
+  // reserved ja foi estornado => "pago sem baixa de estoque"), ou 'paid'->'pending'.
+  // Validamos contra PAYMENT_TRANSITIONS; X->X cai no no-op idempotente adiante. Os
+  // callers de producao (webhook EVENT_TO_STATUS, reconcile) so enviam 'paid'/
+  // 'cancelled', mas a guarda torna o contrato defensivo por construcao.
+  if (previousStatus !== status && !PAYMENT_TRANSITIONS[previousStatus].includes(status)) {
     console.error(
-      `[orders] evento 'paid' para pedido #${orderId} ja CANCELADO; ignorado (transicao terminal). Verifique se houve pagamento real a reconciliar manualmente.`,
+      `[orders] transicao de pagamento invalida p/ pedido #${orderId}: ${previousStatus} -> ${status}; ignorada (sem efeito em estoque). cancelled->paid pode indicar pagamento real apos cancelamento, a reconciliar manualmente.`,
     );
-    return { found: true, ok: false, reason: "terminal_state" };
+    return { found: true, ok: false, reason: "invalid_transition" };
   }
 
   // Snapshot de estoque derivado do mesmo row (nao uma segunda leitura).

@@ -18,7 +18,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 
 describe.skipIf(!TEST_DATABASE_URL)(
-  "applyPaymentStatusTx — não ressuscita pedido cancelado",
+  "applyPaymentStatusTx — máquina de estados (transições inválidas rejeitadas)",
   () => {
     let prisma: any;
     let orders: any;
@@ -117,6 +117,73 @@ describe.skipIf(!TEST_DATABASE_URL)(
       expect(order.paymentStatus).toBe("cancelled");
       expect(result.ok).toBe(true);
       expect(result.changed).toBe(false);
+    });
+
+    // Seed genérico p/ os estados terminais. Transições terminais->'pending' são
+    // inválidas — inalcançáveis pelos callers atuais (webhook só envia paid/cancelled;
+    // reconcile descarta 'pending'), mas a guarda mantém o contrato defensivo.
+    async function seedOrder(
+      productId: string,
+      qty: number,
+      pay: string,
+      paymentStatus: "pending" | "paid" | "cancelled",
+      stockReserved: boolean,
+      stockCommitted: boolean,
+    ): Promise<number> {
+      const order = await prisma.order.create({
+        data: {
+          userId: "guest",
+          customerName: "T",
+          customerEmail: "t@t.com",
+          customerPhone: "0",
+          addressCep: "0",
+          addressStreet: "r",
+          addressCity: "c",
+          addressState: "PR",
+          subtotalCents: qty * 1000,
+          totalCents: qty * 1000,
+          paymentMethod: "PIX",
+          paymentStatus,
+          asaasPaymentId: pay,
+          stockReserved,
+          stockCommitted,
+          items: {
+            create: [{ productId, productName: "Test", quantity: qty, unitPriceCents: 1000 }],
+          },
+        },
+      });
+      return order.id;
+    }
+
+    it("paid -> pending é rejeitado (terminal, sem corromper flags)", async () => {
+      const productId = await seedProduct(8, 0); // já baixado
+      const pay = `pay_${randomUUID().slice(0, 8)}`;
+      const orderId = await seedOrder(productId, 2, pay, "paid", false, true);
+
+      const result = await orders.setOrderPaymentStatus(orderId, "pending", {
+        id: pay,
+        valueCents: null,
+      });
+
+      const order = await prisma.order.findUnique({ where: { id: orderId } });
+      expect(result.ok).toBe(false);
+      expect(order.paymentStatus).toBe("paid"); // permanece
+      expect(order.stockCommitted).toBe(true); // flag intacta
+    });
+
+    it("cancelled -> pending é rejeitado", async () => {
+      const productId = await seedProduct(10, 0);
+      const pay = `pay_${randomUUID().slice(0, 8)}`;
+      const orderId = await seedOrder(productId, 2, pay, "cancelled", false, false);
+
+      const result = await orders.setOrderPaymentStatus(orderId, "pending", {
+        id: pay,
+        valueCents: null,
+      });
+
+      const order = await prisma.order.findUnique({ where: { id: orderId } });
+      expect(result.ok).toBe(false);
+      expect(order.paymentStatus).toBe("cancelled"); // permanece
     });
   },
 );
