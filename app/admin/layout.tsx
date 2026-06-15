@@ -1,15 +1,33 @@
+import { currentUser } from "@clerk/nextjs/server";
 import Image from "next/image";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { AdminUserArea } from "@/components/admin/AdminUserArea";
 import { Icon } from "@/components/ui/Icon";
+import { getUserRole } from "@/lib/data/users";
 import { isClerkConfigured } from "@/lib/services/clerk/config";
+import { isAdminEmail } from "@/lib/services/clerk/roles";
 import styles from "./admin.module.css";
 
-// O acesso a /admin exige login (middleware do F5 quando Clerk ativo).
-// O guard por ROLE (cliente/admin) entra no F9 (tabela users + role no server).
-export default function AdminLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+// Acesso a /admin: login (middleware) + ROLE admin (F9). A role vem da tabela
+// users (sincronizada pelo webhook Clerk); fallback por ADMIN_EMAILS cobre o
+// usuario ainda nao sincronizado. Mock-first (sem Clerk): liberado para dev.
+export default async function AdminLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const clerkEnabled = isClerkConfigured();
+
+  if (clerkEnabled) {
+    const user = await currentUser();
+    if (!user) redirect("/entrar");
+    const email =
+      user.primaryEmailAddress?.emailAddress ?? user.emailAddresses[0]?.emailAddress ?? null;
+    const role = (await getUserRole(user.id)) ?? (isAdminEmail(email) ? "admin" : "cliente");
+    if (role !== "admin") redirect("/");
+  } else if (process.env.NODE_ENV === "production") {
+    // Fail-closed: sem Clerk configurado, /admin nunca fica aberto em producao
+    // (mock-first aberto vale so para dev). Configure as chaves Clerk no deploy.
+    redirect("/");
+  }
 
   return (
     <div className={styles.shell}>

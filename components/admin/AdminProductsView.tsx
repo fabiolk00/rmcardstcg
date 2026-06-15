@@ -8,8 +8,13 @@ import { finalPriceCents } from "@/lib/data/pricing";
 import { formatBRL } from "@/lib/utils/currency";
 import { Icon } from "@/components/ui/Icon";
 import { Pagination } from "@/components/ui/Pagination";
-import { ProductFormModal } from "./ProductFormModal";
+import { ProductFormModal, type ProductFormPayload } from "./ProductFormModal";
 import { InactivateModal } from "./InactivateModal";
+import {
+  createProductAction,
+  setProductActiveAction,
+  updateProductAction,
+} from "@/app/admin/produtos/actions";
 import styles from "./AdminProductsView.module.css";
 
 const PER_PAGE = 8;
@@ -101,7 +106,15 @@ export function AdminProductsView({ products: initialProducts }: { products: Pro
     setPage(1);
   };
 
-  const handleSave = (saved: Product) => {
+  // Persiste via server action. Em sucesso, reflete o produto retornado na lista
+  // local (o revalidatePath ja atualizou o SSR para o proximo carregamento).
+  const handleSave = async (
+    id: string | null,
+    payload: ProductFormPayload,
+  ): Promise<string | null> => {
+    const res = id ? await updateProductAction(id, payload) : await createProductAction(payload);
+    if (!res.ok) return res.error;
+    const saved = res.data;
     setProducts((prev) => {
       const i = prev.findIndex((x) => x.id === saved.id);
       if (i >= 0) {
@@ -113,23 +126,33 @@ export function AdminProductsView({ products: initialProducts }: { products: Pro
     });
     setEditing(null);
     setToast("Produto salvo.");
+    return null;
   };
 
-  const handlePower = (p: Product) => {
+  const handlePower = async (p: Product) => {
     if (p.isActive) {
       setConfirmInactivate(p);
-    } else {
-      setProducts((prev) => prev.map((x) => (x.id === p.id ? { ...x, isActive: true } : x)));
-      setToast("Produto reativado.");
+      return;
     }
+    const res = await setProductActiveAction(p.id, true);
+    if (!res.ok) {
+      setToast(res.error);
+      return;
+    }
+    const saved = res.data;
+    setProducts((prev) => prev.map((x) => (x.id === saved.id ? saved : x)));
+    setToast("Produto reativado.");
   };
 
-  const handleInactivate = () => {
-    if (!confirmInactivate) return;
-    const target = confirmInactivate;
-    setProducts((prev) => prev.map((x) => (x.id === target.id ? { ...x, isActive: false } : x)));
+  const handleInactivate = async (): Promise<string | null> => {
+    if (!confirmInactivate) return null;
+    const res = await setProductActiveAction(confirmInactivate.id, false);
+    if (!res.ok) return res.error;
+    const saved = res.data;
+    setProducts((prev) => prev.map((x) => (x.id === saved.id ? saved : x)));
     setConfirmInactivate(null);
     setToast("Produto inativado.");
+    return null;
   };
 
   return (

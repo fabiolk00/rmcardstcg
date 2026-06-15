@@ -20,10 +20,13 @@
     "@clerk/nextjs": "^6.39.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
+    "@react-email/components": "^1.0.12",
     "next": "^15.2.3",
     "pg": "^8.21.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "resend": "^6.12.4",
+    "svix": "^1.95.2"
   },
   "devDependencies": {
     "@types/node": "^20.17.0",

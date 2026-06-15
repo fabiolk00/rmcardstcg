@@ -8,11 +8,24 @@ import styles from "./InactivateModal.module.css";
 type Props = {
   product: Product;
   onClose: () => void;
-  onConfirm: () => void;
+  /** Retorna mensagem de erro p/ exibir, ou null em sucesso. */
+  onConfirm: () => Promise<string | null>;
 };
 
 export function InactivateModal({ product, onClose, onConfirm }: Props) {
   const [ack, setAck] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const confirm = async () => {
+    if (!ack || busy) return;
+    setBusy(true);
+    setError(null);
+    const err = await onConfirm();
+    setBusy(false);
+    if (err) setError(err);
+  };
+
   return (
     <Modal
       title="Inativar produto"
@@ -20,11 +33,16 @@ export function InactivateModal({ product, onClose, onConfirm }: Props) {
       onClose={onClose}
       footer={
         <>
-          <button type="button" className={styles.secondary} onClick={onClose}>
+          <button type="button" className={styles.secondary} onClick={onClose} disabled={busy}>
             Cancelar
           </button>
-          <button type="button" className={styles.confirm} onClick={onConfirm} disabled={!ack}>
-            Inativar
+          <button
+            type="button"
+            className={styles.confirm}
+            onClick={confirm}
+            disabled={!ack || busy}
+          >
+            {busy ? "Inativando…" : "Inativar"}
           </button>
         </>
       }
@@ -42,6 +60,11 @@ export function InactivateModal({ product, onClose, onConfirm }: Props) {
         />
         <span>Estou ciente de que o produto ficará indisponível na loja.</span>
       </label>
+      {error && (
+        <p className={styles.text} role="alert" style={{ color: "var(--red-strong)" }}>
+          {error}
+        </p>
+      )}
     </Modal>
   );
 }

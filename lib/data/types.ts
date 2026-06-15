@@ -87,9 +87,14 @@ export interface Order {
   address: OrderAddress;
   items: OrderItem[];
   subtotalCents: number;
+  /** Desconto de PRODUTO (preco base - preco final por item). */
   discountCents: number;
+  /** Codigo do cupom aplicado, se houver. */
+  couponCode: string | null;
+  /** Desconto de CUPOM (separado do desconto de produto). */
+  couponDiscountCents: number;
   shippingCents: number;
-  /** total = subtotal - desconto + frete. */
+  /** total = subtotal - discountCents - couponDiscountCents + frete. */
   totalCents: number;
   shippingService: string | null;
   shippingDays: string | null;
