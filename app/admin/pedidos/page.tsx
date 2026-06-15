@@ -1,8 +1,7 @@
-export default function AdminPedidosPage() {
-  return (
-    <section>
-      <h1>Pedidos</h1>
-      <p>Gestão de pedidos (placeholder — conteúdo real no slice F7).</p>
-    </section>
-  );
+import { getOrders } from "@/lib/data/orders";
+import { AdminOrdersView } from "@/components/admin/AdminOrdersView";
+
+export default async function AdminPedidosPage() {
+  const orders = await getOrders();
+  return <AdminOrdersView orders={orders} />;
 }

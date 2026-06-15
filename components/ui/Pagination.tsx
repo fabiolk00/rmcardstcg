@@ -6,6 +6,7 @@ type Props = {
   total: number;
   perPage: number;
   onChange: (page: number) => void;
+  label?: string;
 };
 
 // Lista de paginas com reticencias: primeira, ultima e atual +/- 1.
@@ -21,7 +22,7 @@ function buildPages(page: number, totalPages: number): (number | "ellipsis")[] {
   return out;
 }
 
-export function Pagination({ page, total, perPage, onChange }: Props) {
+export function Pagination({ page, total, perPage, onChange, label = "produtos" }: Props) {
   const totalPages = Math.max(1, Math.ceil(total / perPage));
   if (totalPages <= 1) return null;
 
@@ -36,7 +37,7 @@ export function Pagination({ page, total, perPage, onChange }: Props) {
         <b>
           {from}–{to}
         </b>{" "}
-        de <b>{total}</b> produtos
+        de <b>{total}</b> {label}
       </div>
       <div className={styles.controls}>
         <button
