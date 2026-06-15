@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "test": "vitest run",
     "test:nplusone": "vitest run tests/nplusone",
     "test:concurrency": "vitest run tests/concurrency",
     "db:generate": "prisma generate",

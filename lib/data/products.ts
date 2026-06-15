@@ -276,6 +276,16 @@ export async function updateProduct(
     if (!current) throw new ProductValidationError("Produto não encontrado.");
     const before = toProduct(current);
 
+    // O estoque novo nunca pode ficar abaixo das unidades ja reservadas em pedidos
+    // pendentes: violaria o CHECK reserved<=stock e a UI receberia um 500 opaco.
+    // Mensagem clara em pt-BR. (O CHECK no DB segue como rede final contra uma
+    // reserva concorrente entre esta leitura e o UPDATE.)
+    if (data.stock < current.reserved) {
+      throw new ProductValidationError(
+        `Não é possível definir o estoque (${data.stock}) abaixo das ${current.reserved} unidade(s) reservada(s) em pedidos pendentes.`,
+      );
+    }
+
     const skuClash = await tx.product.findFirst({
       where: { sku: { equals: data.sku, mode: "insensitive" }, id: { not: id } },
       select: { id: true },
