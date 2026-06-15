@@ -1,11 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import type { Order, PaymentStatus, ShippingStatus } from "@/lib/data/types";
 import { formatBRL } from "@/lib/utils/currency";
 import { Icon } from "@/components/ui/Icon";
 import { Pagination } from "@/components/ui/Pagination";
 import { OrderStatusModal } from "./OrderStatusModal";
+import {
+  adjustPaymentStatusAction,
+  updateInternalNoteAction,
+  updateShippingStatusAction,
+} from "@/app/admin/pedidos/actions";
 import styles from "./AdminOrdersView.module.css";
 
 const PER_PAGE = 8;
@@ -39,6 +44,7 @@ export function AdminOrdersView({ orders: initialOrders }: { orders: Order[] }) 
   const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<Order | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [, startTransition] = useTransition();
 
   useEffect(() => {
     if (!toast) return;
@@ -84,14 +90,14 @@ export function AdminOrdersView({ orders: initialOrders }: { orders: Order[] }) 
   const shipClass = (s: ShippingStatus) =>
     s === "delivered" ? styles.pillGreen : s === "cancelled" ? styles.pillRed : styles.pillNeutral;
 
-  const saveStatus = (id: string, payment: PaymentStatus, shipping: ShippingStatus) => {
-    setOrders((prev) =>
-      prev.map((o) =>
-        o.id === id ? { ...o, paymentStatus: payment, shippingStatus: shipping } : o,
-      ),
-    );
-    setEditing(null);
-    setToast("Status atualizado.");
+  // Servidor e a fonte de verdade: aplica na lista o Order retornado pela action
+  // (ja com os campos persistidos), em vez de adivinhar o novo estado no client.
+  const handleSaved = (updated: Order) => {
+    startTransition(() => {
+      setOrders((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
+      setEditing(null);
+      setToast("Status atualizado.");
+    });
   };
 
   return (
@@ -240,7 +246,16 @@ export function AdminOrdersView({ orders: initialOrders }: { orders: Order[] }) 
       />
 
       {editing && (
-        <OrderStatusModal order={editing} onClose={() => setEditing(null)} onSave={saveStatus} />
+        <OrderStatusModal
+          order={editing}
+          onClose={() => setEditing(null)}
+          onSaved={handleSaved}
+          handlers={{
+            onShipping: (to) => updateShippingStatusAction(editing.id, to),
+            onPayment: (to, reason) => adjustPaymentStatusAction(editing.id, to, reason),
+            onNote: (note) => updateInternalNoteAction(editing.id, note),
+          }}
+        />
       )}
       {toast && (
         <div className={styles.toast} role="status" aria-live="polite" aria-atomic="true">

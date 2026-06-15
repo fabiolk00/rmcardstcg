@@ -91,3 +91,35 @@ export async function createPixCharge(input: CreatePixChargeInput): Promise<Asaa
 export async function getPixQrCode(paymentId: string): Promise<AsaasPixQrCode> {
   return asaasFetch<AsaasPixQrCode>(`/payments/${paymentId}/pixQrCode`);
 }
+
+/** Consulta uma cobranca pelo id (GET /payments/:id) — usado na reconciliacao. */
+export async function getPayment(paymentId: string): Promise<AsaasPayment> {
+  return asaasFetch<AsaasPayment>(`/payments/${paymentId}`);
+}
+
+/**
+ * Mapeia o status de uma cobranca do Asaas (campo `status`, ex.: 'CONFIRMED',
+ * 'RECEIVED', 'PENDING', 'REFUNDED') para o nosso modelo de 3 estados. Espelha a
+ * tabela EVENT_TO_STATUS do webhook, mas para o status. undefined => sem acao.
+ */
+export function paymentEventToStatus(
+  asaasStatus: string,
+): "pending" | "paid" | "cancelled" | undefined {
+  switch (asaasStatus) {
+    case "CONFIRMED":
+    case "RECEIVED":
+    case "RECEIVED_IN_CASH":
+      return "paid";
+    case "REFUNDED":
+    case "REFUND_REQUESTED":
+    case "CHARGEBACK_REQUESTED":
+    case "CHARGEBACK_DISPUTE":
+    case "DELETED":
+      return "cancelled";
+    case "PENDING":
+    case "AWAITING_RISK_ANALYSIS":
+      return "pending";
+    default:
+      return undefined;
+  }
+}

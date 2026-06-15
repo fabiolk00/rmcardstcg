@@ -10,23 +10,27 @@ import styles from "./ProductFormModal.module.css";
 
 const DESC_MAX = 300;
 
-// Marcas combinantes (acentos) U+0300–U+036F montadas por codigo (fonte ASCII).
-const COMBINING = new RegExp(`[${String.fromCharCode(0x300)}-${String.fromCharCode(0x36f)}]`, "g");
-const slugify = (s: string) =>
-  s
-    .normalize("NFD")
-    .replace(COMBINING, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+/** Payload cru enviado ao servidor (a validacao/slug definitivos sao no server). */
+export type ProductFormPayload = {
+  name: string;
+  category: Category;
+  sku: string;
+  priceCents: number;
+  discountPct: number;
+  stock: number;
+  badge: string | null;
+  imageUrl: string;
+  description: string;
+};
 
 type Props = {
   product: Product;
+  /** Persistencia delegada ao pai (server action). Retorna erro p/ exibir, ou null em sucesso. */
+  onSave: (id: string | null, payload: ProductFormPayload) => Promise<string | null>;
   onClose: () => void;
-  onSave: (p: Product) => void;
 };
 
-export function ProductFormModal({ product, onClose, onSave }: Props) {
+export function ProductFormModal({ product, onSave, onClose }: Props) {
   const isNew = product.id === "";
   const [name, setName] = useState(product.name);
   const [category, setCategory] = useState<Category>(product.category);
@@ -34,28 +38,34 @@ export function ProductFormModal({ product, onClose, onSave }: Props) {
   const [description, setDescription] = useState(product.description);
   const [priceReais, setPriceReais] = useState(isNew ? "" : (product.priceCents / 100).toFixed(2));
   const [discountPct, setDiscountPct] = useState(product.discountPct);
+  const [stock, setStock] = useState(String(product.stock));
   const [imageUrl, setImageUrl] = useState(product.imageUrl);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const priceCents = Math.round((parseFloat(priceReais.replace(",", ".")) || 0) * 100);
+  const stockNum = Math.max(0, Math.trunc(Number(stock) || 0));
   const final = finalPriceCents({ priceCents, discountPct });
   const descOver = description.length > DESC_MAX;
-  const canSave = name.trim() !== "" && sku.trim() !== "" && priceCents > 0 && !descOver;
+  const canSave = !saving && name.trim() !== "" && sku.trim() !== "" && priceCents > 0 && !descOver;
 
-  const submit = () => {
+  const submit = async () => {
     if (!canSave) return;
-    onSave({
-      ...product,
-      id: isNew ? crypto.randomUUID() : product.id,
-      slug: slugify(name) || product.slug || crypto.randomUUID(),
+    setSaving(true);
+    setError(null);
+    const err = await onSave(isNew ? null : product.id, {
       name: name.trim(),
       category,
       sku: sku.trim(),
-      description: description.trim(),
       priceCents,
       discountPct,
+      stock: stockNum,
+      badge: product.badge,
       imageUrl: imageUrl.trim() || "/products/placeholder.svg",
-      createdAt: isNew ? new Date().toISOString() : product.createdAt,
+      description: description.trim(),
     });
+    setSaving(false);
+    if (err) setError(err);
   };
 
   return (
@@ -65,11 +75,11 @@ export function ProductFormModal({ product, onClose, onSave }: Props) {
       onClose={onClose}
       footer={
         <>
-          <button type="button" className={styles.secondary} onClick={onClose}>
+          <button type="button" className={styles.secondary} onClick={onClose} disabled={saving}>
             Cancelar
           </button>
           <button type="button" className={styles.primary} onClick={submit} disabled={!canSave}>
-            Salvar
+            {saving ? "Salvando…" : "Salvar"}
           </button>
         </>
       }
@@ -166,6 +176,23 @@ export function ProductFormModal({ product, onClose, onSave }: Props) {
         </div>
 
         <div className={styles.field}>
+          <label className={styles.label} htmlFor="pf-stock">
+            Estoque
+          </label>
+          <input
+            id="pf-stock"
+            className={styles.input}
+            type="number"
+            min="0"
+            step="1"
+            inputMode="numeric"
+            value={stock}
+            onChange={(e) => setStock(e.target.value)}
+            placeholder="0"
+          />
+        </div>
+
+        <div className={styles.field}>
           <div className={styles.discRow}>
             <label className={styles.label} htmlFor="pf-disc">
               Desconto
@@ -197,6 +224,12 @@ export function ProductFormModal({ product, onClose, onSave }: Props) {
             <span className={`${styles.finalValue} tnum`}>{formatBRL(final)}</span>
           </span>
         </div>
+
+        {error && (
+          <p className={`${styles.full} ${styles.counterOver}`} role="alert">
+            {error}
+          </p>
+        )}
       </div>
     </Modal>
   );

@@ -1,4 +1,5 @@
 import { prisma } from "../db";
+import type { Prisma } from "../generated/prisma/client";
 
 /**
  * Camada de dados de usuarios — espelho local do Clerk (F9).
@@ -9,20 +10,30 @@ import { prisma } from "../db";
  */
 export type Role = "cliente" | "admin";
 
-/** Upsert do usuario vindo do Clerk. Nunca rebaixa um admin existente. */
-export async function upsertUserFromClerk(input: {
-  clerkUserId: string;
-  email: string;
-  name: string | null;
-  emailIsAdmin: boolean;
-}): Promise<void> {
-  const existing = await prisma.user.findUnique({
+/** Cliente do banco: o singleton global OU um TransactionClient (ledger do webhook). */
+type DbClient = Prisma.TransactionClient | typeof prisma;
+
+/**
+ * Upsert do usuario vindo do Clerk. Nunca rebaixa um admin existente. Aceita um
+ * `db` opcional (o `tx` do ledger do webhook) para rodar na MESMA transacao do
+ * registro do evento — evita "evento registrado mas efeito nao aplicado".
+ */
+export async function upsertUserFromClerk(
+  input: {
+    clerkUserId: string;
+    email: string;
+    name: string | null;
+    emailIsAdmin: boolean;
+  },
+  db: DbClient = prisma,
+): Promise<void> {
+  const existing = await db.user.findUnique({
     where: { clerkUserId: input.clerkUserId },
     select: { role: true },
   });
   const role: Role = input.emailIsAdmin || existing?.role === "admin" ? "admin" : "cliente";
 
-  await prisma.user.upsert({
+  await db.user.upsert({
     where: { clerkUserId: input.clerkUserId },
     create: { clerkUserId: input.clerkUserId, email: input.email, name: input.name, role },
     update: { email: input.email, name: input.name, role },
@@ -30,8 +41,8 @@ export async function upsertUserFromClerk(input: {
 }
 
 /** Remove o usuario (evento user.deleted). updateMany-style: nao lanca se nao existir. */
-export async function deleteUserByClerkId(clerkUserId: string): Promise<void> {
-  await prisma.user.deleteMany({ where: { clerkUserId } });
+export async function deleteUserByClerkId(clerkUserId: string, db: DbClient = prisma): Promise<void> {
+  await db.user.deleteMany({ where: { clerkUserId } });
 }
 
 /** Role do usuario; null se ainda nao sincronizado. */

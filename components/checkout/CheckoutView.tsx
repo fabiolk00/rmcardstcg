@@ -66,6 +66,10 @@ const EMPTY: Form = {
 export function CheckoutView() {
   const { lines, hydrated, clear } = useCart();
   const [form, setForm] = useState<Form>(EMPTY);
+  const [coupon, setCoupon] = useState("");
+  // Chave de idempotencia estavel por sessao de checkout (invariante 2): o mesmo
+  // submit/duplo-clique reenvia a MESMA chave => 1 pedido + 1 cobranca Asaas.
+  const [checkoutKey] = useState(() => crypto.randomUUID());
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Extract<CheckoutResult, { ok: true }> | null>(null);
@@ -119,8 +123,10 @@ export function CheckoutView() {
 
     setSubmitting(true);
     const res = await checkout({
+      checkoutKey,
       customer: { ...form },
       items: lines.map((l) => ({ productId: l.product.id, quantity: l.quantity })),
+      couponCode: coupon.trim() || undefined,
     });
     setSubmitting(false);
 
@@ -246,6 +252,17 @@ export function CheckoutView() {
             );
           })}
         </ul>
+        <div className={styles.field}>
+          <span className={styles.label}>Cupom de desconto</span>
+          <input
+            className={styles.input}
+            value={coupon}
+            onChange={(e) => setCoupon(e.target.value.toUpperCase())}
+            placeholder="Tem um cupom? (opcional)"
+            autoCapitalize="characters"
+            aria-label="Código do cupom"
+          />
+        </div>
         <dl className={styles.rows}>
           <div className={styles.row}>
             <dt>Subtotal</dt>

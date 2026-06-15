@@ -32,6 +32,37 @@ enum ShippingStatus {
   cancelled
 }
 
+// ----------------------------------------------------------------------------
+// Auditoria e cupom (FUNDACAO). Mantidos junto aos enums existentes.
+// ----------------------------------------------------------------------------
+
+enum AuditEntityType {
+  product
+  order
+  coupon
+  user
+}
+
+enum AuditAction {
+  // Valores com ponto exigem @map para virar identificador valido no client.
+  product_create               @map("product.create")
+  product_update               @map("product.update")
+  product_inactivate           @map("product.inactivate")
+  product_reactivate           @map("product.reactivate")
+  product_delete               @map("product.delete")
+  order_payment_status_update  @map("order.payment_status_update")
+  order_shipping_status_update @map("order.shipping_status_update")
+  order_note_update            @map("order.note_update")
+  coupon_create                @map("coupon.create")
+  coupon_update                @map("coupon.update")
+  coupon_deactivate            @map("coupon.deactivate")
+}
+
+enum CouponType {
+  percent
+  fixed
+}
+
 model User {
   // Espelho local do usuario Clerk, sincronizado pelo webhook (F9). A autorizacao
   // (role) vive aqui porque o auth e Clerk e nao Supabase Auth.
@@ -60,6 +91,9 @@ model Product {
   rating      Decimal  @default(0) @db.Decimal(2, 1)
   reviewCount Int      @default(0) @map("review_count")
   stock       Int      @default(0)
+  // Unidades comprometidas por pedidos pendentes (reservadas no checkout). O
+  // disponivel para venda e stock - reserved. CHECK no DB: 0 <= reserved <= stock.
+  reserved    Int      @default(0)
   isActive    Boolean  @default(true) @map("is_active")
   badge       String?
   imageUrl    String   @map("image_url")
@@ -101,12 +135,30 @@ model Order {
   // status se o payment.id do evento bater com asaasPaymentId (anti-replay).
   asaasPaymentId  String?       @unique @map("asaas_payment_id")
   asaasCustomerId String?       @map("asaas_customer_id")
+  // Idempotencia de checkout: chave estavel por tentativa (unique). Recriar o
+  // mesmo carrinho reaproveita o pedido em vez de gerar cobranca duplicada.
+  checkoutKey         String? @unique @map("checkout_key")
+  // Cupom aplicado. ATENCAO: discountCents (acima) = desconto de PRODUTO;
+  // couponDiscountCents = desconto de CUPOM. total = subtotal - discountCents
+  // - couponDiscountCents + frete.
+  couponCode          String? @map("coupon_code")
+  couponDiscountCents Int     @default(0) @map("coupon_discount_cents")
+  // Marcas idempotentes do ciclo de reserva de estoque (invariante 1):
+  // reservado no checkout; baixado de stock (committed) na confirmacao do pagamento.
+  stockReserved       Boolean @default(false) @map("stock_reserved")
+  stockCommitted      Boolean @default(false) @map("stock_committed")
+  // Vencimento do PIX (fonte unica p/ o pg_cron expirar pendentes; derivado de
+  // PIX_DUE_DAYS no checkout). Null em pedidos legados/sem cobranca.
+  dueDate             DateTime? @map("due_date") @db.Timestamptz(6)
   createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  items OrderItem[]
+  items            OrderItem[]
+  couponRedemption CouponRedemption?
 
   @@index([userId])
   @@index([createdAt])
+  @@index([paymentStatus])
+  @@index([stockReserved])
   @@map("orders")
 }
 
@@ -126,4 +178,92 @@ model OrderItem {
   @@index([orderId])
   @@index([productId])
   @@map("order_items")
+}
+
+model AuditLog {
+  // Trilha imutavel de mutacoes de admin. Gravada na MESMA transacao da mutacao
+  // (invariante 3) via writeAuditLog(tx, {...}). before/after sao snapshots do
+  // dominio (camelCase, *Cents inteiros) serializados como jsonb.
+  id               String          @id @default(uuid()) @db.Uuid
+  actorClerkUserId String?         @map("actor_clerk_user_id")
+  actorEmail       String?         @map("actor_email")
+  actorRole        Role?           @map("actor_role")
+  action           AuditAction
+  entityType       AuditEntityType @map("entity_type")
+  // String para acomodar id de produto (uuid), de pedido (int) e de cupom (uuid).
+  entityId         String          @map("entity_id")
+  before           Json?           @db.JsonB
+  after            Json?           @db.JsonB
+  requestId        String?         @map("request_id")
+  ip               String?
+  createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@index([actorClerkUserId])
+  @@map("audit_log")
+}
+
+model WebhookEvent {
+  // Ledger de eventos de provedores (Asaas hoje). (provider, eventId) unico barra
+  // reprocessamento alem do anti-replay por asaasPaymentId ja existente no Order.
+  // processedAt NULL = recebido, ainda nao concluido (reentrada segura).
+  id          String    @id @default(uuid()) @db.Uuid
+  provider    String
+  eventId     String    @map("event_id")
+  type        String
+  payload     Json?     @db.JsonB
+  receivedAt  DateTime  @default(now()) @map("received_at") @db.Timestamptz(6)
+  processedAt DateTime? @map("processed_at") @db.Timestamptz(6)
+
+  @@unique([provider, eventId])
+  @@index([receivedAt])
+  @@index([processedAt])
+  @@map("webhook_events")
+}
+
+model Coupon {
+  // Cupom de desconto. type='percent' usa percentOff; type='fixed' usa valueCents
+  // (CHECK no DB garante a coerencia). code e unico case-insensitive (indice em
+  // LOWER(code) na migracao). redeemedCount e incrementado atomicamente na redencao.
+  id               String     @id @default(uuid()) @db.Uuid
+  code             String
+  type             CouponType
+  percentOff       Int?       @map("percent_off")
+  valueCents       Int?       @map("value_cents")
+  minSubtotalCents Int        @default(0) @map("min_subtotal_cents")
+  maxRedemptions   Int?       @map("max_redemptions")
+  perUserLimit     Int?       @map("per_user_limit")
+  redeemedCount    Int        @default(0) @map("redeemed_count")
+  isActive         Boolean    @default(true) @map("is_active")
+  startsAt         DateTime?  @map("starts_at") @db.Timestamptz(6)
+  expiresAt        DateTime?  @map("expires_at") @db.Timestamptz(6)
+  createdAt        DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  redemptions CouponRedemption[]
+
+  // O indice unico real (LOWER(code)) e criado na migracao SQL; NAO declarar
+  // @unique aqui (geraria indice case-sensitive divergente).
+  @@index([isActive])
+  @@map("coupons")
+}
+
+model CouponRedemption {
+  // Uma linha por uso efetivo do cupom, vinculada ao pedido. Idempotente por
+  // pedido (orderId @unique): redimir o mesmo pedido 2x e no-op. discountCents e
+  // o abatimento efetivo (sempre recalculado no server).
+  id            String   @id @default(uuid()) @db.Uuid
+  couponId      String   @map("coupon_id") @db.Uuid
+  orderId       Int      @unique @map("order_id")
+  userId        String   @map("clerk_user_id")
+  discountCents Int      @map("discount_cents")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Restrict)
+  order  Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([couponId])
+  @@index([userId])
+  @@map("coupon_redemptions")
 }
