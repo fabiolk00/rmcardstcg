@@ -274,7 +274,7 @@ export type PaymentRef = { id: string; valueCents: number | null };
 /** Resultado da atualizacao de status — distingue nao-encontrado, rejeitado e reenvio. */
 export type PaymentStatusUpdate =
   | { found: false }
-  | { found: true; ok: false; reason: "payment_mismatch" | "value_mismatch" }
+  | { found: true; ok: false; reason: "payment_mismatch" | "value_mismatch" | "terminal_state" }
   | {
       found: true;
       ok: true;
@@ -349,6 +349,19 @@ export async function applyPaymentStatusTx(
   }
 
   const previousStatus = existing.paymentStatus as PaymentStatus;
+
+  // Estado TERMINAL: um pedido CANCELADO nunca volta a 'paid'. Sem esta guarda, o
+  // CAS de status abaixo (WHERE payment_status = previousStatus) ressuscitaria um
+  // pedido que o cron/expire ja cancelou+estornou — o reconcile de 'paid' nao baixa
+  // (reserved ja foi estornado), deixando "pago sem baixa de estoque". Fecha a
+  // corrida cron-cancel x webhook-paid no proprio nivel da transicao, ANTES de
+  // tocar no estoque. (Pagamento real apos cancelamento exige reconciliacao manual.)
+  if (previousStatus === "cancelled" && status === "paid") {
+    console.error(
+      `[orders] evento 'paid' para pedido #${orderId} ja CANCELADO; ignorado (transicao terminal). Verifique se houve pagamento real a reconciliar manualmente.`,
+    );
+    return { found: true, ok: false, reason: "terminal_state" };
+  }
 
   // Snapshot de estoque derivado do mesmo row (nao uma segunda leitura).
   const stockSnapshot: StockSnapshot = {
