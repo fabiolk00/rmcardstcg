@@ -2,8 +2,9 @@ import { timingSafeEqual } from "node:crypto";
 
 import { NextResponse } from "next/server";
 
-import { setOrderPaymentStatus } from "@/lib/data/orders";
+import { getOrderById, setOrderPaymentStatus } from "@/lib/data/orders";
 import type { PaymentStatus } from "@/lib/data/types";
+import { sendPaymentConfirmationEmail } from "@/lib/services/resend";
 
 // Prisma (driver adapter pg) exige runtime Node — nunca Edge.
 export const runtime = "nodejs";
@@ -110,6 +111,21 @@ export async function POST(req: Request) {
         `[asaas-webhook] pedido #${orderId} ja estava "${status}" (evento ${event} reprocessado).`,
       );
     }
+
+    // Pagamento recem-confirmado: dispara o e-mail (mock-first: no-op sem Resend).
+    // Isolado para que falha de e-mail/leitura nao force reenvio do Asaas.
+    if (result.changed && status === "paid") {
+      try {
+        const order = await getOrderById(`#${orderId}`);
+        if (order) await sendPaymentConfirmationEmail(order);
+      } catch (mailErr) {
+        console.error(
+          "[asaas-webhook] falha ao enviar e-mail de pagamento:",
+          mailErr instanceof Error ? mailErr.message : mailErr,
+        );
+      }
+    }
+
     return NextResponse.json({ received: true, orderId, status, changed: result.changed });
   } catch (err) {
     // Erro transitorio (ex.: banco): 500 para o Asaas reenviar. Loga so a mensagem.

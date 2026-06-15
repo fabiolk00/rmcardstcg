@@ -11,6 +11,7 @@ import { AsaasError } from "@/lib/services/asaas/client";
 import { isAsaasConfigured } from "@/lib/services/asaas/config";
 import { createCustomer, createPixCharge, getPixQrCode } from "@/lib/services/asaas/payments";
 import { isClerkConfigured } from "@/lib/services/clerk/config";
+import { sendOrderConfirmationEmail } from "@/lib/services/resend";
 
 /**
  * Server action de checkout — cria o pedido (pending) e a cobranca PIX no Asaas.
@@ -126,6 +127,9 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
     totalCents: totals.totalCents,
     paymentMethod: "PIX",
   });
+
+  // Confirmacao de "pedido recebido" (mock-first: no-op sem Resend). Nao bloqueia.
+  await sendOrderConfirmationEmail(order);
 
   // Sem Asaas configurado (dev sem chave): pedido criado, sem cobranca.
   if (!isAsaasConfigured()) {
