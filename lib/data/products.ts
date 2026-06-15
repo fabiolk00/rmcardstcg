@@ -484,11 +484,6 @@ const PRODUCTS: Product[] = [
   },
 ];
 
-/** Preco final em centavos (derivado): base x (1 - desconto/100). Nunca salvo. */
-export function finalPriceCents(p: Pick<Product, "priceCents" | "discountPct">): number {
-  return Math.round(p.priceCents * (1 - p.discountPct / 100));
-}
-
 /** Todos os produtos (ativos e inativos). No DB (F10) vira SELECT. */
 export async function getProducts(): Promise<Product[]> {
   return [...PRODUCTS];

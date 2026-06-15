@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { Product } from "@/lib/data/types";
-import { finalPriceCents } from "@/lib/data/products";
+import { finalPriceCents } from "@/lib/data/pricing";
 import { formatBRL } from "@/lib/utils/currency";
 import styles from "./ProductCard.module.css";
 
