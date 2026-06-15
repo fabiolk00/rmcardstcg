@@ -2,7 +2,7 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { isClerkConfigured } from "@/lib/services/clerk/config";
 
-// Rotas que exigem login. Guard por ROLE de admin entra no F9.
+// Rotas que exigem login. O guard por ROLE de admin (F9) fica no app/admin/layout.
 const isProtectedRoute = createRouteMatcher(["/admin(.*)", "/minhas-compras(.*)", "/checkout(.*)"]);
 
 // isClerkConfigured() e avaliado em build-time (NEXT_PUBLIC_* e inlined no bundle).

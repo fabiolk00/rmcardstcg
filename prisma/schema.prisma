@@ -14,6 +14,11 @@ datasource db {
   provider = "postgresql"
 }
 
+enum Role {
+  cliente
+  admin
+}
+
 enum PaymentStatus {
   pending
   paid
@@ -25,6 +30,20 @@ enum ShippingStatus {
   sent
   delivered
   cancelled
+}
+
+model User {
+  // Espelho local do usuario Clerk, sincronizado pelo webhook (F9). A autorizacao
+  // (role) vive aqui porque o auth e Clerk e nao Supabase Auth.
+  id          String   @id @default(uuid()) @db.Uuid
+  clerkUserId String   @unique @map("clerk_user_id")
+  email       String
+  name        String?
+  role        Role     @default(cliente)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("users")
 }
 
 model Product {

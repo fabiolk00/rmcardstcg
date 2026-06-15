@@ -23,7 +23,8 @@
     "next": "^15.2.3",
     "pg": "^8.21.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "svix": "^1.95.2"
   },
   "devDependencies": {
     "@types/node": "^20.17.0",
