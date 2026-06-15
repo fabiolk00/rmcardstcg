@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { NavLinks } from "./NavLinks";
 import { AuthControls } from "./AuthControls";
+import { CartButton } from "./CartButton";
 import { isClerkConfigured } from "@/lib/services/clerk/config";
 import styles from "./Topbar.module.css";
 
@@ -23,6 +24,8 @@ export function Topbar() {
         <NavLinks />
 
         <div className={styles.spacer} />
+
+        <CartButton />
 
         {isClerkConfigured() ? (
           <AuthControls />

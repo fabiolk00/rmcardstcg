@@ -1,8 +1,11 @@
+import { CartView } from "@/components/cart/CartView";
+import styles from "./carrinho.module.css";
+
 export default function CarrinhoPage() {
   return (
     <section>
-      <h1>Carrinho</h1>
-      <p>Carrinho (placeholder — conteúdo real no slice F6).</p>
+      <h1 className={styles.title}>Carrinho</h1>
+      <CartView />
     </section>
   );
 }

@@ -1,0 +1,257 @@
+.layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: var(--space-8);
+  align-items: start;
+}
+
+.items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.thumb {
+  position: relative;
+  flex-shrink: 0;
+  width: 64px;
+  height: 64px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg-soft);
+  overflow: hidden;
+}
+
+.thumbImg {
+  object-fit: contain;
+  padding: 6px;
+}
+
+.info {
+  display: flex;
+  flex: 1;
+  min-width: 120px;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.name:hover {
+  color: var(--ink-2);
+}
+
+.unit {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+}
+
+.stepper button {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 36px;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.stepper button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.qty {
+  min-width: 28px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.lineTotal {
+  min-width: 84px;
+  text-align: right;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.remove {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-sm);
+  color: var(--ink-3);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.remove:hover {
+  color: var(--red);
+}
+
+.summary {
+  position: sticky;
+  top: 80px;
+  padding: var(--space-6);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--card);
+}
+
+.summaryTitle {
+  font-size: 16px;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-4) 0 0;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.freightHint {
+  margin-top: var(--space-2);
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.total {
+  display: flex;
+  justify-content: space-between;
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.checkout {
+  width: 100%;
+  min-height: 44px;
+  margin-top: var(--space-5);
+  border-radius: var(--r-pill);
+  background: var(--ink);
+  color: var(--on-ink);
+  font-size: 14px;
+  font-weight: 600;
+  border: none;
+}
+
+.checkout:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.checkoutHint {
+  margin-top: var(--space-2);
+  text-align: center;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.continue {
+  display: block;
+  margin-top: var(--space-3);
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.continue:hover {
+  color: var(--ink-2);
+}
+
+.loading {
+  color: var(--ink-3);
+}
+
+.empty {
+  padding: var(--space-9) var(--space-6);
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: var(--r-lg);
+  background: var(--bg-soft);
+}
+
+.emptyTitle {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.emptySub {
+  margin-top: var(--space-2);
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.primary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: var(--space-5);
+  padding: 0 22px;
+  border-radius: var(--r-pill);
+  background: var(--ink);
+  color: var(--on-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+@media (max-width: 860px) {
+  .layout {
+    grid-template-columns: 1fr;
+    gap: var(--space-6);
+  }
+
+  .summary {
+    position: static;
+  }
+}
+
+@media (max-width: 480px) {
+  .item {
+    gap: var(--space-2);
+  }
+
+  /* thumb + nome na 1a linha; stepper + total + remover na 2a */
+  .info {
+    min-width: 0;
+    flex-basis: calc(100% - 76px);
+  }
+
+  .lineTotal {
+    min-width: auto;
+    margin-left: auto;
+  }
+}

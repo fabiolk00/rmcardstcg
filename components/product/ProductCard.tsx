@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { Product } from "@/lib/data/types";
 import { finalPriceCents } from "@/lib/data/pricing";
 import { formatBRL } from "@/lib/utils/currency";
+import { AddToCartButton } from "./AddToCartButton";
 import styles from "./ProductCard.module.css";
 
 function Stars({ rating }: { rating: number }) {
@@ -71,23 +72,7 @@ export function ProductCard({ product }: { product: Product }) {
           {soldOut ? (
             <span className={styles.soldout}>Esgotado</span>
           ) : (
-            <Link href={href} className={styles.add} aria-label={`Compre agora: ${product.name}`}>
-              <span>Compre agora</span>
-              <svg
-                width="22"
-                height="22"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-            </Link>
+            <AddToCartButton product={product} />
           )}
         </div>
       </div>
