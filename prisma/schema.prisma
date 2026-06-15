@@ -1,0 +1,106 @@
+// RM Cards — schema Prisma (Postgres/Supabase).
+// Convencoes (ver lib/data/types.ts):
+// - Colunas snake_case no DB; dominio em camelCase (mapeado em @map / camada lib/db F10).
+// - Dinheiro sempre em Int de centavos (sufixo *Cents). Nunca float.
+// - Preco final (finalPriceCents) e DERIVADO, nunca salvo.
+// docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum PaymentStatus {
+  pending
+  paid
+  cancelled
+}
+
+enum ShippingStatus {
+  pending
+  sent
+  delivered
+  cancelled
+}
+
+model Product {
+  // uuid no Postgres (no mock os ids sao "p-001").
+  id          String   @id @default(uuid()) @db.Uuid
+  slug        String   @unique
+  name        String
+  // Categoria como String (enum Prisma nao aceita espacos/acentos; preserva os
+  // valores exatos do contrato, ex.: "Colecao Especial"). Validacao no app.
+  category    String
+  sku         String   @unique
+  priceCents  Int      @map("price_cents")
+  discountPct Int      @default(0) @map("discount_pct")
+  rating      Decimal  @default(0) @db.Decimal(2, 1)
+  reviewCount Int      @default(0) @map("review_count")
+  stock       Int      @default(0)
+  isActive    Boolean  @default(true) @map("is_active")
+  badge       String?
+  imageUrl    String   @map("image_url")
+  description String
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  orderItems OrderItem[]
+
+  @@index([category])
+  @@index([isActive])
+  @@map("products")
+}
+
+model Order {
+  // Numero sequencial legivel; o dominio expoe como "#" + id (ex.: "#10421").
+  id             Int            @id @default(autoincrement())
+  // Referencia ao usuario Clerk.
+  userId         String         @map("clerk_user_id")
+  customerName   String         @map("customer_name")
+  customerEmail  String         @map("customer_email")
+  customerPhone  String         @map("customer_phone")
+  // Snapshot do endereco de entrega (achatado; remontado em objeto no F10).
+  addressCep     String         @map("address_cep")
+  addressStreet  String         @map("address_street")
+  addressCity    String         @map("address_city")
+  addressState   String         @map("address_state")
+  subtotalCents  Int            @map("subtotal_cents")
+  discountCents  Int            @default(0) @map("discount_cents")
+  shippingCents  Int            @default(0) @map("shipping_cents")
+  // total = subtotal - desconto + frete.
+  totalCents     Int            @map("total_cents")
+  shippingService String?       @map("shipping_service")
+  shippingDays   String?        @map("shipping_days")
+  paymentStatus  PaymentStatus  @default(pending) @map("payment_status")
+  paymentMethod  String         @map("payment_method")
+  shippingStatus ShippingStatus @default(pending) @map("shipping_status")
+  internalNote   String?        @map("internal_note")
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  items OrderItem[]
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  // PK interno (o dominio OrderItem nao expoe id).
+  id             String  @id @default(uuid()) @db.Uuid
+  orderId        Int     @map("order_id")
+  productId      String  @map("product_id") @db.Uuid
+  // Snapshots no momento da compra (sobrevivem a alteracoes do produto).
+  productName    String  @map("product_name")
+  quantity       Int
+  unitPriceCents Int     @map("unit_price_cents")
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("order_items")
+}

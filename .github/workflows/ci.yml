@@ -55,6 +55,11 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      # Gera o Prisma Client (lib/generated/prisma e gitignored). Necessario antes
+      # do typecheck/build. Nao precisa de banco (so le o schema).
+      - name: Prisma generate
+        run: pnpm db:generate
+
       - name: Typecheck
         run: pnpm typecheck
 
@@ -67,6 +72,6 @@ jobs:
       - name: Build
         run: pnpm build
 
-# Pos-MVP (a partir de F8, quando existir banco): adicionar passo opcional
+# Opcional (quando houver banco/credenciais no CI): checagem de migrations.
 #   - name: Migrations em dia
-#     run: pnpm drizzle-kit check
+#     run: pnpm prisma migrate status

@@ -3,6 +3,10 @@ import { CATEGORIES, type Category } from "@/lib/data/types";
 import { ColecoesView } from "@/components/product/ColecoesView";
 import styles from "./colecoes.module.css";
 
+// Le do banco a cada request (catalogo reflete edicoes do admin na hora).
+// Otimizacao futura: trocar por `export const revalidate = 60` (ISR).
+export const dynamic = "force-dynamic";
+
 function resolveCategory(raw: string | undefined): "all" | Category {
   if (!raw) return "all";
   const match = CATEGORIES.find((c) => c.toLowerCase() === raw.toLowerCase());

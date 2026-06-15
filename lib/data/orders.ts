@@ -1,297 +1,93 @@
-import type { Order } from "./types";
+import { prisma } from "../db";
+import type { OrderItemModel, OrderModel } from "../generated/prisma/models";
+import type { Order, PaymentStatus, ShippingStatus } from "./types";
 
 /**
- * Mock de pedidos (8) no shape da API real. Itens referenciam produtos de
- * products.ts por id. Valores em centavos; total = subtotal - desconto + frete.
+ * Camada de dados de pedidos — Postgres via Prisma (lib/db).
+ *
+ * Fronteira DB <-> dominio (Order, lib/data/types.ts):
+ * - id (Int sequencial) -> "#" + id; createdAt (Date) -> ISO string;
+ * - colunas address_* achatadas -> objeto address aninhado;
+ * - itens (relacao) -> OrderItem[] do contrato.
  */
-const ORDERS: Order[] = [
-  {
-    id: "#10421",
-    userId: "user_mock_01",
-    customerName: "João Silva Pereira",
-    customerEmail: "joao.silva@email.com",
-    customerPhone: "(41) 99876-5432",
-    address: {
-      cep: "80000-100",
-      street: "Rua das Laranjeiras, 123",
-      city: "Curitiba",
-      state: "PR",
-    },
-    items: [
-      {
-        productId: "p-002",
-        productName: "Elite Trainer Box — Obsidian Flames",
-        quantity: 1,
-        unitPriceCents: 26588,
-      },
-      {
-        productId: "p-006",
-        productName: "Sleeves Ultra Pro (100un) Holo",
-        quantity: 1,
-        unitPriceCents: 3791,
-      },
-    ],
-    subtotalCents: 30379,
-    discountCents: 0,
-    shippingCents: 0,
-    totalCents: 30379,
-    shippingService: null,
-    shippingDays: null,
-    paymentStatus: "paid",
-    paymentMethod: "PIX",
-    shippingStatus: "pending",
-    internalNote: null,
-    createdAt: "2026-05-20T18:22:00.000Z",
-  },
-  {
-    id: "#10420",
-    userId: "user_mock_02",
-    customerName: "Mariana Costa",
-    customerEmail: "mariana.c@email.com",
-    customerPhone: "(11) 98123-4567",
-    address: {
-      cep: "04567-010",
-      street: "Av. Paulista, 1500, ap 82",
-      city: "São Paulo",
-      state: "SP",
-    },
-    items: [
-      {
-        productId: "p-001",
-        productName: "Booster Box — Scarlet Tempest",
-        quantity: 1,
-        unitPriceCents: 60711,
-      },
-    ],
-    subtotalCents: 60711,
-    discountCents: 0,
-    shippingCents: 3250,
-    totalCents: 63961,
-    shippingService: "Sedex",
-    shippingDays: "3-5 dias",
-    paymentStatus: "paid",
-    paymentMethod: "Cartão 3x",
-    shippingStatus: "sent",
-    internalNote: null,
-    createdAt: "2026-05-20T11:05:00.000Z",
-  },
-  {
-    id: "#10419",
-    userId: "user_mock_03",
-    customerName: "Lucas Almeida",
-    customerEmail: "lucas.a@gmail.com",
-    customerPhone: "(31) 99654-3210",
-    address: {
-      cep: "30130-001",
-      street: "Rua da Bahia, 488",
-      city: "Belo Horizonte",
-      state: "MG",
-    },
-    items: [
-      {
-        productId: "p-004",
-        productName: "Tin Collection — Charizard ex",
-        quantity: 1,
-        unitPriceCents: 15990,
-      },
-    ],
-    subtotalCents: 15990,
-    discountCents: 0,
-    shippingCents: 0,
-    totalCents: 15990,
-    shippingService: null,
-    shippingDays: null,
-    paymentStatus: "pending",
-    paymentMethod: "Boleto",
-    shippingStatus: "pending",
-    internalNote: "Cliente pediu para segurar o envio ate sexta-feira.",
-    createdAt: "2026-05-19T09:50:00.000Z",
-  },
-  {
-    id: "#10418",
-    userId: "user_mock_04",
-    customerName: "Fernanda Rocha",
-    customerEmail: "fer.rocha@email.com",
-    customerPhone: "(21) 99432-1100",
-    address: {
-      cep: "22240-000",
-      street: "Rua Voluntários, 230",
-      city: "Rio de Janeiro",
-      state: "RJ",
-    },
-    items: [
-      {
-        productId: "p-001",
-        productName: "Booster Box — Scarlet Tempest",
-        quantity: 1,
-        unitPriceCents: 60711,
-      },
-      {
-        productId: "p-002",
-        productName: "Elite Trainer Box — Obsidian Flames",
-        quantity: 2,
-        unitPriceCents: 26588,
-      },
-      {
-        productId: "p-003",
-        productName: "Booster Pack — Paldea Evolved",
-        quantity: 5,
-        unitPriceCents: 3439,
-      },
-    ],
-    subtotalCents: 131082,
-    discountCents: 10000,
-    shippingCents: 4890,
-    totalCents: 125972,
-    shippingService: "PAC",
-    shippingDays: "7-9 dias",
-    paymentStatus: "paid",
-    paymentMethod: "PIX",
-    shippingStatus: "pending",
-    internalNote: null,
-    createdAt: "2026-05-19T15:40:00.000Z",
-  },
-  {
-    id: "#10417",
-    userId: "user_mock_05",
-    customerName: "Pedro Henrique Lima",
-    customerEmail: "p.lima@email.com",
-    customerPhone: "(48) 99123-7788",
-    address: {
-      cep: "88010-100",
-      street: "Rua Felipe Schmidt, 50",
-      city: "Florianópolis",
-      state: "SC",
-    },
-    items: [
-      {
-        productId: "p-009",
-        productName: "Deck Box Acrílico Premium",
-        quantity: 1,
-        unitPriceCents: 7191,
-      },
-    ],
-    subtotalCents: 7191,
-    discountCents: 0,
-    shippingCents: 2840,
-    totalCents: 10031,
-    shippingService: "Sedex",
-    shippingDays: "4-6 dias",
-    paymentStatus: "paid",
-    paymentMethod: "PIX",
-    shippingStatus: "delivered",
-    internalNote: null,
-    createdAt: "2026-05-18T16:12:00.000Z",
-  },
-  {
-    id: "#10416",
-    userId: "user_mock_06",
-    customerName: "Ana Beatriz Souza",
-    customerEmail: "ana.b@email.com",
-    customerPhone: "(51) 99887-4422",
-    address: {
-      cep: "90420-070",
-      street: "Av. Independência, 1010",
-      city: "Porto Alegre",
-      state: "RS",
-    },
-    items: [
-      {
-        productId: "p-005",
-        productName: "Coleção Premium — Mewtwo VSTAR",
-        quantity: 1,
-        unitPriceCents: 38165,
-      },
-    ],
-    subtotalCents: 38165,
-    discountCents: 0,
-    shippingCents: 0,
-    totalCents: 38165,
-    shippingService: null,
-    shippingDays: null,
-    paymentStatus: "cancelled",
-    paymentMethod: "Cartão",
-    shippingStatus: "cancelled",
-    internalNote: "Pagamento recusado pela operadora; pedido cancelado.",
-    createdAt: "2026-05-18T10:30:00.000Z",
-  },
-  {
-    id: "#10415",
-    userId: "user_mock_07",
-    customerName: "Rafael Tanaka",
-    customerEmail: "r.tanaka@email.com",
-    customerPhone: "(11) 99111-2244",
-    address: {
-      cep: "01310-100",
-      street: "Av. Paulista, 2000",
-      city: "São Paulo",
-      state: "SP",
-    },
-    items: [
-      {
-        productId: "p-003",
-        productName: "Booster Pack — Paldea Evolved",
-        quantity: 4,
-        unitPriceCents: 3439,
-      },
-    ],
-    subtotalCents: 13756,
-    discountCents: 0,
-    shippingCents: 1890,
-    totalCents: 15646,
-    shippingService: "Loggi",
-    shippingDays: "2-3 dias",
-    paymentStatus: "paid",
-    paymentMethod: "PIX",
-    shippingStatus: "sent",
-    internalNote: null,
-    createdAt: "2026-05-17T19:02:00.000Z",
-  },
-  {
-    id: "#10414",
-    userId: "user_mock_08",
-    customerName: "Camila Ferreira",
-    customerEmail: "c.ferreira@email.com",
-    customerPhone: "(85) 99765-1100",
-    address: {
-      cep: "60165-090",
-      street: "Av. Beira Mar, 300",
-      city: "Fortaleza",
-      state: "CE",
-    },
-    items: [
-      {
-        productId: "p-007",
-        productName: "Booster Box — Silver Tempest",
-        quantity: 1,
-        unitPriceCents: 59852,
-      },
-    ],
-    subtotalCents: 59852,
-    discountCents: 0,
-    shippingCents: 0,
-    totalCents: 59852,
-    shippingService: null,
-    shippingDays: null,
-    paymentStatus: "paid",
-    paymentMethod: "Cartão 6x",
-    shippingStatus: "pending",
-    internalNote: null,
-    createdAt: "2026-05-17T13:18:00.000Z",
-  },
-];
+type OrderRow = OrderModel & { items: OrderItemModel[] };
 
-/** Todos os pedidos (admin). No DB (F10) vira SELECT ordenado por data. */
+const withItems = { items: true } as const;
+
+function toOrder(row: OrderRow): Order {
+  return {
+    id: `#${row.id}`,
+    userId: row.userId,
+    customerName: row.customerName,
+    customerEmail: row.customerEmail,
+    customerPhone: row.customerPhone,
+    address: {
+      cep: row.addressCep,
+      street: row.addressStreet,
+      city: row.addressCity,
+      state: row.addressState,
+    },
+    items: row.items.map((it) => ({
+      productId: it.productId,
+      productName: it.productName,
+      quantity: it.quantity,
+      unitPriceCents: it.unitPriceCents,
+    })),
+    subtotalCents: row.subtotalCents,
+    discountCents: row.discountCents,
+    shippingCents: row.shippingCents,
+    totalCents: row.totalCents,
+    shippingService: row.shippingService,
+    shippingDays: row.shippingDays,
+    paymentStatus: row.paymentStatus as PaymentStatus,
+    paymentMethod: row.paymentMethod,
+    shippingStatus: row.shippingStatus as ShippingStatus,
+    internalNote: row.internalNote,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+/** Todos os pedidos (admin), mais recentes primeiro. */
 export async function getOrders(): Promise<Order[]> {
-  return [...ORDERS];
+  const rows = await prisma.order.findMany({
+    include: withItems,
+    orderBy: { createdAt: "desc" },
+  });
+  return rows.map(toOrder);
 }
 
 /** Pedido por id legivel (ex.: "#10421"); null se nao existir. */
 export async function getOrderById(id: string): Promise<Order | null> {
-  return ORDERS.find((o) => o.id === id) ?? null;
+  const numericId = Number(id.replace(/^#/, ""));
+  if (!Number.isInteger(numericId)) return null;
+  const row = await prisma.order.findUnique({
+    where: { id: numericId },
+    include: withItems,
+  });
+  return row ? toOrder(row) : null;
 }
 
-/** Pedidos de um usuario (Minhas Compras). */
+/** Pedidos de um usuario (Minhas Compras), mais recentes primeiro. */
 export async function getOrdersByUserId(userId: string): Promise<Order[]> {
-  return ORDERS.filter((o) => o.userId === userId);
+  const rows = await prisma.order.findMany({
+    where: { userId },
+    include: withItems,
+    orderBy: { createdAt: "desc" },
+  });
+  return rows.map(toOrder);
+}
+
+/**
+ * Atualiza o status de pagamento de um pedido (usado pelo webhook do Asaas).
+ * Usa updateMany para nao lancar quando o id nao existe — retorna se afetou algo.
+ */
+export async function setOrderPaymentStatus(
+  orderId: number,
+  status: PaymentStatus,
+): Promise<boolean> {
+  const result = await prisma.order.updateMany({
+    where: { id: orderId },
+    data: { paymentStatus: status },
+  });
+  return result.count > 0;
 }

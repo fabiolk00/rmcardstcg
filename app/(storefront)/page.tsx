@@ -5,6 +5,10 @@ import { ProductGrid } from "@/components/product/ProductGrid";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import styles from "./page.module.css";
 
+// Le do banco a cada request (catalogo reflete edicoes do admin na hora).
+// Otimizacao futura: trocar por `export const revalidate = 60` (ISR).
+export const dynamic = "force-dynamic";
+
 const CATEGORY_ICON: Record<Category, IconName> = {
   "Booster Box": "box",
   "Elite Trainer Box": "archive",

@@ -4,6 +4,9 @@ import type { PaymentStatus, ShippingStatus } from "@/lib/data/types";
 import { formatBRL } from "@/lib/utils/currency";
 import styles from "./minhas-compras.module.css";
 
+// Pedidos do usuario — sempre ao vivo (nada de snapshot no build).
+export const dynamic = "force-dynamic";
+
 const PAYMENT_LABEL: Record<PaymentStatus, string> = {
   paid: "Pago",
   pending: "Pendente",
