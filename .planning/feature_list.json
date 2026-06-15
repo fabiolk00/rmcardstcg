@@ -1,0 +1,73 @@
+﻿{
+    "upcoming":  [
+                     {
+                         "priority":  1,
+                         "title":  "Coupon System (Percent/Fixed)",
+                         "description":  "Cupons com validação de limites, período, per-user",
+                         "id":  "F15",
+                         "effort":  "2.5h"
+                     },
+                     {
+                         "priority":  2,
+                         "title":  "Staging Deployment",
+                         "description":  "Deploy to Vercel staging + E2E tests",
+                         "id":  "F16",
+                         "effort":  "1h"
+                     },
+                     {
+                         "priority":  3,
+                         "title":  "Security Audit",
+                         "description":  "Code review, webhook validation, auth bypass tests",
+                         "id":  "F17",
+                         "effort":  "1.5h"
+                     }
+                 ],
+    "version":  "1.0",
+    "in_progress":  {
+                        "title":  "Stock Reconciliation + pg_cron",
+                        "description":  "Expire PIX pendentes após vencimento, libera estoque atomicamente",
+                        "id":  "F14",
+                        "subtasks":  [
+                                         {
+                                             "status":  "DONE",
+                                             "title":  "pg_cron job definition",
+                                             "id":  "F14.1"
+                                         },
+                                         {
+                                             "status":  "IN_PROGRESS",
+                                             "title":  "/api/internal/reconcile-orders endpoint",
+                                             "id":  "F14.2"
+                                         },
+                                         {
+                                             "status":  "NEXT",
+                                             "title":  "Test reconciliation queries",
+                                             "id":  "F14.3"
+                                         }
+                                     ],
+                        "effort":  "1.5h"
+                    },
+    "completed":  [
+                      {
+                          "title":  "Auth (Clerk)",
+                          "completed_at":  "2025-06-10",
+                          "id":  "F1"
+                      },
+                      {
+                          "title":  "Database Hardening",
+                          "completed_at":  "2025-06-12",
+                          "id":  "F10"
+                      },
+                      {
+                          "title":  "Email (Resend)",
+                          "completed_at":  "2025-06-14",
+                          "id":  "F13"
+                      },
+                      {
+                          "title":  "Documentation",
+                          "completed_at":  "2025-06-15",
+                          "id":  "F20"
+                      }
+                  ],
+    "last_updated":  "2025-06-15T18:30:00Z",
+    "project":  "RM Cards"
+}

@@ -1,0 +1,82 @@
+﻿═══════════════════════════════════════════════════════════════════════════
+RM CARDS — PROGRESS LOG
+═══════════════════════════════════════════════════════════════════════════
+
+SESSION: 2025-06-15 | TIME: 18:30 UTC
+AGENT: Claude Opus (Main Harness)
+STATUS: In Progress
+
+───────────────────────────────────────────────────────────────────────────
+COMPLETED TASKS (CUMULATIVE)
+───────────────────────────────────────────────────────────────────────────
+✅ F1: Authentication (Clerk + Svix webhook)
+   Status: DONE | Branch: feat/auth
+   Implements: User sync, role bootstrap (admin/cliente)
+
+✅ F10: Database Hardening (Idempotency + Stock Reserve)
+   Status: DONE
+   Implements: checkoutKey @unique, asaasPaymentId @unique
+   Stock flags: stockReserved (checkout) → stockCommitted (payment)
+
+✅ F13: Email Transacional (Resend)
+   Status: DONE
+   Implements: Order confirmation, Payment confirmation
+   Mock-first: No API key = no-op
+
+✅ F20: Documentation + Project Structure
+   Status: DONE
+   README.md created (7.9 KB)
+
+───────────────────────────────────────────────────────────────────────────
+CURRENT PRIORITY (IN PROGRESS)
+───────────────────────────────────────────────────────────────────────────
+🔄 F14: Stock Reconciliation + pg_cron
+   Subtask 1: pg_cron job definition [DONE]
+   Subtask 2: /api/internal/reconcile-orders [IN PROGRESS]
+   Subtask 3: Test reconciliation [NEXT]
+
+───────────────────────────────────────────────────────────────────────────
+NEXT PRIORITIES
+───────────────────────────────────────────────────────────────────────────
+1. F14 Completion (est. 1h)
+2. F15 Coupon System (est. 2.5h)
+3. F16 Staging Deployment (est. 1h)
+4. F17 Security Audit (est. 1.5h)
+
+───────────────────────────────────────────────────────────────────────────
+CRITICAL CONTEXT
+───────────────────────────────────────────────────────────────────────────
+Tech Stack:
+  - Next.js 15 + TypeScript
+  - PostgreSQL (Supabase)
+  - Prisma ORM
+  - Clerk auth + Svix webhooks
+  - Asaas payments
+  - Resend email
+  - pg_cron automation
+
+Key Decisions:
+  1. Money: INT (centavos), never float
+  2. Stock: Two-phase (reserved → committed)
+  3. Audit: Same transaction as mutation
+  4. Webhooks: @unique prevents duplicates
+  5. Reconciliation: pg_cron expires PIX nightly
+
+Branch: feat/hardening-billing-audit-coupon-pgcron
+
+───────────────────────────────────────────────────────────────────────────
+SETUP FOR NEXT SESSION
+───────────────────────────────────────────────────────────────────────────
+$ git pull
+$ pnpm install
+$ pnpm db:generate && pnpm db:migrate
+$ pnpm dev
+
+DATABASE QUERIES:
+  SELECT id, stock, reserved FROM products;
+  SELECT id, payment_status, stock_reserved FROM orders WHERE payment_status = 'pending';
+  SELECT action, before, after FROM audit_log ORDER BY created_at DESC LIMIT 10;
+
+───────────────────────────────────────────────────────────────────────────
+LAST UPDATED: 2025-06-15 18:30 UTC
+═══════════════════════════════════════════════════════════════════════════
