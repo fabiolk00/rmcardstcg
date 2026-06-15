@@ -65,7 +65,7 @@ export async function POST(req: Request) {
 
   const { event, payment } = (body ?? {}) as {
     event?: string;
-    payment?: { id?: string; externalReference?: string | null };
+    payment?: { id?: string; externalReference?: string | null; value?: number };
   };
 
   // Eventos que nao mexem no status (PAYMENT_OVERDUE, PAYMENT_UPDATED, ...): so confirma.
@@ -85,11 +85,24 @@ export async function POST(req: Request) {
     return NextResponse.json({ received: true, matched: false });
   }
 
+  // Valor do evento (reais) -> centavos, para conferir com o total do pedido.
+  const valueCents = typeof payment?.value === "number" ? Math.round(payment.value * 100) : null;
+
   try {
-    const result = await setOrderPaymentStatus(orderId, status);
+    const result = await setOrderPaymentStatus(orderId, status, {
+      id: payment?.id ?? "",
+      valueCents,
+    });
     if (!result.found) {
       console.warn(`[asaas-webhook] pedido #${orderId} nao encontrado (evento ${event}).`);
       return NextResponse.json({ received: true, matched: false });
+    }
+    if (!result.ok) {
+      // Cobranca nao confere com o pedido (id ou valor): nao mexe no status.
+      console.warn(
+        `[asaas-webhook] evento ${event} rejeitado p/ pedido #${orderId}: ${result.reason}.`,
+      );
+      return NextResponse.json({ received: true, verified: false });
     }
     if (!result.changed) {
       // Idempotencia: reenvio do mesmo evento; o pedido ja estava nesse status.

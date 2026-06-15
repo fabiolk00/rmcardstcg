@@ -3,7 +3,7 @@
 import { auth } from "@clerk/nextjs/server";
 
 import { cartTotals, type CartLine } from "@/lib/cart/totals";
-import { createOrder } from "@/lib/data/orders";
+import { createOrder, setOrderAsaasRefs } from "@/lib/data/orders";
 import { finalPriceCents } from "@/lib/data/pricing";
 import { getProductById } from "@/lib/data/products";
 import type { OrderItem } from "@/lib/data/types";
@@ -149,6 +149,13 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
       externalReference,
       dueDate: pixDueDate(),
       description: `Pedido ${order.id} — RM Cards`,
+    });
+
+    // Grava o elo cobranca <-> pedido: o webhook so confirma o pagamento se o
+    // payment.id do evento bater com este. Sem isso o status nunca muda.
+    await setOrderAsaasRefs(Number(externalReference), {
+      paymentId: payment.id,
+      customerId: customer.id,
     });
 
     // O QR exige uma chave PIX cadastrada na conta Asaas. Se ainda nao houver,

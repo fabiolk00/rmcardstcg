@@ -78,6 +78,10 @@ model Order {
   paymentMethod  String         @map("payment_method")
   shippingStatus ShippingStatus @default(pending) @map("shipping_status")
   internalNote   String?        @map("internal_note")
+  // Correlacao com o Asaas: a cobranca/cliente desta venda. O webhook so muda o
+  // status se o payment.id do evento bater com asaasPaymentId (anti-replay).
+  asaasPaymentId  String?       @unique @map("asaas_payment_id")
+  asaasCustomerId String?       @map("asaas_customer_id")
   createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
 
   items OrderItem[]

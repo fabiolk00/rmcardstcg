@@ -131,39 +131,72 @@ export async function createOrder(input: CreateOrderInput): Promise<Order> {
   return toOrder(row);
 }
 
-/** Resultado da atualizacao de status — distingue nao-encontrado de reenvio. */
+/**
+ * Grava no pedido a cobranca/cliente do Asaas (chamado no checkout, apos criar a
+ * cobranca). Esses refs sao o elo que o webhook usa para verificar o evento.
+ */
+export async function setOrderAsaasRefs(
+  orderId: number,
+  refs: { paymentId: string; customerId: string },
+): Promise<void> {
+  await prisma.order.update({
+    where: { id: orderId },
+    data: { asaasPaymentId: refs.paymentId, asaasCustomerId: refs.customerId },
+  });
+}
+
+/** Dados da cobranca vindos do evento do webhook, para verificar antes de aplicar. */
+export type PaymentRef = { id: string; valueCents: number | null };
+
+/** Resultado da atualizacao de status — distingue nao-encontrado, rejeitado e reenvio. */
 export type PaymentStatusUpdate =
   | { found: false }
-  | { found: true; changed: boolean; previousStatus: PaymentStatus; status: PaymentStatus };
+  | { found: true; ok: false; reason: "payment_mismatch" | "value_mismatch" }
+  | {
+      found: true;
+      ok: true;
+      changed: boolean;
+      previousStatus: PaymentStatus;
+      status: PaymentStatus;
+    };
 
 /**
  * Atualiza o status de pagamento de um pedido (usado pelo webhook do Asaas).
  *
+ * Verificacao (anti-replay/anti-fraude): a cobranca do evento tem que ser a deste
+ * pedido (payment.id == asaasPaymentId) — isso barra injetar o externalReference
+ * de outro pedido — e o valor tem que bater com o total. So entao aplica.
+ *
  * Idempotencia: le o status atual e so escreve quando muda. Reenviar o mesmo
  * evento (o Asaas reenfileira ate receber 2xx) nao reescreve nem dispara efeito;
  * o retorno informa se houve mudanca real ou se foi um reprocessamento.
- *
- * Limitacao conhecida (exige migration): sem guardar asaas_payment_id/valor nao
- * da pra dedupar por evento nem verificar o pagamento real. Ver handoff do F14.
  */
 export async function setOrderPaymentStatus(
   orderId: number,
   status: PaymentStatus,
+  payment: PaymentRef,
 ): Promise<PaymentStatusUpdate> {
   const existing = await prisma.order.findUnique({
     where: { id: orderId },
-    select: { paymentStatus: true },
+    select: { paymentStatus: true, asaasPaymentId: true, totalCents: true },
   });
   if (!existing) return { found: false };
 
+  if (!existing.asaasPaymentId || existing.asaasPaymentId !== payment.id) {
+    return { found: true, ok: false, reason: "payment_mismatch" };
+  }
+  if (payment.valueCents !== null && payment.valueCents !== existing.totalCents) {
+    return { found: true, ok: false, reason: "value_mismatch" };
+  }
+
   const previousStatus = existing.paymentStatus as PaymentStatus;
   if (previousStatus === status) {
-    return { found: true, changed: false, previousStatus, status };
+    return { found: true, ok: true, changed: false, previousStatus, status };
   }
 
   await prisma.order.update({
     where: { id: orderId },
     data: { paymentStatus: status },
   });
-  return { found: true, changed: true, previousStatus, status };
+  return { found: true, ok: true, changed: true, previousStatus, status };
 }
