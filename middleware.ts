@@ -9,6 +9,16 @@ const isProtectedRoute = createRouteMatcher(["/admin(.*)", "/minhas-compras(.*)"
 // Mock-first: sem chave Clerk real, o middleware vira no-op e as rotas protegidas
 // (/admin, /minhas-compras) ficam ABERTAS. A protecao so liga com a chave real;
 // em producao, faca o build com as chaves Clerk preenchidas.
+
+// Aviso de runtime (nao fatal, p/ nao quebrar o build mock-first do CI): se subir
+// em PRODUCAO sem Clerk, as rotas protegidas ficam abertas. Logado uma vez no load.
+if (process.env.NODE_ENV === "production" && !isClerkConfigured()) {
+  console.error(
+    "[middleware] PRODUCAO sem Clerk configurado: /admin, /checkout e /minhas-compras ficam ABERTAS. " +
+      "Defina NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY e CLERK_SECRET_KEY.",
+  );
+}
+
 export default isClerkConfigured()
   ? clerkMiddleware(async (auth, req) => {
       if (isProtectedRoute(req)) await auth.protect();
