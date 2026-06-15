@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import type { Product } from "@/lib/data/types";
 import { CATEGORIES } from "@/lib/data/types";
@@ -8,16 +8,49 @@ import { finalPriceCents } from "@/lib/data/pricing";
 import { formatBRL } from "@/lib/utils/currency";
 import { Icon } from "@/components/ui/Icon";
 import { Pagination } from "@/components/ui/Pagination";
+import { ProductFormModal } from "./ProductFormModal";
+import { InactivateModal } from "./InactivateModal";
 import styles from "./AdminProductsView.module.css";
 
 const PER_PAGE = 8;
 type StatusFilter = "all" | "active" | "inactive";
 
-export function AdminProductsView({ products }: { products: Product[] }) {
+function blankProduct(): Product {
+  return {
+    id: "",
+    slug: "",
+    name: "",
+    category: "Booster Box",
+    sku: "",
+    priceCents: 0,
+    discountPct: 0,
+    rating: 0,
+    reviewCount: 0,
+    stock: 0,
+    isActive: true,
+    badge: null,
+    imageUrl: "/products/placeholder.svg",
+    description: "",
+    createdAt: "",
+  };
+}
+
+export function AdminProductsView({ products: initialProducts }: { products: Product[] }) {
+  // Mutacoes em estado de cliente (efemeras no mock). Persistencia real no F10.
+  const [products, setProducts] = useState<Product[]>(initialProducts);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [cats, setCats] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
+  const [editing, setEditing] = useState<Product | null>(null);
+  const [confirmInactivate, setConfirmInactivate] = useState<Product | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2800);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   const counts = useMemo(
     () => ({
@@ -68,13 +101,49 @@ export function AdminProductsView({ products }: { products: Product[] }) {
     setPage(1);
   };
 
+  const handleSave = (saved: Product) => {
+    setProducts((prev) => {
+      const i = prev.findIndex((x) => x.id === saved.id);
+      if (i >= 0) {
+        const copy = [...prev];
+        copy[i] = saved;
+        return copy;
+      }
+      return [saved, ...prev];
+    });
+    setEditing(null);
+    setToast("Produto salvo.");
+  };
+
+  const handlePower = (p: Product) => {
+    if (p.isActive) {
+      setConfirmInactivate(p);
+    } else {
+      setProducts((prev) => prev.map((x) => (x.id === p.id ? { ...x, isActive: true } : x)));
+      setToast("Produto reativado.");
+    }
+  };
+
+  const handleInactivate = () => {
+    if (!confirmInactivate) return;
+    const target = confirmInactivate;
+    setProducts((prev) => prev.map((x) => (x.id === target.id ? { ...x, isActive: false } : x)));
+    setConfirmInactivate(null);
+    setToast("Produto inativado.");
+  };
+
   return (
     <section>
       <div className={styles.head}>
-        <h1 className={styles.title}>Produtos</h1>
-        <p className={styles.sub}>
-          {counts.active} ativos · {counts.inactive} inativos · {counts.total} no total
-        </p>
+        <div>
+          <h1 className={styles.title}>Produtos</h1>
+          <p className={styles.sub}>
+            {counts.active} ativos · {counts.inactive} inativos · {counts.total} no total
+          </p>
+        </div>
+        <button type="button" className={styles.newBtn} onClick={() => setEditing(blankProduct())}>
+          <Icon name="plus" size={15} /> Novo Produto
+        </button>
       </div>
 
       <div className={styles.toolbar}>
@@ -155,6 +224,9 @@ export function AdminProductsView({ products }: { products: Product[] }) {
               <th scope="col" className={styles.left}>
                 Status
               </th>
+              <th scope="col" className={styles.right}>
+                Ações
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -211,11 +283,33 @@ export function AdminProductsView({ products }: { products: Product[] }) {
                     {p.isActive ? "Ativo" : "Inativo"}
                   </span>
                 </td>
+                <td className={styles.right}>
+                  <div className={styles.actions}>
+                    <button
+                      type="button"
+                      className={styles.act}
+                      onClick={() => setEditing(p)}
+                      aria-label={`Editar ${p.name}`}
+                      title="Editar"
+                    >
+                      <Icon name="edit" size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.act}
+                      onClick={() => handlePower(p)}
+                      aria-label={`${p.isActive ? "Inativar" : "Ativar"} ${p.name}`}
+                      title={p.isActive ? "Inativar" : "Ativar"}
+                    >
+                      <Icon name="power" size={15} />
+                    </button>
+                  </div>
+                </td>
               </tr>
             ))}
             {paged.length === 0 && (
               <tr>
-                <td colSpan={8} className={styles.emptyCell}>
+                <td colSpan={9} className={styles.emptyCell}>
                   Nenhum produto encontrado com esses filtros.
                 </td>
               </tr>
@@ -225,6 +319,22 @@ export function AdminProductsView({ products }: { products: Product[] }) {
       </div>
 
       <Pagination page={page} total={filtered.length} perPage={PER_PAGE} onChange={setPage} />
+
+      {editing && (
+        <ProductFormModal product={editing} onClose={() => setEditing(null)} onSave={handleSave} />
+      )}
+      {confirmInactivate && (
+        <InactivateModal
+          product={confirmInactivate}
+          onClose={() => setConfirmInactivate(null)}
+          onConfirm={handleInactivate}
+        />
+      )}
+      {toast && (
+        <div className={styles.toast} role="status" aria-live="polite" aria-atomic="true">
+          {toast}
+        </div>
+      )}
     </section>
   );
 }

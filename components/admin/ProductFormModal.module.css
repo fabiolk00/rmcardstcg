@@ -1,0 +1,140 @@
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.full {
+  grid-column: 1 / -1;
+}
+
+.label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.input,
+.select,
+.textarea {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.input:focus,
+.select:focus,
+.textarea:focus {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+  border-color: var(--ink);
+}
+
+.textarea {
+  min-height: 76px;
+  resize: vertical;
+}
+
+.counter {
+  align-self: flex-end;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.counterOver {
+  color: var(--red-strong);
+  font-weight: 600;
+}
+
+.discRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.discVal {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.slider {
+  width: 100%;
+  accent-color: var(--ink);
+}
+
+.finalCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg-soft);
+}
+
+.finalLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.finalStrike {
+  margin-right: var(--space-2);
+  font-size: 13px;
+  color: var(--ink-3);
+  text-decoration: line-through;
+}
+
+.finalValue {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.primary,
+.secondary {
+  min-height: 40px;
+  padding: 0 18px;
+  border-radius: var(--r-pill);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primary {
+  border: none;
+  background: var(--ink);
+  color: var(--on-ink);
+}
+
+.primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.secondary {
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--ink);
+}
+
+.secondary:hover {
+  border-color: var(--ink);
+}
+
+@media (max-width: 540px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}

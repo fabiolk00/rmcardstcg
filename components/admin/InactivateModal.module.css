@@ -1,0 +1,51 @@
+.text {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  font-size: 13.5px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.check input {
+  margin-top: 2px;
+  accent-color: var(--ink);
+}
+
+.secondary,
+.confirm {
+  min-height: 40px;
+  padding: 0 18px;
+  border-radius: var(--r-pill);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.secondary {
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--ink);
+}
+
+.secondary:hover {
+  border-color: var(--ink);
+}
+
+.confirm {
+  border: none;
+  background: var(--ink);
+  color: var(--on-ink);
+}
+
+.confirm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

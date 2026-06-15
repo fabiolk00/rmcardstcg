@@ -18,7 +18,10 @@ export type IconName =
   | "plus"
   | "minus"
   | "trash"
-  | "receipt";
+  | "receipt"
+  | "x"
+  | "edit"
+  | "power";
 
 const PATHS: Record<IconName, ReactNode> = {
   arrow: (
@@ -104,6 +107,24 @@ const PATHS: Record<IconName, ReactNode> = {
       <polyline points="14 2 14 8 20 8" />
       <line x1="8" y1="13" x2="14" y2="13" />
       <line x1="8" y1="17" x2="14" y2="17" />
+    </>
+  ),
+  x: (
+    <>
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </>
+  ),
+  edit: (
+    <>
+      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+    </>
+  ),
+  power: (
+    <>
+      <path d="M18.36 6.64a9 9 0 1 1-12.73 0" />
+      <line x1="12" y1="2" x2="12" y2="12" />
     </>
   ),
 };
