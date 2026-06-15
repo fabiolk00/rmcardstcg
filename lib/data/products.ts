@@ -201,14 +201,20 @@ async function uniqueSlug(
   excludeId?: string,
 ): Promise<string> {
   const base = slugify(name) || "produto";
-  let candidate = base;
+  // Uma unica query (evita N+1: antes era um findUnique por colisao). Pega os
+  // slugs ja usados na familia base / base-N e escolhe o menor sufixo livre.
+  const rows = await tx.product.findMany({
+    where: {
+      OR: [{ slug: base }, { slug: { startsWith: `${base}-` } }],
+      ...(excludeId ? { id: { not: excludeId } } : {}),
+    },
+    select: { slug: true },
+  });
+  const taken = new Set(rows.map((r) => r.slug));
+  if (!taken.has(base)) return base;
   for (let n = 2; n <= 1000; n += 1) {
-    const existing = await tx.product.findUnique({
-      where: { slug: candidate },
-      select: { id: true },
-    });
-    if (!existing || existing.id === excludeId) return candidate;
-    candidate = `${base}-${n}`;
+    const candidate = `${base}-${n}`;
+    if (!taken.has(candidate)) return candidate;
   }
   // Improvavel (1000 colisoes do mesmo nome): sufixo aleatorio garante unicidade.
   return `${base}-${crypto.randomUUID().slice(0, 8)}`;
