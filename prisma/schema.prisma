@@ -57,6 +57,7 @@ enum AuditAction {
   coupon_update                @map("coupon.update")
   coupon_deactivate            @map("coupon.deactivate")
   coupon_delete                @map("coupon.delete")
+  user_role_update             @map("user.role_update")
 }
 
 enum CouponType {
@@ -67,13 +68,17 @@ enum CouponType {
 model User {
   // Espelho local do usuario Clerk, sincronizado pelo webhook (F9). A autorizacao
   // (role) vive aqui porque o auth e Clerk e nao Supabase Auth.
-  id          String   @id @default(uuid()) @db.Uuid
-  clerkUserId String   @unique @map("clerk_user_id")
+  id          String    @id @default(uuid()) @db.Uuid
+  clerkUserId String    @unique @map("clerk_user_id")
   email       String
   name        String?
-  role        Role     @default(cliente)
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  role        Role      @default(cliente)
+  // Soft-delete do espelho (item #4): user.deleted no Clerk marca deletedAt em vez
+  // de apagar a linha, preservando o historico (orders/redemptions referenciam
+  // clerk_user_id por TEXTO, sem FK real) sem deixar registro orfao removido.
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("users")
 }
