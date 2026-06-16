@@ -28,11 +28,6 @@ export default isClerkConfigured()
     };
 
 export const config = {
-  // Runtime Node (nao Edge): o Clerk usa APIs Node (#crypto/#safe-node-apis) que o
-  // Edge Runtime nao suporta — sem isto o deploy na Vercel falha ("Edge Function
-  // middleware referencing unsupported modules"). Node middleware e ESTAVEL no Next
-  // 15.5 (sem flag experimental); opta-se via config.runtime, nao export separado.
-  runtime: "nodejs",
   matcher: [
     // Ignora internos do Next e arquivos estaticos; roda no resto e na API.
     "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
