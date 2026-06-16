@@ -53,8 +53,9 @@ jobs:
           cache: pnpm
 
       - name: Install deps
-        # --no-optional pula embedded-postgres: a CI usa o service postgres:16,
-        # nao o runner local. O schema vem do db:test:setup.
+        # NAO usar --no-optional: o tsx (db:test:setup) e o vitest dependem do
+        # binario do esbuild, que e optionalDependency. A CI usa o service
+        # postgres:16 (nao o embedded-postgres).
         run: pnpm install --frozen-lockfile --no-optional
 
       - name: Generate Prisma client
