@@ -34,7 +34,6 @@ function extractNormalize(): (code: string) => string {
   const match = /export function normalizeCouponCode\s*\([^)]*\)[^{]*\{([^}]*)\}/.exec(src);
   if (!match) throw new Error("nao encontrei normalizeCouponCode em lib/data/coupons.ts");
   // Corpo: return code.trimStart().toUpperCase();
-  // eslint-disable-next-line @typescript-eslint/no-implied-eval
   return new Function("code", match[1]) as (code: string) => string;
 }
 
