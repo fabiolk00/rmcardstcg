@@ -1,0 +1,72 @@
+name: DB tests (concurrency + N+1)
+
+# Roda as suites que dependem de Postgres (describe.skipIf(!TEST_DATABASE_URL)).
+# Localmente o mesmo e feito sem Docker via `pnpm test:db` (embedded-postgres).
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  db-tests:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rmcards_test
+        ports:
+          - 5432:5432
+        # Espera o Postgres aceitar conexoes antes dos passos do job.
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # Postgres LOCAL sem TLS: sslmode=disable casa o resolveSsl() de lib/db.ts.
+      # DATABASE_URL: exigida por lib/db.ts (lanca se faltar).
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/rmcards_test?sslmode=disable
+      # DIRECT_URL: usada por prisma.config.ts para `prisma db push`.
+      DIRECT_URL: postgres://postgres:postgres@localhost:5432/rmcards_test?sslmode=disable
+      # TEST_DATABASE_URL: destrava as suites opt-in.
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/rmcards_test?sslmode=disable
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10 # casa packageManager: pnpm@10.x em package.json
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      # Materializa o schema: `prisma db push` (do schema.prisma) + o SQL dos CHECK
+      # constraints / indice LOWER(code) que vivem so nas migrations. NAO usa
+      # `migrate deploy`: a migration 20260615060000_pgcron faz CREATE EXTENSION
+      # pg_cron/pg_net, ausentes no postgres:16 padrao (quebraria o deploy).
+      - name: Materialize test schema
+        run: pnpm db:test:setup
+
+      - name: Concurrency tests
+        run: pnpm test:concurrency
+
+      - name: N+1 tests
+        run: pnpm test:nplusone

@@ -13,8 +13,10 @@
     "test": "vitest run",
     "test:nplusone": "vitest run tests/nplusone",
     "test:concurrency": "vitest run tests/concurrency",
+    "test:db": "tsx scripts/test-with-ephemeral-pg.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
+    "db:test:setup": "prisma db push --accept-data-loss && tsx scripts/apply-test-constraints.ts",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "postinstall": "prisma generate"
@@ -37,6 +39,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "dotenv": "^17.4.2",
+    "embedded-postgres": "18.4.0-beta.17",
     "eslint": "^8.57.1",
     "eslint-config-next": "^16.2.9",
     "prettier": "^3.4.2",

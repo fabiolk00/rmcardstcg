@@ -1,0 +1,57 @@
+-- =============================================================================
+-- Suplemento de schema para o BANCO DE TESTE EFEMERO.
+--
+-- `prisma db push` materializa tabelas/colunas/enums/FKs/indices regulares a
+-- partir de schema.prisma, MAS NAO cria os CHECK constraints nem o indice
+-- funcional LOWER(code) — esses vivem so no SQL versionado das migrations
+-- (20260615050000_foundation_hardening). Este arquivo re-adiciona exatamente
+-- esses objetos, verbatim (nomes + predicados) da migration de origem.
+--
+-- USO: rodar APOS `prisma db push`, contra um Postgres VANILLA descartavel.
+--      NUNCA contra o Supabase compartilhado (ver memoria db-migration-state).
+-- NAO inclui a migration de pg_cron (CREATE EXTENSION pg_cron/pg_net) — nenhum
+-- teste precisa dela; a funcao expire_overdue_orders e instalada pelo proprio
+-- tests/expiry/expire-grace.test.ts a partir da migration 20260615070000.
+--
+-- Idempotente: DROP ... IF EXISTS antes de cada ADD/CREATE. Seguro re-rodar.
+-- =============================================================================
+
+-- == products: invariantes do ciclo de reserva (0 <= reserved <= stock) =======
+-- source: prisma/migrations/20260615050000_foundation_hardening/migration.sql:152
+ALTER TABLE "products" DROP CONSTRAINT IF EXISTS "products_reserved_nonneg_chk";
+ALTER TABLE "products" ADD  CONSTRAINT "products_reserved_nonneg_chk" CHECK ("reserved" >= 0);
+-- source: ...:154
+ALTER TABLE "products" DROP CONSTRAINT IF EXISTS "products_stock_nonneg_chk";
+ALTER TABLE "products" ADD  CONSTRAINT "products_stock_nonneg_chk" CHECK ("stock" >= 0);
+-- source: ...:157
+ALTER TABLE "products" DROP CONSTRAINT IF EXISTS "products_reserved_le_stock_chk";
+ALTER TABLE "products" ADD  CONSTRAINT "products_reserved_le_stock_chk" CHECK ("reserved" <= "stock");
+
+-- == orders: abatimento de cupom nao-negativo =================================
+-- source: ...:178
+ALTER TABLE "orders" DROP CONSTRAINT IF EXISTS "orders_coupon_discount_cents_chk";
+ALTER TABLE "orders" ADD  CONSTRAINT "orders_coupon_discount_cents_chk" CHECK ("coupon_discount_cents" >= 0);
+
+-- == coupons: coerencia type<->campo + contadores =============================
+-- source: ...:100
+ALTER TABLE "coupons" DROP CONSTRAINT IF EXISTS "coupons_type_value_chk";
+ALTER TABLE "coupons" ADD  CONSTRAINT "coupons_type_value_chk" CHECK (
+    ("type" = 'percent' AND "percent_off" IS NOT NULL AND "percent_off" BETWEEN 1 AND 100)
+    OR ("type" = 'fixed' AND "value_cents" IS NOT NULL AND "value_cents" > 0)
+);
+-- source: ...:104
+ALTER TABLE "coupons" DROP CONSTRAINT IF EXISTS "coupons_redeemed_count_chk";
+ALTER TABLE "coupons" ADD  CONSTRAINT "coupons_redeemed_count_chk" CHECK ("redeemed_count" >= 0);
+-- source: ...:105
+ALTER TABLE "coupons" DROP CONSTRAINT IF EXISTS "coupons_max_redemptions_chk";
+ALTER TABLE "coupons" ADD  CONSTRAINT "coupons_max_redemptions_chk" CHECK ("max_redemptions" IS NULL OR "max_redemptions" >= 0);
+
+-- == coupons: codigo unico case-insensitive (INDICE FUNCIONAL — push omite) ====
+-- source: ...:109
+DROP INDEX IF EXISTS "coupons_code_key";
+CREATE UNIQUE INDEX "coupons_code_key" ON "coupons"(LOWER("code"));
+
+-- == coupon_redemptions: desconto nao-negativo ================================
+-- source: ...:126
+ALTER TABLE "coupon_redemptions" DROP CONSTRAINT IF EXISTS "coupon_redemptions_discount_cents_chk";
+ALTER TABLE "coupon_redemptions" ADD  CONSTRAINT "coupon_redemptions_discount_cents_chk" CHECK ("discount_cents" >= 0);
