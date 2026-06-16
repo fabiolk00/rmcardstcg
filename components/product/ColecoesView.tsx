@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { Product, Category } from "@/lib/data/types";
 import { CATEGORIES } from "@/lib/data/types";
 import { finalPriceCents } from "@/lib/data/pricing";
@@ -26,6 +27,12 @@ const SORTS = [
 ] as const;
 
 type SortId = (typeof SORTS)[number]["id"];
+const SORT_IDS = SORTS.map((s) => s.id) as readonly SortId[];
+
+// Validacao dos valores vindos da URL (entrada nao confiavel): so aceita o que existe.
+const isSortId = (v: string | null): v is SortId => v != null && SORT_IDS.includes(v as SortId);
+const isChipId = (v: string | null): v is ChipId =>
+  v === "all" || CATEGORIES.includes(v as Category);
 
 // Marcas combinantes (acentos) U+0300–U+036F, montadas por codigo p/ manter o fonte ASCII.
 const COMBINING_MARKS = new RegExp(
@@ -46,16 +53,57 @@ export function ColecoesView({
   products: Product[];
   initialCategory?: ChipId;
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // Estado inicial lido da URL (busca compartilhavel / sobrevive ao refresh); cai no
+  // default quando o parametro esta ausente ou invalido. `cat` ja vem resolvido do
+  // servidor (?cat=) via initialCategory.
   const [cat, setCat] = useState<ChipId>(initialCategory);
-  const [sort, setSort] = useState<SortId>("relevance");
-  const [query, setQuery] = useState("");
-  const [page, setPage] = useState(1);
+  const [sort, setSort] = useState<SortId>(() => {
+    const s = searchParams.get("sort");
+    return isSortId(s) ? s : "relevance";
+  });
+  const [query, setQuery] = useState(() => searchParams.get("q") ?? "");
+  const [page, setPage] = useState(() => {
+    const p = Number(searchParams.get("page"));
+    return Number.isInteger(p) && p > 0 ? p : 1;
+  });
   const topRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset de pagina ao mudar filtro (intencional)
+  // Mudar filtro/busca volta pra pagina 1. Feito nos handlers (nao em effect) p/ nao
+  // apagar o ?page= da URL inicial no primeiro render.
+  const onChip = (v: ChipId) => {
+    setCat(v);
     setPage(1);
-  }, [cat, sort, query]);
+  };
+  const onSort = (v: SortId) => {
+    setSort(v);
+    setPage(1);
+  };
+  const onSearch = (v: string) => {
+    setQuery(v);
+    setPage(1);
+  };
+  const clearFilters = () => {
+    setQuery("");
+    setCat("all");
+    setPage(1);
+  };
+
+  // Espelha o estado na URL via replace (sem rolar, sem poluir o historico). O estado
+  // e a fonte de verdade e nao lemos de volta, entao nao ha loop render<->URL. Omite
+  // os parametros que estao no default p/ manter a URL limpa.
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (cat !== "all") params.set("cat", cat);
+    if (sort !== "relevance") params.set("sort", sort);
+    if (query.trim()) params.set("q", query);
+    if (page > 1) params.set("page", String(page));
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [cat, sort, query, page, pathname, router]);
 
   // Contagem por categoria refletindo a busca ativa (ignora a categoria selecionada).
   const counts = useMemo(() => {
@@ -92,7 +140,11 @@ export function ColecoesView({
     return sorted;
   }, [products, cat, query, sort]);
 
-  const pageItems = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
+  // Clampa a pagina ao total disponivel: evita um frame com grid vazio quando a busca
+  // encurta o resultado e o estado de pagina ainda nao foi corrigido.
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
+  const safePage = Math.min(page, totalPages);
+  const pageItems = filtered.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE);
   const activeChip = CHIPS.find((c) => c.id === cat);
 
   const handlePage = (p: number) => {
@@ -108,15 +160,15 @@ export function ColecoesView({
           <input
             type="text"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar por nome, expansão ou categoria…"
+            onChange={(e) => onSearch(e.target.value)}
+            placeholder="Buscar por nome ou categoria…"
             aria-label="Buscar produtos"
           />
         </div>
         <select
           className={styles.sort}
           value={sort}
-          onChange={(e) => setSort(e.target.value as SortId)}
+          onChange={(e) => onSort(e.target.value as SortId)}
           aria-label="Ordenar produtos"
         >
           {SORTS.map((s) => (
@@ -142,7 +194,7 @@ export function ColecoesView({
             key={c.id}
             type="button"
             className={`${styles.chip} ${cat === c.id ? styles.chipActive : ""}`}
-            onClick={() => setCat(c.id)}
+            onClick={() => onChip(c.id)}
             aria-pressed={cat === c.id}
           >
             <span>{c.label}</span>
@@ -159,14 +211,7 @@ export function ColecoesView({
           </div>
           {(query.trim() !== "" || cat !== "all") && (
             <div>
-              <button
-                type="button"
-                className={styles.emptyAction}
-                onClick={() => {
-                  setQuery("");
-                  setCat("all");
-                }}
-              >
+              <button type="button" className={styles.emptyAction} onClick={clearFilters}>
                 Limpar filtros
               </button>
             </div>
@@ -176,7 +221,7 @@ export function ColecoesView({
         <div className={styles.results}>
           <ProductGrid products={pageItems} />
           <Pagination
-            page={page}
+            page={safePage}
             total={filtered.length}
             perPage={PER_PAGE}
             onChange={handlePage}
