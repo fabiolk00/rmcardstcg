@@ -36,3 +36,5 @@ yarn-error.log*
 .idea/
 
 /lib/generated/prisma
+
+.vercel

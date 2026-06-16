@@ -2,6 +2,11 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { isClerkConfigured } from "@/lib/services/clerk/config";
 
+// Runtime Node (nao Edge): o Clerk depende de APIs Node (#crypto/#safe-node-apis)
+// que o Edge Runtime nao suporta — sem isto o deploy na Vercel falha ("Edge Function
+// middleware referencing unsupported modules"). Node middleware e suportado no Next 15.2+.
+export const runtime = "nodejs";
+
 // Rotas que exigem login. O guard por ROLE de admin (F9) fica no app/admin/layout.
 const isProtectedRoute = createRouteMatcher(["/admin(.*)", "/minhas-compras(.*)", "/checkout(.*)"]);
 
