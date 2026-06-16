@@ -12,7 +12,6 @@ import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import EmbeddedPostgres from "embedded-postgres";
 import { Client } from "pg";
 
 export interface EphemeralPg {
@@ -27,6 +26,25 @@ function randomPort(): number {
   return 49152 + Math.floor(Math.random() * 15000);
 }
 
+/**
+ * Carrega embedded-postgres SOB DEMANDA. E uma optionalDependency: so faz falta
+ * para `pnpm test:db`. O especificador em variavel (`: string`) impede o tsc de
+ * resolver o modulo, entao build/typecheck e installs com --no-optional (Vercel/CI)
+ * nao dependem dele. Erro claro se ausente.
+ */
+async function loadEmbeddedPostgres(): Promise<any> {
+  const pkg: string = "embedded-postgres";
+  try {
+    return (await import(pkg)).default;
+  } catch {
+    throw new Error(
+      "[test:db] 'embedded-postgres' nao instalado (optionalDependency). Rode " +
+        "`pnpm add -DO embedded-postgres@18.4.0-beta.17` para o runner local, ou " +
+        "defina TEST_DATABASE_URL apontando para um Postgres acessivel.",
+    );
+  }
+}
+
 export async function startEphemeralPostgres(): Promise<EphemeralPg> {
   const port = randomPort();
   const user = "postgres";
@@ -35,6 +53,7 @@ export async function startEphemeralPostgres(): Promise<EphemeralPg> {
   // databaseDir curto, sem espacos/acentos (evita pegadinhas do initdb no Windows).
   const dataDir = mkdtempSync(path.join(os.tmpdir(), "rmc-pg-"));
 
+  const EmbeddedPostgres = await loadEmbeddedPostgres();
   const pg = new EmbeddedPostgres({
     databaseDir: dataDir,
     user,

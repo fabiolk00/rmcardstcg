@@ -53,7 +53,9 @@ jobs:
           cache: pnpm
 
       - name: Install deps
-        run: pnpm install --frozen-lockfile
+        # --no-optional pula embedded-postgres: a CI usa o service postgres:16,
+        # nao o runner local. O schema vem do db:test:setup.
+        run: pnpm install --frozen-lockfile --no-optional
 
       - name: Generate Prisma client
         run: pnpm db:generate

@@ -53,7 +53,9 @@ jobs:
           cache: pnpm
 
       - name: Install
-        run: pnpm install --frozen-lockfile
+        # --no-optional pula embedded-postgres (optionalDependency, so usada no
+        # runner local `pnpm test:db`); o build/typecheck/lint nao dependem dela.
+        run: pnpm install --frozen-lockfile --no-optional
 
       # Gera o Prisma Client (lib/generated/prisma e gitignored). Necessario antes
       # do typecheck/build. Nao precisa de banco (so le o schema).
