@@ -4,6 +4,7 @@ out
 build
 pnpm-lock.yaml
 next-env.d.ts
+tsconfig.json
 .design-handoff
 public
 lib/generated
