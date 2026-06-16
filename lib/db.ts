@@ -19,11 +19,32 @@ if (!connectionString) {
   throw new Error("DATABASE_URL nao definida — confira o .env.");
 }
 
+/**
+ * Decide a opcao `ssl` do adapter a partir da connection string.
+ *
+ * - Postgres LOCAL / sem TLS (`sslmode=disable`, ou host localhost/127.0.0.1/[::1],
+ *   ex.: banco de teste efemero): conecta SEM ssl. Sem isso o node-postgres tenta
+ *   TLS e o servidor local responde "server does not support SSL connections".
+ * - Qualquer outro host (Supabase em PRODUCAO): mantem `ssl:{rejectUnauthorized:false}`
+ *   — Supabase exige TLS e o relax evita erro de cadeia de cert. A URL do pooler do
+ *   Supabase nao casa nenhuma condicao abaixo, entao PRODUCAO fica inalterada.
+ */
+function resolveSsl(url: string): false | { rejectUnauthorized: false } {
+  if (url.toLowerCase().includes("sslmode=disable")) return false;
+  try {
+    const host = new URL(url).hostname.replace(/^\[|\]$/g, ""); // tira [] de IPv6
+    if (host === "localhost" || host === "127.0.0.1" || host === "::1") return false;
+  } catch {
+    // URL nao-parseavel: mantem TLS (fail-safe p/ producao).
+  }
+  return { rejectUnauthorized: false };
+}
+
 function createPrismaClient() {
   const adapter = new PrismaPg({
     connectionString,
-    // Supabase exige TLS; rejectUnauthorized:false evita erro de cadeia de cert.
-    ssl: { rejectUnauthorized: false },
+    // Local/sem-TLS => sem ssl; Supabase => rejectUnauthorized:false (ver resolveSsl).
+    ssl: resolveSsl(connectionString as string),
   });
   return new PrismaClient({ adapter });
 }
