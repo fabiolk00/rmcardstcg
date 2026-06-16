@@ -56,7 +56,7 @@ jobs:
         # NAO usar --no-optional: o tsx (db:test:setup) e o vitest dependem do
         # binario do esbuild, que e optionalDependency. A CI usa o service
         # postgres:16 (nao o embedded-postgres).
-        run: pnpm install --frozen-lockfile --no-optional
+        run: pnpm install --frozen-lockfile
 
       - name: Generate Prisma client
         run: pnpm db:generate
