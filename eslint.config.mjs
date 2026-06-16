@@ -10,18 +10,6 @@ const config = [
   // Replica 1:1 o antigo .eslintrc.json { "extends": "next/core-web-vitals" }.
   ...nextCoreWebVitals,
 
-  // `react-hooks/set-state-in-effect` e NOVO no react-hooks 7 (veio com o Next 16).
-  // Ele sinaliza setState dentro de useEffect — mas isso e LEGITIMO em padroes
-  // existentes do app: hidratacao de estado client-only (CartContext lendo
-  // localStorage no mount, que nao pode rodar no SSR) e reset de pagina derivado
-  // de filtros (ColecoesView/Admin*). Mantido como nao-bloqueante para nao reescrever
-  // componentes numa migracao de tooling; revisitar caso a caso se quiser refatorar.
-  {
-    rules: {
-      "react-hooks/set-state-in-effect": "off",
-    },
-  },
-
   // INV-9 (funcao pura client-safe nao importa prisma): estes arquivos sao
   // CLIENT-SAFE por design — componentes do navegador os importam. Importar o
   // cliente Prisma (lib/db) vaza o driver do banco (pg/net/tls) pro bundle. So

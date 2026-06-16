@@ -37,6 +37,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed: unknown = JSON.parse(raw);
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- hidratacao client-only do localStorage (SSR nao le no render)
         if (Array.isArray(parsed)) setLines(parsed.filter(isValidLine));
       }
     } catch {

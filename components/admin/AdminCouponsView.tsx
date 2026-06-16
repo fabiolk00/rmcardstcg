@@ -52,6 +52,7 @@ export function AdminCouponsView({ coupons: initialCoupons }: { coupons: Coupon[
   const [pending, startTransition] = useTransition();
 
   // Mantem o estado em sincronia se o server revalidar a pagina.
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- sync com a prop revalidada pelo server (intencional)
   useEffect(() => setCoupons(initialCoupons), [initialCoupons]);
 
   useEffect(() => {

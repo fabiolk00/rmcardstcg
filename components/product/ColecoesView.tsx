@@ -53,6 +53,7 @@ export function ColecoesView({
   const topRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset de pagina ao mudar filtro (intencional)
     setPage(1);
   }, [cat, sort, query]);
 

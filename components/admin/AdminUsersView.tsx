@@ -44,6 +44,7 @@ export function AdminUsersView({
   const [pending, startTransition] = useTransition();
 
   // Mantem o estado em sincronia se o server revalidar a pagina.
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- sync com a prop revalidada pelo server (intencional)
   useEffect(() => setUsers(initialUsers), [initialUsers]);
 
   useEffect(() => {
