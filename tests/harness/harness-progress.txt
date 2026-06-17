@@ -2333,3 +2333,42 @@ SESSAO — TIME PEDIDO
   proximo   : pedido.payment.paid-to-pending-blocked (priority 4, state=todo) — transicao
               ilegal paid->pending barrada via applyPaymentStatusTx (ok:false
               reason='invalid_transition'), nada gravado, sem efeito de estoque, sem audit.
+
+--------------------------------------------------------------------------------
+SESSAO — TIME QA (PORTAO ADVERSARIAL)
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 11:51 -0300
+  time      : qa
+  feature   : pedido.payment.paid-to-cancelled-refund (priority 3)
+  veredito  : APROVADO -> passes=true, qa_note=null, state INTOCADO (ready_for_qa).
+  ritual    : pwd=/c/rmcardstcg; branch harness/admin; harness-progress + git log -15 lidos.
+  gate-1    : Reproduzido do ZERO 2x em PG efemero recem-seedado (28 prod/8 ped):
+              `pnpm harness tests/harness/pedido/payment-paid-to-cancelled-refund.spec.ts`
+              => 1 passed (1.9s/4.4s e 4.4s). VERDE reproduzivel.
+  gate-2    : Anti-fake-green — li a spec E os 3 asserts do ledger. Cada assert
+              exercitado contra o DB REAL via pg (sem mock, sem tautologia):
+              [a1] orders.payment_status: pre='paid' (L186), pos=='cancelled' (L234) lido via pg.
+              [a2] restock: products.stock==STOCK0+QTY (L244), reserved==RESERVED0 INTOCADO
+                   (L248; RESERVED0=2>0 FORCADO e independente de QTY -> nao trivial),
+                   stock_committed=false (L252), stock_reserved=false (L253).
+              [a3] audit_log: +1 total (L278) E +1 por entity_id (L281); action dotted
+                   'order.payment_status_update' lido da coluna crua (L309); entity_type/id;
+                   before.paymentStatus='paid', after.paymentStatus='cancelled',
+                   after.manualAdjustment=true, after.adjustmentReason==reason (L317-323).
+              Seam = funcao de PRODUCAO adjustOrderPaymentStatus (lib/data/orders.ts:624)
+              via _run-seam.ts:265 (NAO mock). Verifiquei codigo: reconcileStockForPaymentStatus
+              ramo 'cancelled' (orders.ts:457-474) cai no CAS de refund (stock_committed=true ->
+              false) + restockUnits (inventory.ts:127, stock+=qty, reserved INTOCADO).
+  gate-3    : Probe INDEPENDENTE propria (valores DIFERENTES: QTY=7/STOCK0=41/RESERVED0=5/
+              price=12345) provou a LOGICA e nao a constante; ALEM disso cobriu o que a spec
+              nao cobre: idempotencia da re-chamada (cancelled->cancelled = no-op: changed=false,
+              SEM 2o restock, SEM 2a linha de audit). reserved-le-stock: CHECK
+              products_reserved_le_stock_chk existe + 0 violacoes globais. audit-same-tx:
+              estrutural — writeAuditLog usa tx.auditLog.create (audit.ts:74) DENTRO do mesmo
+              prisma.$transaction do CAS+reconcile (orders.ts:632-668); nao ha caminho de audit
+              via prisma global em orders.ts (grep: 3 sites, todos writeAuditLog(tx,...)) =>
+              rollback nao deixa orfao. Probe rodou VERDE (1 passed) e foi REMOVIDA (tree limpo).
+  gate-4    : git diff e0e83a1..HEAD -- app lib prisma => VAZIO (0 linhas). Produto intocado.
+  resultado : todos os 3 asserts do ledger + 4 invariantes (order-state-machine, audit-same-tx,
+              reserve-lifecycle-idempotent, reserved-le-stock) PROVADOS ponta a ponta.
+  commit    : <preenchido no commit desta sessao>
