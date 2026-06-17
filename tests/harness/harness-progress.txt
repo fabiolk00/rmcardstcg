@@ -2629,3 +2629,64 @@ SESSAO QA — pedido.payment.cancelled-to-paid-blocked (PORTAO ADVERSARIAL)
   commit    : harness(pedido): cobre pedido.payment.idempotent-noop DB-first
   proximo   : pedido.shipping.pending-to-sent (priority 7, state=todo) — fora do escopo
               desta sessao (so 1 feature por gate).
+
+================================================================================
+SESSAO QA — pedido.payment.idempotent-noop (PORTAO ADVERSARIAL)
+================================================================================
+  timestamp : 2026-06-17 12:19 -0300
+  papel     : QA (unico autorizado a escrever passes/qa_note). NAO corrige produto.
+  feature   : pedido.payment.idempotent-noop (priority 6), state=ready_for_qa.
+  veredito  : APROVADO — passes=true, qa_note=null. state INALTERADO (ready_for_qa).
+  ritual    : pwd /c/rmcardstcg; branch harness/admin OK. Li ledger + spec +
+              _run-seam.ts + adjustOrderPaymentStatus (orders.ts L624-674, guarda
+              X->X em L640-643) + reconcileStockForPaymentStatus (L432-475).
+  repro     : `pnpm harness tests/harness/pedido/payment-idempotent-noop.spec.ts`
+              rodado 2x do ZERO em PG efemero recem-seedado (db push + apply-test-
+              constraints + seed = 28 produtos / 8 pedidos): run1 = 1 passed (4.6s);
+              run2 = 1 passed (4.4s). VERDE reproduzivel. Ruido EBUSY/rmdir e
+              "connection forcibly closed" no teardown (Windows, apos passar) =
+              cosmetico, ignorado.
+  nao-fake  : seam = adjustOrderPaymentStatus REAL de lib/data/orders.ts via
+              _run-seam.ts (case adjustOrderPaymentStatus), SEM mock. A funcao de
+              PRODUCAO abre prisma.$transaction, le before, e na guarda from===to
+              (paid->paid) retorna {ok:true,changed:false,order} em L641-643 ANTES de
+              reconcileStockForPaymentStatus (L653) E ANTES de writeAuditLog (L655) —
+              por isso o no-op nao baixa estoque nem audita. A spec assertaa via `pg`
+              cru sobre DATABASE_URL. action gravado e o @map DOTTED
+              'order.payment_status_update'. Coluna `reserved` sem @map (spec correta).
+  por-assert (cada assert do ledger PROVADO contra DB real):
+    [1] changed=false (no-op X->X) -> spec L218-223. PROVADO. res.ok=true,
+        res.changed=false, res.order.paymentStatus='paid'.
+    [2] orders.payment_status permanece 'paid'; estoque inalterado (sem dupla baixa)
+        -> spec L225-249. PROVADO. payment_status='paid'; flags stockCommitted=true/
+        stockReserved=false inalteradas (reserve-lifecycle-idempotent); products.stock
+        e reserved batem EXATAMENTE o pre-estado (igualdade exata pega qualquer
+        reconciliacao vazada). ANTI-TRIVIAL: reserved FORCADO >0 (canario).
+    [3] audit_log NAO ganha linha (count == A) -> spec L262-285. PROVADO. Total global,
+        por-entity_id do pedido E por-action order.payment_status_update TODOS == A
+        (A=0 p/ o pedido recem-inserido cru). audit-same-tx: guarda retorna ANTES do
+        writeAuditLog => 0 orfaos.
+  invariantes: order-state-machine (X->X no-op sem transicao), reserve-lifecycle-
+        idempotent (flags inalteradas, sem dupla baixa), audit-same-tx (0 orfao),
+        reserved-le-stock (CHECK existe + 0 violacoes), cents-only (Int). Todas PROVADAS.
+  prova-propria: PROBE INDEPENDENTE (c:\rmcardstcg\_qa_probe_noop.tmp.ts, removido ao
+        fim) subiu SEU PROPRIO PG efemero, push+constraints+seed, chamou o SEAM REAL
+        adjustOrderPaymentStatus via _run-seam.ts com VALORES DIFERENTES da spec +
+        2 contra-provas adversariais. 29 PASS / 0 FAIL:
+          CASO A (no-op paid->paid, stock=41/reserved=9/qty=5/unit=7777): changed=false,
+            estoque/flags/audit INALTERADOS (global + por-pedido).
+          CASO B (CONTRA-PROVA, pending->paid LEGAL): changed=true, commitStock baixou
+            stock 30->25, reserva 5->0, flags viraram, audit_log ganhou EXATAMENTE 1
+            linha com action='order.payment_status_update' (total global +1) — prova
+            que a MAQUINA DE PRODUCAO escreve audit/baixa estoque numa transicao REAL,
+            logo a ausencia de efeito no no-op e a GUARDA agindo, nao codigo inerte.
+          CASO C (no-op pending->pending): changed=false, sem efeito/audit — a guarda
+            X->X vale p/ QUALQUER status, nao so 'paid'.
+          + CHECK products_reserved_le_stock_chk existe; 0 violacoes globais; cents-only.
+  nao-trapaca: git diff e0e83a1..HEAD -- app lib prisma = VAZIO (0 linhas; nenhum
+        codigo de produto tocado). Tree limpo apos QA (probe removido; next-env.d.ts
+        revertido — rewrite incidental do next dev, nao do QA).
+  estado    : ready_for_qa (NAO alterei). passes=true escrito pelo QA. qa_note=null.
+  commit    : harness(qa): aprova pedido.payment.idempotent-noop
+  proximo   : pedido.shipping.pending-to-sent (priority 7) — fora do escopo desta
+              sessao (so 1 feature por gate).
