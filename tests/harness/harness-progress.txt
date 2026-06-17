@@ -3117,3 +3117,57 @@ ESTADO: VERDE e reproduzivel (`pnpm harness ...` 2x: 1 passed em 6.3s e 8.9s).
 Gates: typecheck/lint OK; prettier OK nos meus arquivos. DIFF DE PRODUTO (app/lib/prisma)
 = VAZIO: seam ja correta, nenhum conserto necessario. state -> ready_for_qa.
 PROXIMO: pedido.shipping.cancel-reconciles-stock (priority 11, todo).
+
+================================================================================
+SESSAO QA — pedido.shipping.regression-blocked (PORTAO ADVERSARIAL)
+================================================================================
+  papel     : QA (unico autorizado a escrever passes/qa_note). NAO corrige produto.
+  feature   : pedido.shipping.regression-blocked (priority 10), state=ready_for_qa.
+  veredito  : APROVADO — passes=true, qa_note=null. state INALTERADO (ready_for_qa).
+  repro     : `pnpm harness tests/harness/pedido/shipping-regression-blocked.spec.ts`
+              rodado 2x do ZERO em PG efemero recem-seedado (db push + apply-test-
+              constraints + seed = 28 produtos / 8 pedidos): run1 = 1 passed (6.2s),
+              run2 = 1 passed (6.3s). VERDE reproduzivel. Logs de "could not receive
+              data from client" no teardown = cosmetico (apos passar).
+  anti-fake : seam = updateOrderShippingStatus REAL de lib/data/orders.ts via
+              tests/harness/estoque/_run-seam.ts (case updateOrderShippingStatus,
+              import direto da funcao de PRODUCAO, SEM mock). Confirmado na producao
+              (orders.ts L541-542): a guarda
+                if (!SHIPPING_TRANSITIONS[from].includes(to))
+                  return { ok:false, reason:'invalid_transition', from, to }
+              retorna ANTES do updateMany (L545), da conciliacao de estoque (so
+              to==='cancelled', L554) e de writeAuditLog (L558).
+              SHIPPING_TRANSITIONS.delivered === [] (orderTransitions.ts L15) =>
+              delivered->sent (e delivered->cancelled) barrados.
+  por-assert (cada assert do ledger PROVADO contra DB real via pg):
+    [1] ok:false reason='invalid_transition' from=delivered to=sent -> PROVADO
+        (spec L251-256 inspeciona o retorno do seam REAL).
+    [2] orders.shipping_status permanece 'delivered' -> PROVADO (spec L270). Reforco
+        nao-trivial: payment_status (paid), flags stock_reserved=true/stock_committed=
+        false e stock/reserved do produto INTACTOS (L272-284). ANTI-TRIVIAL: spec FORCA
+        reserved=3 (>0) e stockReserved=true antes (L194-198, L226), entao "nada gravado"
+        nao e tautologia de zeros.
+    [3] audit_log NAO ganha linha -> PROVADO (audit-same-tx). Spec L305-317: total
+        inalterado + por-entity inalterado + 0 order.shipping_status_update orfao no
+        pedido-alvo. A guarda retorna ANTES de writeAuditLog => sem orfao.
+  invariantes: order-state-machine (regressao de terminal barrada; CONTRA-PROVA com 2o
+        pedido 'sent' onde sent->delivered APLICA ok:true/changed:true e deixa EXATAMENTE
+        1 audit -> o ok:false nao e erro generico, e a maquina de estados; reforco
+        delivered->cancelled tambem barrado). audit-same-tx (sem orfao). reserved-le-stock
+        (CHECK products_reserved_le_stock_chk existe + 0 violacoes). Todas PROVADAS.
+  prova-propria: PROBE INDEPENDENTE (c:\rmcardstcg\_qa_probe_regr.tmp.ts, removido ao
+        fim) subiu SEU PROPRIO PG efemero (push+constraints+seed), chamou o SEAM REAL
+        updateOrderShippingStatus com VALORES DIFERENTES da spec (stock=42, reserved=7,
+        qty=7) p/ provar a LOGICA e nao a constante, e validou com MINHAS queries pg:
+        18 PASS / 0 FAIL. Incl. delivered->sent ok:false/from/to, shipping_status segue
+        delivered, stock=42/reserved=7 intactos, audit total inalterado + 0 ship-audit,
+        pg_constraint do CHECK + 0 violacoes, e contra-prova sent->delivered ok:true com
+        exatamente 1 audit (pedido-alvo segue 0 audit). Tree limpo apos remover o probe.
+  nao-trapaca: git diff e0e83a1..HEAD -- app lib prisma = VAZIO (time pedido NAO tocou
+        produto; a seam ja era correta, nenhum fixer necessario). next-env.d.ts revertido
+        (rewrite incidental do next dev). JSON do ledger valido; so o campo passes mudou
+        (false->true) nesta feature.
+  estado    : ready_for_qa (NAO alterei). passes=true escrito pelo QA. qa_note=null.
+  commit    : harness(qa): aprova pedido.shipping.regression-blocked
+  proximo   : pedido.shipping.cancel-reconciles-stock (priority 11, state=todo) — fora
+              do escopo desta sessao (so 1 feature por gate).
