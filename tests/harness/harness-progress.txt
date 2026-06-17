@@ -1290,3 +1290,42 @@ proximo   : estoque.restock.refund-of-paid (priority 14, state=todo) — refund 
             ramo 'cancelled'/refunded do reconcile). O runner NAO tem op p/ restockUnits
             ainda; PRECISA estender _run-seam.ts (op "restockUnitsForOrder", espelhando
             orders.ts L468-475) — INFRA de teste.
+
+================================================================================
+[QA] estoque.release.idempotent — VEREDITO: APROVADO (passes=true, state=ready_for_qa)
+================================================================================
+data      : 2026-06-17 | branch harness/admin | time QA (gate adversarial) | DB-first
+feature   : priority 13. Estorno de reserva idempotente (cancelar pendente 2x/3x nao
+            estorna em dobro).
+spec      : tests/harness/estoque/release-idempotent.spec.ts.
+repro     : `pnpm harness tests/harness/estoque/release-idempotent.spec.ts` rodado 2x
+            do ZERO em PG efemero recem-seedado (28 produtos/8 pedidos): 1 passed
+            (6.2s) e 1 passed (6.1s). VERDE reproduzivel. O ERROR de
+            products_reserved_nonneg_chk no log de teardown e a probe DB-enforced da
+            PROPRIA spec (SAVEPOINT reserved-=7 -> -1, rollback) — esperado, prova o CHECK vivo.
+seam      : _run-seam.ts op "releaseStockForOrder". Comparado byte-a-byte com o ramo
+            'cancelled'->release de reconcileStockForPaymentStatus (orders.ts L457-466):
+            MESMO CAS (UPDATE orders SET stock_reserved=false WHERE id=? AND
+            stock_reserved=true AND stock_committed=false) e chama o releaseStock REAL
+            (lib/data/inventory.ts L89-102). lines lidas dos PROPRIOS itens do pedido
+            (= snap.items). SEM mock, SEM assert trivial.
+probe-ind : QA rodou probe INDEPENDENTE com VALORES DIFERENTES da spec (stock=33,
+            reserved=20, qty=7 => reserved_after=13) importando o releaseStock de
+            PRODUCAO + o mesmo CAS, em PG efemero. Resultado: 1a release released===1
+            (reserved 20->13, stock 33 intocado); 2a e 3a no-op (released===0, reserved
+            estavel 13); flags do pedido viram corretamente; 0 violacoes 0<=reserved<=stock;
+            DB rejeita reserved negativo. Prova a LOGICA, nao a constante. Probe REMOVIDA
+            (tree limpo).
+asserts   : [A1] 2a aplicacao no-op (CAS released===0) -> PROVADO na spec E na probe-ind.
+                + 3a aplicacao tambem no-op.
+            [A2] reserved estavel pos-1o-estorno sem decremento duplo (spec RES-QTY=6;
+                probe 13) apos 2a e 3a -> PROVADO. stock intocado nas 3 aplicacoes.
+            [A3] CHECK reserved>=0 jamais violado -> PROVADO: products_reserved_nonneg_chk
+                presente; 0 violacoes (nonneg e 0<=reserved<=stock); probe DB-enforced
+                (reserved negativo rejeitado pelo Postgres) na spec E na probe-ind.
+invariant : reserve-lifecycle-idempotent -> CONFIRMADA (flag stockReserved e o guard do
+            CAS; 2x/3x = no-op observado em PG). reserved-le-stock -> CONFIRMADA
+            (CHECK products_reserved_le_stock_chk presente; 0 violacoes).
+produto   : git diff e0e83a1..HEAD -- app lib prisma == VAZIO. Time NAO tocou produto.
+veredito  : todos os 3 asserts provados ponta a ponta contra o DB real. passes false->true;
+            qa_note=null; state mantido ready_for_qa (QA nao altera state em aprovacao).
