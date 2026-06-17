@@ -385,7 +385,19 @@ export async function applyPaymentStatusTx(
     items: existing.items.map((it) => ({ productId: it.productId, quantity: it.quantity })),
   };
   // Conciliacao de estoque idempotente (guardada por flags), independente do CAS.
-  await reconcileStockForPaymentStatus(tx, orderId, status, stockSnapshot);
+  // `effect` informa se ESTA transacao reivindicou a transicao de estoque (CAS=1)
+  // ou se foi um no-op (replay/corrida). Auditamos EXATAMENTE o efeito reivindicado.
+  const effect = await reconcileStockForPaymentStatus(tx, orderId, status, stockSnapshot);
+
+  // Auditoria do efeito do webhook na MESMA transacao (audit-same-tx). O fluxo e de
+  // SISTEMA (ator anonimo), entao so deixamos trilha quando o efeito FOI aplicado
+  // por esta tx (effect !== 'none'); como o CAS das flags so deixa UMA transacao
+  // reivindicar a transicao, sob reentrega do MESMO evento as demais entregas acham
+  // a flag ja virada -> effect='none' -> 0 audit. Idempotencia da auditoria herda a
+  // do efeito: exatamente 1 linha por commit/release/restock, jamais duplicada.
+  if (effect !== "none") {
+    await writeWebhookStockAuditLog(tx, orderId, previousStatus, status, effect, stockSnapshot);
+  }
 
   // Pedido p/ o e-mail: o row foi lido ANTES do CAS, entao reflete o paymentStatus
   // NOVO (`status`), nao o antigo. So o paymentStatus muda; itens/totais ja batem.
@@ -401,6 +413,48 @@ export async function applyPaymentStatusTx(
     data: { paymentStatus: status },
   });
   return { found: true, ok: true, changed: res.count > 0, previousStatus, status, order };
+}
+
+/** Ator anonimo de SISTEMA (webhook/reconcile) — sem usuario Clerk, como mock-first. */
+const SYSTEM_ACTOR: AuditActor = { clerkUserId: null, email: null, role: null };
+
+/**
+ * Grava 1 linha de audit_log do EFEITO de estoque reivindicado pelo fluxo de
+ * SISTEMA (webhook/reconcile), na MESMA transacao do efeito (audit-same-tx). So e
+ * chamada quando reconcileStockForPaymentStatus reivindicou a transicao nesta tx
+ * (effect !== 'none'), entao sob reentrega do mesmo evento ela roda no MAXIMO 1x —
+ * a auditoria herda a idempotencia do CAS das flags. `after.systemFlow=true` e
+ * `stockEffect` distinguem do ajuste MANUAL do admin (manualAdjustment=true).
+ */
+async function writeWebhookStockAuditLog(
+  tx: Prisma.TransactionClient,
+  orderId: number,
+  previousStatus: PaymentStatus,
+  status: PaymentStatus,
+  effect: Exclude<StockReconcileEffect, "none">,
+  snap: StockSnapshot,
+): Promise<void> {
+  await writeAuditLog(tx, {
+    actor: SYSTEM_ACTOR,
+    action: AuditAction.order_payment_status_update,
+    entityType: AuditEntityType.order,
+    entityId: String(orderId),
+    before: {
+      paymentStatus: previousStatus,
+      stockReserved: snap.stockReserved,
+      stockCommitted: snap.stockCommitted,
+    },
+    after: {
+      paymentStatus: status,
+      // Flags resultantes do CAS aplicado nesta tx: commit/release zeram a reserva;
+      // commit comita, restock descomita; o que o efeito nao toca herda o snapshot.
+      stockReserved: effect === "commit" || effect === "release" ? false : snap.stockReserved,
+      stockCommitted:
+        effect === "commit" ? true : effect === "restock" ? false : snap.stockCommitted,
+      systemFlow: true,
+      stockEffect: effect,
+    },
+  });
 }
 
 /**
@@ -429,14 +483,22 @@ type StockSnapshot = {
   items: { productId: string; quantity: number }[];
 };
 
+/**
+ * Efeito de estoque que a conciliacao reivindicou nesta transacao (via CAS das
+ * flags). `none` = nenhuma transicao reivindicada (no-op idempotente sob replay/
+ * corrida). O chamador usa isto p/ auditar EXATAMENTE a mutacao que de fato
+ * ocorreu, na MESMA tx (audit-same-tx) e UMA unica vez sob reentrega.
+ */
+type StockReconcileEffect = "none" | "commit" | "release" | "restock";
+
 async function reconcileStockForPaymentStatus(
   tx: Prisma.TransactionClient,
   orderId: number,
   status: PaymentStatus,
   snap: StockSnapshot,
-): Promise<void> {
+): Promise<StockReconcileEffect> {
   const lines = snap.items.map((it) => ({ productId: it.productId, quantity: it.quantity }));
-  if (lines.length === 0) return;
+  if (lines.length === 0) return "none";
 
   // CAS no PROPRIO pedido (nao no snapshot lido sem lock): o flip da flag e a
   // CONDICAO do UPDATE, que adquire o row-lock de "orders". Concorrentes (webhook
@@ -450,8 +512,11 @@ async function reconcileStockForPaymentStatus(
       UPDATE "orders" SET "stock_committed" = true, "stock_reserved" = false
       WHERE "id" = ${orderId} AND "stock_reserved" = true AND "stock_committed" = false
     `;
-    if (claimed === 1) await commitStock(tx, lines);
-    return;
+    if (claimed === 1) {
+      await commitStock(tx, lines);
+      return "commit";
+    }
+    return "none";
   }
 
   if (status === "cancelled") {
@@ -462,7 +527,7 @@ async function reconcileStockForPaymentStatus(
     `;
     if (released === 1) {
       await releaseStock(tx, lines);
-      return;
+      return "release";
     }
     // Refund/chargeback de pedido JA PAGO: repoe o estoque baixado (Q3). O CAS aqui
     // e o unico guard (restockUnits nao tem predicado de coluna proprio).
@@ -470,8 +535,12 @@ async function reconcileStockForPaymentStatus(
       UPDATE "orders" SET "stock_committed" = false
       WHERE "id" = ${orderId} AND "stock_committed" = true
     `;
-    if (refunded === 1) await restockUnits(tx, lines);
+    if (refunded === 1) {
+      await restockUnits(tx, lines);
+      return "restock";
+    }
   }
+  return "none";
 }
 
 // ===========================================================================

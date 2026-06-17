@@ -42,15 +42,18 @@ import { Client } from "pg";
  * duplicacao (linha extra no ledger, dupla baixa de estoque, mais de 1 changed)
  * reprova o teste. NAO ha serializacao artificial das 4 entregas concorrentes.
  *
- * Sobre o ASSERT de audit (invariante audit-same-tx) — leitura HONESTA do produto: o
- * fluxo de webhook e um FLUXO DE SISTEMA, nao uma mutacao de ADMIN. applyPaymentStatusTx
- * NAO grava audit_log de proposito (lib/data/orders.ts: "Nao grava audit_log (fluxo de
- * sistema, nao mutacao de admin)"; a invariante audit-same-tx tem escopo "mutacao de
- * admin"). Portanto o que provamos — exatamente o nucleo anti-replay do assert — e que
- * a REENTREGA NAO DUPLICA auditoria: a contagem de audit_log atribuivel a este pedido
- * NAO cresce com as 5 entregas (delta == 0; jamais 5), e o CHECK 0<=reserved<=stock
- * permanece valido sob a rajada. Forcar exatamente-1-audit aqui contradiria o design do
- * produto e o escopo da invariante; o teste afirma a verdade verificavel e load-bearing.
+ * Sobre o ASSERT de audit (invariante audit-same-tx): o EFEITO do webhook
+ * (applyPaymentStatusTx -> reconcileStockForPaymentStatus, ramo 'paid' = commitStock)
+ * grava EXATAMENTE 1 linha de audit_log na MESMA transacao do efeito, e SO quando a
+ * conciliacao reivindicou a transicao de estoque nesta tx (CAS das flags = 1). Como o
+ * CAS so deixa UMA transacao reivindicar o commit, sob as 5 entregas do MESMO evento as
+ * outras 4 acham a flag ja virada (effect='none') e NAO auditam. Provamos as DUAS
+ * clausulas do assert: (a) ha auditoria do commit na MESMA tx, com action
+ * 'order.payment_status_update', before.paymentStatus='pending'/after.paymentStatus='paid'
+ * e after.systemFlow=true/stockEffect='commit'; (b) a reentrega NAO duplica: o delta de
+ * audit_log do pedido e EXATAMENTE 1 (jamais 5), e o CHECK 0<=reserved<=stock permanece
+ * valido sob a rajada. O ator e o anonimo de SISTEMA (clerkUserId/email/role NULL),
+ * distinto do ajuste MANUAL do admin (after.manualAdjustment=true).
  *
  * CAVEAT TECNICO (INFRA do harness, sem tocar produto): o Prisma gerado e ESM puro
  * (import.meta) e quebra se importado direto numa spec transpilada p/ CJS. Por isso as
@@ -59,8 +62,8 @@ import { Client } from "pg";
  *
  * Invariantes cobertas: webhook-idempotent (UNIQUE (provider,eventId) + processed_at;
  * reprocessar nao reaplica), reserve-lifecycle-idempotent (commit guardado por flags do
- * pedido; 2a..5a entregas = no-op) e audit-same-tx (sem auditoria duplicada por
- * reentrega; CHECK reserved<=stock intacto).
+ * pedido; 2a..5a entregas = no-op) e audit-same-tx (1 audit do commit na MESMA tx, nao
+ * duplicada por reentrega; CHECK reserved<=stock intacto).
  */
 
 const SEAM_RUNNER = path.join(__dirname, "_run-seam.ts");
@@ -395,11 +398,15 @@ test("chaos.webhook.replay: mesmo (provider,event_id) entregue 5x, efeito de est
     expect(afterOrder.rows[0].payment_status, "payment_status == paid").toBe("paid");
 
     // ===================================================================
-    // ASSERT 4 (audit-same-tx, leitura honesta): a REENTREGA NAO DUPLICA auditoria.
-    // O fluxo de webhook e de SISTEMA — applyPaymentStatusTx NAO grava audit_log
-    // (escopo de audit-same-tx = mutacao de admin). Provamos que a contagem de
-    // audit_log NAO cresce com as 5 entregas (delta == 0; jamais 5) — o nucleo
-    // anti-replay do assert — e que o CHECK 0<=reserved<=stock segue valido.
+    // ASSERT 4 (audit-same-tx): o COMMIT do webhook deixa EXATAMENTE 1 linha de
+    // audit_log, na MESMA transacao do efeito, e a REENTREGA NAO DUPLICA.
+    //  (a) ha auditoria do commit: 1 linha com action 'order.payment_status_update',
+    //      before.paymentStatus='pending'/after.paymentStatus='paid',
+    //      after.systemFlow=true e after.stockEffect='commit' (fluxo de sistema, ator
+    //      anonimo: actor_clerk_user_id/actor_email/actor_role NULL).
+    //  (b) sob as 5 entregas o delta e EXATAMENTE 1 (jamais 5): o CAS das flags so
+    //      deixa UMA tx reivindicar o commit; as demais nao auditam.
+    // E o CHECK 0<=reserved<=stock segue valido.
     // ===================================================================
     const auditAfterOrder = await client.query<{ count: string }>(
       `SELECT COUNT(*)::text AS count FROM "audit_log"
@@ -413,9 +420,46 @@ test("chaos.webhook.replay: mesmo (provider,event_id) entregue 5x, efeito de est
     const deltaGlobal = Number(auditAfterGlobal.rows[0].count) - baseAuditGlobal;
     expect(
       deltaOrder,
-      "reentrega NAO duplica auditoria do pedido (fluxo de sistema nao audita; jamais 5)",
-    ).toBe(0);
-    expect(deltaGlobal, "nenhuma linha de audit_log criada pelas 5 entregas").toBe(0);
+      "commit auditado 1x; reentrega NAO duplica (delta do pedido == 1, jamais 5)",
+    ).toBe(1);
+    expect(deltaGlobal, "exatamente 1 linha de audit_log criada pelas 5 entregas").toBe(1);
+
+    // Clausula (a): a UNICA linha de audit do pedido e a auditoria do COMMIT do
+    // webhook, na MESMA tx do efeito. action e lido CRU (DB @map dotted), before/after
+    // sao os snapshots jsonb do dominio, e o ator e anonimo de SISTEMA.
+    const auditRow = await client.query<{
+      action: string;
+      before: { paymentStatus?: string } | null;
+      after: { paymentStatus?: string; systemFlow?: boolean; stockEffect?: string } | null;
+      actor_clerk_user_id: string | null;
+      actor_email: string | null;
+      actor_role: string | null;
+    }>(
+      `SELECT action, before, after, actor_clerk_user_id, actor_email, actor_role
+         FROM "audit_log"
+        WHERE entity_type = 'order' AND entity_id = $1
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [String(orderId)],
+    );
+    expect(auditRow.rowCount, "exatamente 1 linha de audit do commit").toBe(1);
+    expect(auditRow.rows[0].action, "action e order.payment_status_update (DB @map)").toBe(
+      "order.payment_status_update",
+    );
+    expect(auditRow.rows[0].before?.paymentStatus, "before.paymentStatus == pending").toBe(
+      "pending",
+    );
+    expect(auditRow.rows[0].after?.paymentStatus, "after.paymentStatus == paid").toBe("paid");
+    expect(auditRow.rows[0].after?.systemFlow, "after.systemFlow == true (fluxo de sistema)").toBe(
+      true,
+    );
+    expect(auditRow.rows[0].after?.stockEffect, "after.stockEffect == commit").toBe("commit");
+    expect(
+      auditRow.rows[0].actor_clerk_user_id,
+      "ator anonimo de sistema (sem Clerk user)",
+    ).toBeNull();
+    expect(auditRow.rows[0].actor_email, "ator anonimo de sistema (sem email)").toBeNull();
+    expect(auditRow.rows[0].actor_role, "ator anonimo de sistema (sem role)").toBeNull();
 
     // CHECK 0<=reserved<=stock valido: existe e nenhuma linha o viola pos-replay.
     const chk = await client.query<{ conname: string }>(

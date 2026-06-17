@@ -150,8 +150,9 @@ type AdjustPaymentArgs = {
 // proprio. A funcao valida a transicao contra PAYMENT_TRANSITIONS ANTES de qualquer
 // efeito de estoque: uma transicao ilegal (ex.: paid->pending, cancelled->paid)
 // retorna { found:true, ok:false, reason:'invalid_transition' } SEM tocar estoque e
-// SEM gravar audit (a guarda retorna antes de reconcileStockForPaymentStatus; a
-// propria applyPaymentStatusTx nunca escreve audit_log). A verificacao anti-replay
+// SEM gravar audit (a guarda retorna ANTES de reconcileStockForPaymentStatus; sem
+// efeito reivindicado, applyPaymentStatusTx nao escreve audit_log — so audita o
+// EFEITO de estoque de fato aplicado, na mesma tx). A verificacao anti-replay
 // exige payment.id == orders.asaas_payment_id, entao a spec seta asaas_payment_id no
 // pedido e passa o `payment.id` casado p/ exercitar o ramo invalid_transition (e nao
 // payment_mismatch). INFRA de teste: usa a funcao de PRODUCAO sem mock; a spec
