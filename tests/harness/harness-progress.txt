@@ -3768,3 +3768,15 @@ SESSAO — TIME QA
   INVARIANTES: coupon-delete-guard (guarda conta coupon_redemptions; FK Restrict como rede final; historico financeiro intacto); audit-same-tx (delete recusado antes de writeAuditLog -> nenhuma linha de audit, nem orfa).
   Produto INTOCADO: so escrevi teste. needs_product_fix=false. Gates verdes nos meus arquivos: pnpm typecheck OK; eslint --max-warnings 0 OK; prettier --check OK no spec + _run-seam.ts.
   ESTADO: ready_for_qa. PROXIMO: nenhum todo team=pedido restante (cupom.delete.used-blocked era priority 27, o ultimo).
+
+[QA] 2026-06-17 17:11 BRT cupom.code.ci-unique (priority 20) -> RE-GATE APROVADO (passes=true, qa_note=null, state inalterado=ready_for_qa).
+  CONTEXTO: feature ja estava ready_for_qa mas passes=false (veredito do QA nao havia persistido no ledger — provavel clobber por leitura stale). Re-rodei o gate de verdade e gravei o veredito in-place (Edit pontual em "passes", re-leitura imediatamente antes do Edit p/ evitar clobber).
+  Repro: pnpm harness tests/harness/pedido/cupom-code-ci-unique.spec.ts em PG efemero recem-seedado (28 prod/8 ped) -> 1 passed (2x: 4.4s e 4.4s). Log do Postgres confirma a colisao REAL: ERROR duplicate key value violates unique constraint "coupons_code_key" / DETAIL Key (lower(code))=(verao10-<slug>) already exists — colisao no nivel do banco, nao mock.
+  Anti-fake-green: 4/4 asserts provados ponta a ponta via pg sobre DATABASE_URL; seam = createCoupon de PRODUCAO (lib/data/coupons.ts:150) via _run-seam.ts case 'createCoupon' (L472-478), sem mock, sem tautologia.
+    A1 2a criacao {ok:false} com msg de codigo duplicado (P2002 tratado): spec L158-166 second.ok==false & second.error ~ /codigo/i; P2002 real (log PG) tratado em coupons.ts:171-172.
+    A2 1 unica linha p/ esse LOWER(code) (indice UNIQUE coupons_code_key): L170-177 COUNT WHERE LOWER(code)=LOWER($1)==1; L180-185 linha sobrevivente == 1o id; sanity L108-115 indice existe + UNIQUE + lower(code). Anti-trivial: 1o code caixa MISTA (VeRaO10-<slug>), 2o em minusculas — se o indice fosse case-sensitive as duas coexistiriam.
+    A3 code armazenado em UPPER (normalizeCouponCode = trim().toUpperCase(), coupons.ts:83-84): L140-147 code==firstCode.toUpperCase() & not lowerCode.
+    A4 audit_log NAO cresce na criacao falha (rollback da $transaction): L121 baseline A; L150-154 +1 apos a 1a (sucesso); L189-195 total segue A+1 apos a 2a (delta global); L201-210 exatamente 1 coupon.create p/ esse LOWER(code) (sem orfao de rollback).
+  Invariantes (2/2 listadas): coupon-code-ci-unique (indice UNIQUE LOWER(code) rejeita variante de caixa; 1 linha; code canonico UPPER) e audit-same-tx (criacao falha nao audita — rollback da tx) exercitadas no DB real.
+  Spot-check DB: indice unico por LOWER(code) existe (migration 20260615050000_foundation_hardening L109: CREATE UNIQUE INDEX coupons_code_key ON coupons(LOWER(code))); 2a insercao nao criou linha (count==1, sobrevivente==1o id); coupon-coherence preservado.
+  Produto INTOCADO: git diff e0e83a1..HEAD -- app lib prisma VAZIO; working tree de app/lib/prisma VAZIO (nenhum fixer agiu). So o ledger (passes) e este progresso foram tocados.
