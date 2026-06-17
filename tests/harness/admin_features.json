@@ -1164,7 +1164,7 @@
   },
   {
     "category": "chaos",
-    "state": "todo",
+    "state": "building",
     "passes": false,
     "qa_note": null,
     "fix_note": null,
