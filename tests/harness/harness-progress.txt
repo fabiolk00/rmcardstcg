@@ -3404,3 +3404,42 @@ SESSAO — TIME PEDIDO
   commit    : <preenchido no commit desta sessao>
   proximo   : pedido.totals.formula (priority 14, state=todo) — total = subtotal - desconto
               - cupom + frete; campos Int de centavos; CHECK coupon_discount_cents>=0.
+
+--------------------------------------------------------------------------------
+SESSAO — TIME QA
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 13:55 -0300
+  time      : qa
+  feature   : pedido.note.empty-normalized-noop (priority 13)
+  veredito  : APROVADO. passes false->true; state inalterado (ready_for_qa); qa_note=null.
+  repro     : `pnpm harness tests/harness/pedido/note-empty-normalized-noop.spec.ts` em PG
+              efemero recem-seedado (28 produtos / 8 pedidos), rodado 3x => 1 passed
+              (2.7s/2.7s/2.7s; suite 5.3s). Verde reproduzivel do zero.
+  anti-fake : Li a spec E os 3 asserts do ledger. Seam = funcao de PRODUCAO
+              updateOrderInternalNote (lib/data/orders.ts L579) via _run-seam.ts case
+              'updateOrderInternalNote' (L344-352) — chamada DIRETA, sem mock. Asserts
+              mapeados ponta a ponta contra o DB real (pg cru):
+                A1 normaliza->null & changed=false: spec L169-178 p/ '   ', '' e null
+                   (3 formas); produto L585 normaliza, L594 null===null, L595 changed:false.
+                A2 internal_note permanece null: spec L181-193, le coluna crua; +
+                   payment/shipping inalterados em estados NAO-default (paid/sent) =>
+                   nao-trivial.
+                A3 audit_log NAO ganha linha (==A): spec L198-211 (total E por entity_id,
+                   acumulativo p/ as 3 formas) + reforco L217-226 (0 linhas action crua
+                   'order.note_update', @map DOTTED). Pre: auditForEntity==0.
+  invariante: audit-same-tx PROVADA por PROBE INDEPENDENTE propria (valores != spec; depois
+              removida; tree limpo):
+                - CHECK products_reserved_le_stock_chk EXISTE (1) + 0 violacoes (reserved<=
+                  stock); cents-only: 5 colunas _cents = integer.
+                - ANTI-TAUTOLOGIA: nota REAL com espacos => changed=true, trim aplicado,
+                  audit NASCE (0->1) na mesma tx, before.internalNote='NOTA-INICIAL-*' /
+                  after.internalNote='REVISAR ESTOQUE *', action crua 'order.note_update';
+                  repeticao identica => no-op (audit fica 1); VAZIO sobre nota NAO-null =>
+                  changed=true, limpa p/ null, audit cresce (1->2) [prova que '' NAO e
+                  sempre no-op]; VAZIO sobre null => no-op (audit fica 2) = cenario exato da
+                  feature; 0 audit orfao (before/after nunca null). Logo o ramo no-op-sem-
+                  audit e provado contra o real e DISTINTO do ramo muda-com-audit.
+  produto   : git diff e0e83a1..HEAD -- app lib prisma => VAZIO. Time NAO tocou produto.
+  tree      : limpo (next-env.d.ts regenerado pelo next/tsx revertido; probe removida; so
+              .claude/agent-memory untracked, nao-relacionado).
+  commit    : harness(qa): aprova pedido.note.empty-normalized-noop
