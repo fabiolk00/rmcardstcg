@@ -3674,3 +3674,16 @@ SESSAO — TIME QA
   RESULTADO: pnpm harness VERDE e reproduzivel (2 runs, 1 passed). Gates: typecheck OK, lint OK (max-warnings 0), prettier --check do meu spec OK.
   PRODUTO INTOCADO: so escrevi teste; nenhum app/lib/prisma tocado. needs_product_fix:false.
   PROXIMO: cupom.update.audited (priority 21) team=pedido.
+
+[2026-06-17 16:14] time:pedido feature:cupom.update.audited (priority 21) estado:ready_for_qa
+  O-QUE-FIZ: escrevi tests/harness/pedido/cupom-update-audited.spec.ts (DB-first, sem browser) provando "Admin edita cupom sem tocar redeemedCount (auditado)".
+  SEAM: updateCoupon(actor, id, input) de PRODUCAO (lib/data/coupons.ts L179) via _run-seam.ts. ESTENDI o runner: adicionei o case 'updateCoupon' (import + tipo UpdateCouponArgs + branch no switch) — INFRA de teste; o case 'createCoupon' ja existia. Sem mock; product (app/lib/prisma) INTOCADO.
+  ASSERTS PROVADOS via pg sobre process.env.DATABASE_URL (3/3):
+    A1 "campos editaveis atualizados; redeemed_count permanece R": cria cupom percent (min=5000, max=10) via createCoupon; FORCO redeemed_count=R=7 direto no DB (anti-trivial, R>0); updateCoupon altera min->8000 e max->25; pos-update via pg: min_subtotal_cents==8000, max_redemptions==25, redeemed_count==7 (inalterado). CouponInput/toCouponData nao tem redeemedCount => UPDATE nunca o toca.
+    A2 "coerencia tipo<->campo (CHECK valido)": pos-update percent_off NOT NULL em 1..100 e value_cents NULL; 0 linhas violam o predicado IDENTICO ao CHECK coupons_type_value_chk (test-schema-supplement.sql L38-41) na tabela inteira; sanity confirma o CHECK existe (pg_constraint).
+    A3 "audit_log 1 linha coupon.update na MESMA tx, before/after": delta GLOBAL de audit_log == +1; exatamente 1 linha action='coupon.update' (coluna crua, @map dotted) p/ esse entity_id; before.minSubtotalCents/maxRedemptions == valores ANTIGOS (5000/10), after == NOVOS (8000/25); after.type=percent, percentOff set, valueCents null.
+  INVARIANTES: coupon-coherence (A2), coupon-redeem-limits (A1: update nao mexe em redeemedCount), audit-same-tx (A3, delta global +1 / 1 linha por entity), cents-only (*Cents Int sem fracao).
+  ANTI-TRIVIAL: seed R=7 (>0) antes do update; editaveis trocados p/ valores distintos dos iniciais e asseridos contra os NOVOS.
+  RESULTADO: pnpm harness VERDE e reproduzivel (3 runs, 1 passed, ~4.5s em PG efemero recem-seedado). Gates: typecheck OK, lint OK (max-warnings 0), prettier --check do spec+runner OK.
+  PRODUTO INTOCADO: git diff -- app lib prisma == VAZIO. needs_product_fix:false. NAO comitei next-env.d.ts (ruido next dev) nem harness-progress.txt da raiz (arquivo de outro agente).
+  PROXIMO: QA aprova cupom.update.audited; depois pedido pega cupom.redeem.global-limit (priority 22, state todo).

@@ -991,7 +991,7 @@
       "audit_log recebe 1 linha action=coupon.update na MESMA transacao, before/after snapshots."
     ],
     "invariants": ["coupon-coherence", "coupon-redeem-limits", "audit-same-tx", "cents-only"],
-    "state": "todo",
+    "state": "ready_for_qa",
     "passes": false,
     "qa_note": null,
     "fix_note": null,

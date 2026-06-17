@@ -35,7 +35,7 @@ import {
   updateOrderShippingStatus,
   type PaymentRef,
 } from "../../../lib/data/orders";
-import { createCoupon, type CouponInput } from "../../../lib/data/coupons";
+import { createCoupon, updateCoupon, type CouponInput } from "../../../lib/data/coupons";
 import type { PaymentStatus, ShippingStatus } from "../../../lib/data/types";
 import type { AuditActor } from "../../../lib/data/audit";
 import { finalPriceCents } from "../../../lib/data/pricing";
@@ -188,6 +188,17 @@ type NoteArgs = {
 // request), por isso chamamos a funcao de lib/data direto. INFRA de teste: usa a
 // funcao de PRODUCAO sem mock; a spec assertaa o estado real via pg.
 type CreateCouponArgs = { actor: AuditActor; input: CouponInput };
+// Espelha o call site de PRODUCAO da EDICAO DE CUPOM pelo admin
+// (updateCouponAction -> updateCoupon, lib/data/coupons.ts L179). Numa MESMA
+// prisma.$transaction a funcao: le o cupom (before), normaliza o CouponInput via
+// toCouponData (mesma coerencia tipo<->campo do create; NUNCA toca redeemedCount —
+// nao ha redeemedCount em CouponInput nem em toCouponData), faz tx.coupon.update e
+// grava audit_log (action coupon.update, before/after = snapshots do dominio) — tudo
+// na mesma tx. Cupom inexistente -> { ok:false, error }; codigo duplicado (P2002) ->
+// { ok:false, error }. A server action so DELEGA apos requireAdmin() (contexto de
+// request), por isso chamamos a funcao de lib/data direto. INFRA de teste: usa a
+// funcao de PRODUCAO sem mock; a spec assertaa o estado real via pg.
+type UpdateCouponArgs = { actor: AuditActor; id: string; input: CouponInput };
 
 /**
  * Erro de aborto da reserva — carrega o resultado { ok:false, productId } do
@@ -396,6 +407,15 @@ async function main(): Promise<void> {
         // assertaa o estado real via pg.
         const { actor, input } = payload as CreateCouponArgs;
         result = await createCoupon(actor, input);
+        break;
+      }
+      case "updateCoupon": {
+        // Edicao de cupom pelo admin (coerencia tipo<->campo via toCouponData +
+        // audit coupon.update na MESMA tx; NUNCA toca redeemedCount), via a funcao
+        // de PRODUCAO. Devolve o CouponMutationResult ({ ok:true, coupon } |
+        // { ok:false, error }); a spec assertaa o estado real via pg.
+        const { actor, id, input } = payload as UpdateCouponArgs;
+        result = await updateCoupon(actor, id, input);
         break;
       }
       default:
