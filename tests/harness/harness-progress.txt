@@ -2752,3 +2752,49 @@ SESSAO — TIME PEDIDO
   proximo   : pedido.shipping.sent-to-delivered (priority 8, state=todo) —
               updateOrderShippingStatus(orderId,'delivered',actor) a partir de sent;
               transicao terminal legal, audit order.shipping_status_update na mesma tx.
+
+SESSAO — TIME QA
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 12:32 -0300
+  time      : qa
+  feature   : pedido.shipping.pending-to-sent (priority 7)
+  veredito  : APROVADO. passes=true, qa_note=null. state INALTERADO (ready_for_qa).
+  repro     : `pnpm harness tests/harness/pedido/shipping-pending-to-sent.spec.ts`
+              do ZERO em PG efemero recem-seedado (28 produtos / 8 pedidos), 2x =>
+              1 passed/1 passed (4.5s e 4.9s). VERDE reproduzivel.
+  anti-fake : Spec NAO usa mock: a mutacao roda via _run-seam.ts -> case
+              updateOrderShippingStatus -> funcao de PRODUCAO de lib/data/orders.ts
+              (L523), confirmado por leitura do runner + da fonte. Todas as assercoes
+              vao via cliente `pg` cru contra process.env.DATABASE_URL (DB real).
+              Sem assert trivial/tautologico (ver probe abaixo).
+  asserts   : [1] orders.shipping_status=='sent' (+ payment_status inalterado) — PROVADO
+                  via pg apos a seam (changed=true + leitura do DB).
+              [2] audit_log +1 linha action='order.shipping_status_update' (valor @map
+                  DOTTED, schema L54), MESMA tx, before.shippingStatus=pending /
+                  after.shippingStatus=sent, paymentStatus identico nos snapshots —
+                  PROVADO via pg (delta exato +1 total e +1 por entity_id; leitura da
+                  coluna crua `action`). audit-same-tx estrutural: writeAuditLog(tx,...)
+                  dentro do prisma.$transaction de updateOrderShippingStatus (orders.ts
+                  L558-567), confirmado na fonte.
+              [3] nenhum efeito de estoque (so cancelamento concilia) — PROVADO via pg:
+                  stock/reserved INTACTOS apesar de reserva ATIVA (reserved=3>0),
+                  flags stock_reserved=true/stock_committed=false INALTERADAS. Na fonte:
+                  reconcileStockForPaymentStatus so e chamado quando to==='cancelled'
+                  (orders.ts L554).
+  invariantes: order-state-machine PROVADA (SHIPPING_TRANSITIONS.pending inclui 'sent';
+              delivered/cancelled terminais — orderTransitions.ts L12-17; CAS atomico
+              updateMany WHERE shippingStatus=from). audit-same-tx PROVADA (acima).
+              reserved-le-stock: CHECK 'products_reserved_le_stock_chk' existe (supplement
+              L28) + 0 violacoes de 0<=reserved<=stock. cents-only: precos Int em centavos.
+  probe-indep: rodei 1 probe TEMPORARIA (valores DIFERENTES: stock=20, reserved=7, qty=5)
+              p/ provar logica e nao constante, cobrindo ramos fora da spec da feature:
+              (A) pending->sent audita + estoque intacto (20/7); (B) sent->sent no-op
+              (changed=false, sem audit novo); (C) delivered->sent ILEGAL
+              (invalid_transition, sem mudanca, sem audit); (D) sent->cancelled REALMENTE
+              concilia (reserved 7->2, stock_reserved->false) — prova que "sem efeito" no
+              caso 'sent' e propriedade do ramo nao-cancel, nao acaso. 1 passed. Probe
+              REMOVIDA ao fim (tree limpo).
+  produto   : git diff e0e83a1..HEAD -- app lib prisma == VAZIO (0 linhas). Time pedido
+              tocou SO: spec, _run-seam.ts (INFRA), ledger (state->ready_for_qa), progress.
+              Ledger: commit do time mudou apenas o campo "state" (todo->ready_for_qa).
+  ledger    : QA escreveu passes=true (campo do QA), qa_note=null. JSON valida.
