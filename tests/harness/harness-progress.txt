@@ -3718,3 +3718,13 @@ SESSAO — TIME QA
     A3 coupon_redemptions 1 linha p/ (coupon_id,clerk_user_id) = a do orderA; sanity redeemed_count==1 (so a 1a incrementou) prova que foi o perUserLimit -- nao o global -- que barrou; 0 violacoes de redeemed_count>=0/<=max.
   Invariante coupon-redeem-limits (unica listada): ramo per-user exercitado no DB (recontagem sob advisory lock, nenhuma redencao alem do teto por usuario). audit-same-tx nao listada e redeemCoupon nao grava audit_log -> correto nao asserir.
   Gates: pnpm typecheck OK; pnpm lint OK; prettier --check no spec OK. Harness: 1 passed reproduzivel (2x). needs_product_fix=false. Proximo: cupom.redeem.idempotent-per-order (priority 24, todo).
+
+[QA] 2026-06-17 cupom.redeem.per-user-limit -> APROVADO (passes=true, qa_note=null, state inalterado=ready_for_qa).
+  Repro: pnpm harness tests/harness/pedido/cupom-redeem-per-user-limit.spec.ts em PG efemero recem-seedado (28 prod/8 ped) -> 1 passed (5.3s).
+  Anti-fake-green: 3/3 asserts provados ponta a ponta via pg sobre DATABASE_URL; seam=redeemCoupon de PRODUCAO (lib/data/coupons.ts:364) via _run-seam.ts envelopado em $transaction como o checkout (RedeemAbort -> rollback em ok:false); createCoupon (L150) semeia o cupom; sem mock.
+    A1 1a redencao ok / 2a do MESMO usuario ok:false reason='per_user_limit': spec L186-188 r1.ok==true & alreadyRedeemed==false; L211-213 r2.ok==false & reason=='per_user_limit' (literal casa coupons.ts:388, type CouponRejection L303). Anti-trivial: orderA!=orderB (L175) porque order_id e UNIQUE -- sem isso a idempotencia-por-pedido (nao o per-user) barraria.
+    A2 1 linha p/ (couponId,userId): L216-225 rowCount==1 e order_id sobrevivente==orderA; L228-232 orderB deixou 0 linhas (rollback total da 2a).
+    A3 recontagem sob advisory lock garante o limite: produto faz pg_advisory_xact_lock(hashtextextended('coupon:<id>:<user>',0)) + count e aborta ANTES do increment global (coupons.ts:382-389); spec prova o RESULTADO via L237-244 redeemed_count==1 (so a 1a incrementou) com max_redemptions=null -> isola que foi o perUserLimit, nao o global. Number.isInteger (cents-only) L245.
+  Invariante coupon-redeem-limits (unica listada): exercitada no DB (per-user recontado, nenhuma redencao alem do teto); net CHECK coupons_redeemed_count_chk (redeemed_count>=0) 0 violacoes L248-256. audit-same-tx NAO listada e redeemCoupon nao grava audit_log -> correto nao asserir.
+  Concorrencia de fato (2 checkouts simultaneos batendo no advisory lock) e o concern dormente do chaos-loop, NAO esta nos asserts desta feature; o assert listado (limite garantido pela recontagem) e provado pelo OUTCOME do seam de PRODUCAO. Aceito.
+  Produto intocado: git diff e0e83a1..HEAD -- app lib prisma VAZIO (nenhum fixer agiu).
