@@ -1135,5 +1135,292 @@
     "fix_note": null,
     "review": null,
     "review_note": null
+  },
+  {
+    "category": "chaos",
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null,
+    "id": "chaos.stock.race",
+    "team": "estoque",
+    "title": "Corrida de reservas: stock=1 com N reservas concorrentes, exatamente 1 vence (sem oversell)",
+    "route": "/admin/produtos",
+    "priority": 21,
+    "steps": [
+      "Cria/ajusta um produto com stock=1, reserved=0 (disponivel=1).",
+      "Dispara N>=10 chamadas CONCORRENTES de reserveStock(tx,[{productId,quantity:1}]) via Promise.all, cada uma na sua propria transacao/pedido.",
+      "Aguarda o settle de todas as N promises e le o estado final do produto."
+    ],
+    "asserts": [
+      "Exatamente 1 reserva retorna {ok:true}; as outras N-1 falham graciosamente ({ok:false,productId}) sem efeito parcial.",
+      "products.reserved == 1 e products.stock == 1 ao final (sem oversell: reserved nunca excede stock).",
+      "O CHECK products_reserved_le_stock_chk (0<=reserved<=stock) NUNCA e violado em nenhum ponto da corrida (sem aborted transaction por check violation no log do Postgres).",
+      "Exatamente 1 pedido fica com stockReserved=true; nenhuma linha cria reserved=2 (anti-oversell sob concorrencia real, nao mock)."
+    ],
+    "invariants": ["reserved-le-stock", "reserve-lifecycle-idempotent"]
+  },
+  {
+    "category": "chaos",
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null,
+    "id": "chaos.admin.concurrent-edit",
+    "team": "estoque",
+    "title": "Edicao concorrente do mesmo produto: dois updateProduct simultaneos sem lost update",
+    "route": "/admin/produtos",
+    "priority": 22,
+    "steps": [
+      "Produto com stock=S, reserved=R conhecidos.",
+      "Dispara 2+ chamadas CONCORRENTES de updateProduct(actor,id,input) sobre o MESMO produto (ex.: uma seta stock=S+5, outra seta discountPct=20) via Promise.all.",
+      "Aguarda o settle e le products + as linhas de audit_log resultantes."
+    ],
+    "asserts": [
+      "Estado final coerente: ambas as mutacoes bem-sucedidas ficam refletidas (sem lost update — a 2a nao sobrescreve cegamente a 1a com valor stale).",
+      "audit_log registra exatamente as mutacoes que de fato foram aplicadas (1 linha product.update por update aplicado, na MESMA transacao; sem audit orfao nem mutacao sem audit).",
+      "CHECK products_reserved_le_stock_chk (0<=reserved<=stock) permanece valido apos a corrida.",
+      "priceCents/discountPct/stock seguem Int em centavos (cents-only); nenhum valor corrompido pela corrida."
+    ],
+    "invariants": ["reserved-le-stock", "audit-same-tx"]
+  },
+  {
+    "category": "chaos",
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null,
+    "id": "chaos.webhook.replay",
+    "team": "estoque",
+    "title": "Replay de webhook: mesmo (provider,event_id) entregue 5x, efeito de estoque aplicado exatamente 1x",
+    "route": "/admin/pedidos",
+    "priority": 23,
+    "steps": [
+      "Pedido pendente com stockReserved=true, stockCommitted=false; produto com reserved>=qty e stock>=qty.",
+      "Entrega o MESMO evento de pagamento (mesmo (provider,event_id)) 5x — em rajada concorrente via Promise.all e tambem sequencial — para o handler do webhook.",
+      "Aguarda o settle das 5 entregas e le webhook_events, products e o pedido."
+    ],
+    "asserts": [
+      "webhook_events tem 1 unica linha para (provider,event_id) (UNIQUE em (provider,eventId)); processed_at e setado exatamente 1x (de NULL -> timestamp).",
+      "Efeito de estoque ocorre 1x so: commitStock baixa stock-=qty e reserved-=qty UMA vez; as outras 4 entregas sao no-op (guard por processedAt + CAS das flags do pedido).",
+      "Order.stockCommitted==true e stockReserved==false ao final; sem dupla baixa (stock nao cai 2x).",
+      "audit_log recebe a auditoria do commit na MESMA transacao do efeito, sem duplicar por entrega repetida; CHECK 0<=reserved<=stock valido."
+    ],
+    "invariants": ["webhook-idempotent", "reserve-lifecycle-idempotent", "audit-same-tx"]
+  },
+  {
+    "category": "chaos",
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null,
+    "id": "chaos.webhook.out-of-order",
+    "team": "pedido",
+    "title": "Webhooks fora de ordem: cancelled depois de paid (e vice-versa) converge pela maquina de estado",
+    "route": "/admin/pedidos",
+    "priority": 28,
+    "steps": [
+      "Pedido pendente com reserva ativa (stockReserved=true).",
+      "Entrega os webhooks fora de ordem: 'paid' e 'cancelled' (e o caso simetrico 'cancelled' antes de 'paid'), incluindo rajada concorrente.",
+      "Aguarda o settle e le orders.payment_status, products e flags de estoque."
+    ],
+    "asserts": [
+      "Estado final correto pela maquina de pagamento (orderTransitions/PaymentStatus): transicoes ilegais (ex.: cancelled->paid, paid->pending) sao barradas (invalid_transition), nunca aplicadas.",
+      "Sem duplo commit nem duplo estorno de estoque: o ciclo reserve/commit/release roda no maximo 1x cada (guard por flags stockReserved/stockCommitted via CAS).",
+      "products.stock/reserved coerentes com o status terminal alcancado; CHECK 0<=reserved<=stock valido.",
+      "audit_log registra apenas as transicoes legais efetivamente aplicadas, cada uma na MESMA transacao; transicoes barradas nao auditam."
+    ],
+    "invariants": ["order-state-machine", "webhook-idempotent", "audit-same-tx"]
+  },
+  {
+    "category": "chaos",
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null,
+    "id": "chaos.asaas.transient-500",
+    "team": "pedido",
+    "title": "Asaas 500 transitorio: redelivery enquanto processed_at IS NULL aplica efeito exactly-once",
+    "route": "/admin/pedidos",
+    "priority": 29,
+    "steps": [
+      "Pedido pendente; primeira entrega do webhook de pagamento falha (handler responde 500 transitorio) ANTES de marcar processed_at.",
+      "Provedor faz redelivery do MESMO (provider,event_id) enquanto webhook_events.processed_at IS NULL.",
+      "Aguarda o settle e le webhook_events, products e o pedido."
+    ],
+    "asserts": [
+      "Apos a redelivery, o efeito e aplicado exactly-once: stock/reserved baixam 1x so e o pedido alcanca o status pago 1x.",
+      "webhook_events tem 1 linha por (provider,event_id); processed_at sai de NULL -> timestamp exatamente 1x (a entrega que deu 500 deixou processed_at NULL, permitindo retry seguro).",
+      "Sem duplicacao: a redelivery apos sucesso nao reaplica (guard por processedAt nao-NULL + CAS das flags do pedido).",
+      "audit_log audita o efeito 1x, na MESMA transacao; CHECK 0<=reserved<=stock valido."
+    ],
+    "invariants": ["webhook-idempotent", "audit-same-tx"]
+  },
+  {
+    "category": "chaos",
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null,
+    "id": "chaos.pix.expiry-vs-late-pay",
+    "team": "pedido",
+    "title": "PIX expira (estorno via pg_cron) e webhook paid chega atrasado: reconcilia sem baixar estoque ja estornado",
+    "route": "/admin/pedidos",
+    "priority": 30,
+    "steps": [
+      "Pedido PIX pendente com reserva ativa (stockReserved=true) cuja cobranca expira.",
+      "Roda o estorno de expiracao (funcao/pg_cron) que cancela e libera a reserva (releaseStock, stockReserved=false).",
+      "Em seguida chega o webhook 'paid' ATRASADO para o mesmo pedido; aplica reconcileStockForPaymentStatus.",
+      "Le orders.payment_status, products e flags de estoque ao final."
+    ],
+    "asserts": [
+      "A reconciliacao nao baixa estoque ja estornado: como stockReserved ja e false (CAS WHERE stock_reserved=true AND stock_committed=false retorna 0 linhas), commitStock NAO roda.",
+      "Estado final coerente pela maquina: se o pedido ja esta cancelled (terminal), o 'paid' atrasado e barrado (invalid_transition) sem efeito de estoque.",
+      "products.reserved nao fica negativo e products.stock nao baixa indevidamente; CHECK 0<=reserved<=stock valido.",
+      "audit_log registra somente os efeitos legais aplicados, na MESMA transacao; sem dupla baixa nem estorno em dobro."
+    ],
+    "invariants": ["order-state-machine", "reserve-lifecycle-idempotent", "webhook-idempotent"]
+  },
+  {
+    "category": "chaos",
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null,
+    "id": "chaos.checkout.double-submit",
+    "team": "pedido",
+    "title": "Double-submit de checkout: mesmo checkoutKey enviado 2x em rajada cria 1 unico pedido",
+    "route": "/admin/pedidos",
+    "priority": 31,
+    "steps": [
+      "Monta um payload de checkout com um checkoutKey fixo.",
+      "Envia o MESMO checkoutKey 2x em rajada CONCORRENTE via Promise.all (double-submit do botao/retry de rede).",
+      "Aguarda o settle e conta os pedidos criados para aquele checkoutKey."
+    ],
+    "asserts": [
+      "Exatamente 1 pedido e criado para o checkoutKey (checkout_key @unique): a 2a submissao colide no indice unico e e tratada como idempotente (retorna o mesmo pedido, sem P2002 vazando).",
+      "orders tem 1 unica linha para esse checkout_key; reserva de estoque ocorre 1x so (sem reserva dupla).",
+      "A reserva associada nao duplica: products.reserved incrementa pela qty 1x apenas; CHECK 0<=reserved<=stock valido.",
+      "Idempotente: reenviar o mesmo checkoutKey nao cria pedido novo nem reserva nova."
+    ],
+    "invariants": ["webhook-idempotent"]
+  },
+  {
+    "category": "chaos",
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null,
+    "id": "chaos.coupon.over-redeem",
+    "team": "pedido",
+    "title": "Over-redeem global: cupom maxRedemptions=1 com 2+ resgates concorrentes, exatamente 1 vence",
+    "route": "/admin/cupons",
+    "priority": 32,
+    "steps": [
+      "Cupom com maxRedemptions=1, redeemedCount=0.",
+      "Dispara 2+ chamadas CONCORRENTES de redeemCoupon, cada uma para um orderId DIFERENTE, via Promise.all.",
+      "Aguarda o settle e le coupons.redeemed_count e as linhas de coupon_redemptions."
+    ],
+    "asserts": [
+      "Exatamente 1 resgate retorna sucesso; os demais retornam ok:false reason='max_redemptions' (increment CAS WHERE redeemed_count < max vence 1 vez so).",
+      "coupons.redeemed_count == 1 ao final (nunca 2, mesmo sob corrida real no Postgres).",
+      "coupon_redemptions tem exatamente 1 linha; cada linha e unica por order_id (order_id @unique).",
+      "CHECK redeemed_count>=0 e <=maxRedemptions preservado durante toda a corrida."
+    ],
+    "invariants": ["coupon-redeem-limits"]
+  },
+  {
+    "category": "chaos",
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null,
+    "id": "chaos.coupon.per-user-race",
+    "team": "pedido",
+    "title": "Per-user race: perUserLimit=1, mesmo usuario com 2 resgates concorrentes, so 1 passa",
+    "route": "/admin/cupons",
+    "priority": 33,
+    "steps": [
+      "Cupom com perUserLimit=1, maxRedemptions=null.",
+      "MESMO userId dispara 2 chamadas CONCORRENTES de redeemCoupon para 2 orderIds diferentes via Promise.all.",
+      "Aguarda o settle e le coupon_redemptions para o par (couponId,userId)."
+    ],
+    "asserts": [
+      "Exatamente 1 resgate do usuario passa; o outro retorna ok:false reason='per_user_limit' (recontagem sob advisory lock por (cupom,usuario) serializa a corrida).",
+      "coupon_redemptions tem exatamente 1 linha para esse (couponId,userId); nenhuma 2a linha do mesmo usuario.",
+      "coupons.redeemed_count reflete apenas o resgate aceito (==1); sem incremento duplo.",
+      "Cada linha de coupon_redemptions permanece unica por order_id (order_id @unique)."
+    ],
+    "invariants": ["coupon-redeem-limits"]
+  },
+  {
+    "category": "chaos",
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null,
+    "id": "chaos.coupon.delete-guard",
+    "team": "pedido",
+    "title": "Delete-guard sob historico: excluir cupom COM redencao e bloqueado (FK Restrict); caminho e inativar",
+    "route": "/admin/cupons",
+    "priority": 34,
+    "steps": [
+      "Cupom com >=1 linha REAL em coupon_redemptions (historico criado via redeemCoupon de producao).",
+      "Chama deleteCoupon(actor,id) (inclusive em corrida com uma redencao concorrente).",
+      "Le coupons, coupon_redemptions e audit_log ao final."
+    ],
+    "asserts": [
+      "deleteCoupon retorna ok:false (in_use): bloqueado pela FK coupon_redemptions.coupon_id onDelete:Restrict; corrida vira P2003 tratado, nunca apaga.",
+      "A linha PERMANECE em coupons e o historico em coupon_redemptions sobrevive intacto (protege o financeiro).",
+      "audit_log NAO ganha linha de coupon.delete (o delete recusado nunca chega a writeAuditLog).",
+      "Caminho correto e inativar: setCouponActive(actor,id,false) deixa isActive=false sem apagar (auditado como coupon.deactivate na MESMA transacao)."
+    ],
+    "invariants": ["coupon-delete-guard", "audit-same-tx"]
+  },
+  {
+    "category": "chaos",
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null,
+    "id": "chaos.money.no-float",
+    "team": "pedido",
+    "title": "Property test de dinheiro: 100+ conjuntos aleatorios, tudo Int em centavos sem drift de float",
+    "route": "/admin/pedidos",
+    "priority": 35,
+    "steps": [
+      "Gera >=100 conjuntos PSEUDO-ALEATORIOS (seed fixa, reproduzivel) de precos base, descontos de produto (0..80), cupons (percent/fixed) e frete.",
+      "Para cada conjunto: deriva finalPriceCents por produto e calcula os totais do pedido via as funcoes puras (pricing.ts / cart/totals.ts).",
+      "Compara cada montante contra um calculo de referencia inteiro independente."
+    ],
+    "asserts": [
+      "Todos os montantes sao Int (centavos): Number.isInteger em finalPriceCents, subtotalCents, discountCents, couponDiscountCents, shippingCents e totalCents para os >=100 casos.",
+      "total_cents == subtotalCents - discountCents - couponDiscountCents + shippingCents exatamente, em todos os casos (formula de totais).",
+      "finalPriceCents == round(priceCents*(1-discountPct/100)) derivado (nunca persistido), batendo com a referencia inteira.",
+      "Zero drift/float: nenhum NaN, nenhum fracionario, nenhum erro de ponto flutuante (ex.: 0.1+0.2); aritmetica 100% inteira."
+    ],
+    "invariants": ["cents-only", "totals-formula", "final-price-derived"]
   }
 ]

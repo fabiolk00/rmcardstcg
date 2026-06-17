@@ -3780,3 +3780,20 @@ SESSAO — TIME QA
   Invariantes (2/2 listadas): coupon-code-ci-unique (indice UNIQUE LOWER(code) rejeita variante de caixa; 1 linha; code canonico UPPER) e audit-same-tx (criacao falha nao audita — rollback da tx) exercitadas no DB real.
   Spot-check DB: indice unico por LOWER(code) existe (migration 20260615050000_foundation_hardening L109: CREATE UNIQUE INDEX coupons_code_key ON coupons(LOWER(code))); 2a insercao nao criou linha (count==1, sobrevivente==1o id); coupon-coherence preservado.
   Produto INTOCADO: git diff e0e83a1..HEAD -- app lib prisma VAZIO; working tree de app/lib/prisma VAZIO (nenhum fixer agiu). So o ledger (passes) e este progresso foram tocados.
+
+[CHAOS MONKEY] 2026-06-17 BRT injecao da suite de chaos no ledger (tests/harness/admin_features.json)
+  O QUE FIZ: APENAS adicionei 11 entradas category=chaos ao array (append puro; re-leitura imediatamente antes de escrever no mesmo processo p/ evitar clobber). NAO toquei nenhuma das 47 features functional, NAO escrevi specs, NAO marquei passes. Todas as 11 chaos nascem state=todo, passes=false, qa_note=null, fix_note=null, review=null, review_note=null. JSON validado (parseia; 47+11=58). Prettier --check verde.
+  ESTOQUE (3, priority continuando 21..23):
+    21 chaos.stock.race — reserved-le-stock, reserve-lifecycle-idempotent. stock=1, N>=10 reservas concorrentes (Promise.all): exatamente 1 vence, sem oversell, CHECK products_reserved_le_stock_chk nunca viola.
+    22 chaos.admin.concurrent-edit — reserved-le-stock, audit-same-tx. 2+ updateProduct simultaneos no mesmo produto: sem lost update, audit_log registra so as mutacoes aplicadas, CHECK valido.
+    23 chaos.webhook.replay — webhook-idempotent, reserve-lifecycle-idempotent, audit-same-tx. mesmo (provider,event_id) 5x: 1 efeito so (commit baixa 1x), processed_at setado 1x.
+  PEDIDO (8, priority continuando 28..35):
+    28 chaos.webhook.out-of-order — order-state-machine, webhook-idempotent, audit-same-tx. cancelled depois de paid (e vice-versa): estado final pela maquina, sem duplo commit/estorno.
+    29 chaos.asaas.transient-500 — webhook-idempotent, audit-same-tx. handler 500 transitorio; redelivery enquanto processed_at IS NULL: efeito exactly-once, sem duplicacao.
+    30 chaos.pix.expiry-vs-late-pay — order-state-machine, reserve-lifecycle-idempotent, webhook-idempotent. expiracao (estorno pg_cron) + paid atrasado: reconcilia sem baixar estoque ja estornado.
+    31 chaos.checkout.double-submit — webhook-idempotent. mesmo checkoutKey 2x em rajada: 1 pedido so (checkout_key @unique), idempotente.
+    32 chaos.coupon.over-redeem — coupon-redeem-limits. maxRedemptions=1, 2+ resgates concorrentes: exatamente 1 redencao, redeemedCount==1, coupon_redemptions unico por order_id.
+    33 chaos.coupon.per-user-race — coupon-redeem-limits. perUserLimit=1, mesmo usuario 2 resgates concorrentes: so 1 passa.
+    34 chaos.coupon.delete-guard — coupon-delete-guard, audit-same-tx. excluir cupom COM redencao: bloqueado (FK Restrict), caminho e inativar.
+    35 chaos.money.no-float — cents-only, totals-formula, final-price-derived. property test >=100 conjuntos aleatorios: tudo Int em centavos, total exato, finalPriceCents derivado, zero drift/float.
+  ESTADO: 11 chaos todo (3 estoque + 8 pedido). 47 functional intactas (passes=true). Total 58. PROXIMO: fase de build escreve as specs de chaos.
