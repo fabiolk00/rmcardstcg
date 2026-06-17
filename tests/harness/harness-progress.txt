@@ -233,3 +233,45 @@ SESSAO 0003 — TIME ESTOQUE
   proximo   : estoque.product.create-invalid-rejected (priority 3, state=todo) — preco
               negativo / desconto>80 / estoque negativo / preco nao-inteiro rejeitados,
               sem produto e sem audit.
+
+--------------------------------------------------------------------------------
+SESSAO 0004 — TIME QA (gate adversarial)
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 06:25 -0300
+  time      : qa
+  feature   : estoque.product.create-duplicate-sku (priority 2)
+  veredito  : APROVADO — passes=true, qa_note=null. state INALTERADO (ready_for_qa).
+  ritual    : pwd /c/rmcardstcg; branch harness/admin OK. init.sh => smoke DB-first
+              VERDE (1 passed) + 3 UI VERMELHOS (blocker proxy.ts aceito). Confirmado.
+  reproducao: `pnpm harness tests/harness/estoque/product-create-duplicate-sku.spec.ts`
+              rodado 3x em Postgres efemero recem-seedado (db push + apply-test-
+              constraints + seed = 28 produtos / 8 pedidos). VERDE as 3 vezes (~4.4s).
+              Isolamento OK: cada run banco novo; nome unico por run (randomUUID).
+  anti-fake-green (cada assert do ledger PROVADO contra DB real via `pg`):
+    [1] createProduct lanca ProductValidationError com /SKU/i -> spec L124-133.
+        PROVADO. Reforco case-insensitive (spec L135-149): seed mais antigo por
+        created_at e BP-LOST (UPPERCASE, com letras), entao a versao lowerSku
+        ('bp-lost') e DISTINTA do original e TAMBEM colide -> prova `mode:insensitive`
+        de verdade (nao tautologia de igualdade exata). Branch dispara.
+    [2] products count inalterado (==N) -> spec L151-155. + exatamente 1 produto com
+        LOWER(sku)=LOWER(seed) e e o id original do seed -> spec L157-164. PROVADO.
+    [3] audit_log count inalterado (==A, rollback) -> spec L166-172. + 0 linhas
+        product.create com o nome unico tentado (sem audit orfao) -> spec L174-180.
+        PROVADO. audit-same-tx: estrutural na producao (lib/data/products.ts L230-235:
+        tx.product.findFirst mode:insensitive + throw ProductValidationError DENTRO de
+        prisma.$transaction, ANTES de tx.product.create L239 e writeAuditLog L256 =>
+        rollback atomico).
+    rede final: CHECK products_reserved_le_stock_chk e 0 violacoes -> spec L182-186.
+        PROVADO.
+  prova-propria: escrevi PROBE INDEPENDENTE (fora do repo, removida ao fim) que sobe
+        seu PROPRIO PG efemero, seed, chama o SEAM REAL createProduct (via _run-seam.ts)
+        e valida com MINHAS proprias queries pg: TODOS 13 checks PASS, incl. checagem
+        extra de pg_constraint (products_reserved_le_stock_chk existe) e do texto da
+        mensagem ('Já existe um produto com o SKU "BP-LOST".'). Banco real: products
+        ficou 28, audit_log ficou 0 apos as 2 tentativas (UPPER + lower).
+  nao-trapaca: seam chama a funcao de PRODUCAO createProduct (sem mock); spec assertaa
+        via `pg` cru sobre DATABASE_URL. Nenhum assert trivial. git diff e0e83a1..HEAD
+        em app/lib/prisma = VAZIO (nenhum codigo de produto tocado). Tree limpo apos QA
+        (next-env.d.ts e playwright.config.ts revertidos — rewrites incidentais de
+        next dev / harness, nao do QA).
+  proximo   : estoque.product.create-invalid-rejected (priority 3, state=todo).
