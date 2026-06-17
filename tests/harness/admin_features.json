@@ -658,8 +658,8 @@
     "passes": true,
     "qa_note": null,
     "fix_note": null,
-    "review": null,
-    "review_note": null
+    "review": "approved",
+    "review_note": "Mergeavel. Sem diff de produto (app/lib/prisma == vazio): a seam updateOrderShippingStatus ja era correta, nenhum conserto necessario. Spec DB-first prova causa-raiz via funcao de PRODUCAO (sem mock); asserts fortes e nao-triviais (reserva ativa reserved=3>0). audit-same-tx estrutural (writeAuditLog(tx,...) dentro do prisma.$transaction; CAS atomico updateMany WHERE shippingStatus=from); estoque so concilia em to==='cancelled'. orderTransitions.ts client-safe (sem prisma). Dinheiro Int em centavos, camelCase/snake_case respeitado. Gates verdes: typecheck/lint/build OK; prettier OK nos arquivos da feature (falhas do format:check sao so .claude/agent-memory + settings.local.json, ruido fora de escopo). Harness 1 passed reproduzivel."
   },
   {
     "id": "pedido.shipping.sent-to-delivered",

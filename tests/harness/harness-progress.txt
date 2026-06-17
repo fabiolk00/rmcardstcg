@@ -2798,3 +2798,44 @@ SESSAO — TIME QA
               tocou SO: spec, _run-seam.ts (INFRA), ledger (state->ready_for_qa), progress.
               Ledger: commit do time mudou apenas o campo "state" (todo->ready_for_qa).
   ledger    : QA escreveu passes=true (campo do QA), qa_note=null. JSON valida.
+
+SESSAO — TIME REVIEWER
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 12:46 -0300
+  time      : reviewer
+  feature   : pedido.shipping.pending-to-sent (priority 7)
+  veredito  : APROVADO (mergeavel). review="approved", review_note preenchido.
+              state INALTERADO (ready_for_qa); passes INTOCADO (campo do QA).
+  ritual    : pwd /c/rmcardstcg; branch harness/admin; li harness-progress.txt e git log;
+              inspecionei git show c871dd3 (pedido) e 9ba141e (qa).
+  diff-prod : NAO existe commit de fixer p/ esta feature — e correto. A seam de PRODUCAO
+              (updateOrderShippingStatus, lib/data/orders.ts L523) ja estava correta;
+              `git diff c871dd3~1..9ba141e -- app lib prisma` == VAZIO (0 linhas). Logo
+              nao havia sintoma a mascarar nem causa-raiz a consertar: feature de COBERTURA.
+  checklist : [causa-raiz] OK — teste exercita a funcao real, asserts NAO enfraquecidos
+                (reserva ativa reserved=3>0 torna "sem efeito de estoque" nao-trivial;
+                QA rodou probe independente 20/7/5 cobrindo no-op/ilegal/cancelled).
+              [dinheiro] OK — sem float; precos Int em centavos (UNIT_PRICE/subtotal/total);
+                nenhum real fora da borda Asaas neste caminho; final-price nao envolvido.
+              [puro/client-safe] OK — orderTransitions.ts (SHIPPING_TRANSITIONS) nao importa
+                prisma; driver nao vaza p/ bundle (pnpm build verde, sem warning de bundle).
+              [audit-same-tx] OK — writeAuditLog(tx,...) dentro do prisma.$transaction de
+                updateOrderShippingStatus (orders.ts L558-567); CAS atomico updateMany
+                WHERE shippingStatus=from; X->X no-op; idempotencia preservada; estoque so
+                concilia em to==='cancelled' (L554).
+              [camelCase/snake_case] OK — dominio camelCase (shippingStatus/stockReserved),
+                DB snake_case lido cru via pg; action = valor @map dotted
+                'order.shipping_status_update' (schema L54), nao a chave JS do enum.
+              [propriedade de campos] OK — pedido mudou so "state" (todo->ready_for_qa);
+                QA mudou so "passes" (false->true) + qa_note=null; immutaveis
+                (asserts/steps/invariants/priority/title) intactos. Reviewer escreve
+                APENAS review/review_note.
+  gates     : pnpm typecheck OK; pnpm lint OK (0 warnings); pnpm build OK (Next 16, compila
+              + TS + static pages, sem erro); pnpm format:check falha SO em
+              .claude/agent-memory/*.md + .claude/settings.local.json (untracked/local, fora
+              do escopo da feature) — prettier --check nos arquivos da feature (spec,
+              _run-seam.ts, admin_features.json, orders.ts, orderTransitions.ts) == "All
+              matched files use Prettier code style!". Repro do harness: 1 passed (5.8s) em
+              PG efemero recem-seedado (28 produtos / 8 pedidos).
+  ledger    : reviewer escreveu review="approved" + review_note em admin_features.json.
+              JSON valida. next-env.d.ts (rewrite incidental do next dev) NAO comitado.
