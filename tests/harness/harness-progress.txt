@@ -3700,3 +3700,12 @@ SESSAO — TIME QA
   RESULTADO: pnpm harness VERDE e reproduzivel (2 runs, 1 passed, ~5.4s em PG efemero recem-seedado). Gates: typecheck OK, lint OK (max-warnings 0), prettier --check do spec+runner OK.
   PRODUTO INTOCADO: git diff -- app lib prisma == VAZIO. needs_product_fix:false. NAO comitei next-env.d.ts (ruido next dev) nem harness-progress.txt da raiz.
   PROXIMO: QA aprova cupom.redeem.global-limit; depois pedido pega cupom.redeem.per-user-limit (priority 23, state todo).
+
+[QA] 2026-06-17 cupom.redeem.global-limit -> APROVADO (passes=true, qa_note=null, state inalterado=ready_for_qa).
+  Repro: pnpm harness tests/harness/pedido/cupom-redeem-global-limit.spec.ts em PG efemero recem-seedado (28 prod/8 ped) -> 1 passed (2.7s).
+  Anti-fake-green: 3/3 asserts provados ponta a ponta via pg sobre DATABASE_URL; seam=redeemCoupon de PRODUCAO (lib/data/coupons.ts:364) envelopado num prisma.$transaction como o checkout, via _run-seam.ts (L41 import direto, L472-480 tx + RedeemAbort no ok:false); createCoupon (L150) semeia o cupom. SEM mock.
+    A1 1a redencao ok/alreadyRedeemed=false + redeemed_count==1: L161-167 pre-estado redeemed_count=0 (anti-trivial, parte de 0); L183-185 retorno r1.ok && !alreadyRedeemed; L187-195 coluna crua redeemed_count==1 (CAS WHERE redeemed_count<max) + Number.isInteger.
+    A2 2a redencao (orderB!=orderA) ok:false reason='max_redemptions' + redeemed_count permanece 1: L171-172 orderA!=orderB (prova limite GLOBAL, nao idempotencia por pedido); MAX=1 (2a bate no teto); L207-209 r2.ok===false && reason==='max_redemptions'; L211-218 redeemed_count segue ==1 (sem increment parcial; RedeemAbort deu rollback).
+    A3 coupon_redemptions 1 linha + CHECK >=0/<=max: L127-131 sanity coupons_redeemed_count_chk existe (guarda nao-vacua; confirmado test-schema-supplement.sql L44); L221-226 exatamente 1 linha p/ o cupom = a do orderA; L229-233 orderB nao deixou linha (rollback total); L236-244 0 violacoes de redeemed_count>=0 nem do teto redeemed_count<=max.
+  Invariante coupon-redeem-limits (unica listada): exercitada no DB (CAS global atomico, nenhuma redencao alem do teto, contador e tabela coerentes). audit-same-tx NAO esta listada e redeemCoupon nao grava audit_log -> correto a spec nao asserir.
+  Produto intocado: git diff e0e83a1..HEAD -- app lib prisma VAZIO.
