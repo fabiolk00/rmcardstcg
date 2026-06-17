@@ -1295,10 +1295,10 @@
   },
   {
     "category": "chaos",
-    "state": "building",
+    "state": "ready_for_qa",
     "passes": false,
     "qa_note": null,
-    "fix_note": null,
+    "fix_note": "Causa-raiz (Prisma 7): no double-submit, o perdedor da corrida colide na UNIQUE checkout_key (orders_checkout_key_key) e o Prisma lanca P2002, mas o helper isUniqueViolation(err,'checkout_key') (lib/data/orders.ts) so lia err.meta.target, que NAO existe mais no P2002 do Prisma 7 (driver adapters) — os campos da constraint migraram para err.meta.driverAdapterError.cause.constraint ({ fields, index }). Com meta.target=undefined o helper devolvia false, o ramo de recuperacao (findOrderByCheckoutKey -> { ok:true, reused:true }) nunca era alcancado e o P2002 vazava ao chamador. Conserto MINIMO (so lib/data/orders.ts, sem afrouxar invariantes): isUniqueViolation passa a reconhecer TAMBEM o shape do Prisma 7 — casa o target tanto contra constraint.fields (ex.: 'checkout_key') quanto contra constraint.index/nome (ex.: 'orders_checkout_key_key'), mantendo meta.target para compat. A logica de recuperacao ja era correta; agora e alcancada e o duplo-clique colapsa em 1 pedido + 1 reserva (reused:true nos N-1). Tambem corrigida 1 comparacao de sanidade NAO-canonica do spec (linha 315) que comparava o inteiro cru de orders.id ('9') com o display id de dominio Order.id ('#9', convencao de PRODUCAO: toOrder usa `#${row.id}`, e o storefront faz order.id.replace(/^#/,'')); agora normaliza removendo o '#' antes do toBe — bug latente do proprio spec, alcancado so depois do conserto do P2002; nenhum dos 4 asserts canonicos (idempotente/1-linha/reserva-1x/reenvio-idempotente) foi afrouxado.",
     "review": null,
     "review_note": null,
     "id": "chaos.checkout.double-submit",

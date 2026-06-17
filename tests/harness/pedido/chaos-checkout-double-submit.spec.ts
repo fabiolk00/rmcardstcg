@@ -312,8 +312,11 @@ test("chaos.checkout.double-submit: N submissoes do MESMO checkoutKey criam 1 pe
     );
     expect(orderRows.rowCount, "exatamente 1 linha em orders p/ o checkout_key").toBe(1);
     const dbOrderId = orderRows.rows[0].id;
+    // O dominio expoe Order.id como display id com prefixo "#" (toOrder: `#${row.id}`,
+    // convencao de PRODUCAO usada no storefront — carrinho/actions.ts faz .replace(/^#/,"")).
+    // O DB guarda o inteiro cru; comparamos a PARTE NUMERICA p/ casar like-for-like.
     expect(String(dbOrderId), "o pedido no DB e o vencedor reportado pelo seam").toBe(
-      winnerOrderId,
+      winnerOrderId.replace(/^#/, ""),
     );
     expect(orderRows.rows[0].payment_status, "pedido criado fica pending").toBe("pending");
 

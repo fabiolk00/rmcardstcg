@@ -121,15 +121,47 @@ export class OutOfStockError extends Error {
   }
 }
 
-/** Detecta violacao de unique do Prisma (P2002), opcionalmente num campo/alvo. */
+/**
+ * Detecta violacao de unique do Prisma (P2002), opcionalmente num campo/alvo.
+ *
+ * O `target` casa tanto contra o nome do campo (ex.: "checkout_key") quanto o
+ * nome da constraint (ex.: "orders_checkout_key_key"). Reconhece os DOIS shapes
+ * de P2002:
+ *  - Prisma <=6 / compat: `meta.target` (string | string[] com os campos).
+ *  - Prisma 7 (driver adapters): `meta.driverAdapterError.cause.constraint`
+ *    com `{ fields: string[] }` e/ou `{ index: string }` (nome da constraint).
+ *    Nesse shape `meta.target` NAO existe — por isso a deteccao por target
+ *    precisa olhar o constraint do driver adapter, senao o catch de recuperacao
+ *    do double-submit nunca e alcancado e o P2002 vaza ao chamador.
+ */
 function isUniqueViolation(err: unknown, target?: string): boolean {
-  const e = err as { code?: string; meta?: { target?: unknown } };
+  const e = err as {
+    code?: string;
+    meta?: {
+      target?: unknown;
+      driverAdapterError?: {
+        cause?: { constraint?: { fields?: unknown; index?: unknown } | string };
+      };
+    };
+  };
   if (e?.code !== "P2002") return false;
   if (!target) return true;
+
+  const hit = (value: unknown): boolean => String(value ?? "").includes(target);
+
+  // Compat: meta.target (Prisma <=6).
   const t = e.meta?.target;
-  return Array.isArray(t)
-    ? t.some((x) => String(x).includes(target))
-    : String(t ?? "").includes(target);
+  if (Array.isArray(t) ? t.some(hit) : hit(t)) return true;
+
+  // Prisma 7: meta.driverAdapterError.cause.constraint ({ fields, index } | nome).
+  const constraint = e.meta?.driverAdapterError?.cause?.constraint;
+  if (typeof constraint === "string") return hit(constraint);
+  if (constraint) {
+    const fields = constraint.fields;
+    if (Array.isArray(fields) ? fields.some(hit) : hit(fields)) return true;
+    if (hit(constraint.index)) return true;
+  }
+  return false;
 }
 
 /** Falha de serializacao/deadlock (P2034) — seguro para retry da transacao. */
