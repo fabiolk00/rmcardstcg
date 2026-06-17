@@ -3488,3 +3488,34 @@ SESSAO — TIME QA
   Natureza: feature estrutural (total gravado no checkout via lib/cart/totals.ts; nao ha mutacao de admin) -> sem seam de producao e CORRETAMENTE sem audit-same-tx (nao listado nos invariants da feature).
   GATE 3 (invariantes ligadas, probe independente com valores DIFERENTES 77777/4321/2099/2500=>73857): formula derivada das colunas cruas confere; CHECK rejeita -999 (23514, 0 vazamento); 5 colunas integer; 8 pedidos do seed sem violacao. Probe removida (tree limpo).
   GATE 4 (produto intacto): git diff e0e83a1..HEAD -- app lib prisma == VAZIO.
+
+[PEDIDO 2026-06-17 14:05] pedido.shipping.free-above-threshold (priority 15) -> ready_for_qa.
+  seam      : cartTotals(lines) de PRODUCAO (lib/cart/totals.ts) — funcao PURA de checkout
+              que decide frete. ESTENDI tests/harness/estoque/_run-seam.ts com o case
+              'cartTotals' (INFRA de teste): importa cartTotals + FREE_SHIPPING_THRESHOLD_CENTS
+              + FLAT_SHIPPING_CENTS do MESMO modulo de producao e devolve
+              { totals, FREE_SHIPPING_THRESHOLD_CENTS, FLAT_SHIPPING_CENTS } por stdout.
+              NAO ha DB/prisma neste case (feature estrutural de funcao pura), entao a spec
+              assertaa o retorno direto, sem pg — invariantes totals-formula/cents-only/
+              final-price-derived sao propriedades da funcao, nao de estado persistido.
+  o-que-fiz : spec tests/harness/pedido/shipping-free-above-threshold.spec.ts provando cada assert:
+                CASO PRINCIPAL anti-trivial: priceCents=20000, discountPct=10, qty=2 =>
+                  subtotal=40000, discount=4000 (derivado de finalPriceCents), merchandise=36000.
+                A1 shippingCents==0 (merchandise 36000 >= threshold 29900, lido da constante
+                   REAL de producao, sem numero magico) + remainingForFreeCents==0.
+                A2 merchandiseCents==subtotalCents-discountCents (desconto de PRODUTO ANTES do
+                   frete; subtotal 40000 != merchandise 36000 => o desconto pesa de verdade).
+                A3 totalCents==merchandiseCents+0 (frete gratis nao soma).
+                cents-only: Number.isInteger em TODOS os campos do CartTotals.
+                BORDA: merchandise==29900 (== limite) tambem e gratis (limite e `>=`).
+                ANTI-FALSO-POSITIVO: 1 centavo abaixo (29899) NAO e gratis (shipping==FLAT>0),
+                  provando que a fronteira existe exatamente no threshold.
+  resultado : pnpm harness ...spec.ts -> 1 passed, reproduzivel 2x (PG efemero recem-seedado).
+  gates     : pnpm typecheck OK; pnpm lint OK; prettier --check OK nos meus arquivos
+              (spec + _run-seam.ts).
+  produto   : NAO toquei app/**, lib/**, prisma/** (git diff -- app lib prisma == VAZIO).
+              So spec novo + _run-seam.ts (infra) + ledger + admin_features.json (state).
+  obstaculos: nenhum. next-env.d.ts e .claude/agent-memory/ ficaram fora do commit (ruido
+              gerado/pre-existente, conforme regra do harness).
+  proximo   : QA valida pedido.shipping.free-above-threshold; proximo todo de pedido =
+              pedido.shipping.flat-below-threshold (priority 16).

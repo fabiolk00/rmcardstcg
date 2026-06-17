@@ -851,7 +851,7 @@
       "totalCents == merchandiseCents + 0."
     ],
     "invariants": ["totals-formula", "cents-only", "final-price-derived"],
-    "state": "todo",
+    "state": "ready_for_qa",
     "passes": false,
     "qa_note": null,
     "fix_note": null,

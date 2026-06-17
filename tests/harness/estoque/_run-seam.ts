@@ -38,6 +38,12 @@ import {
 import type { PaymentStatus, ShippingStatus } from "../../../lib/data/types";
 import type { AuditActor } from "../../../lib/data/audit";
 import { finalPriceCents } from "../../../lib/data/pricing";
+import {
+  cartTotals,
+  FREE_SHIPPING_THRESHOLD_CENTS,
+  FLAT_SHIPPING_CENTS,
+  type CartLine,
+} from "../../../lib/cart/totals";
 import { prisma } from "../../../lib/db";
 import {
   commitStock,
@@ -99,6 +105,15 @@ type RestockArgs = { orderId: number };
 // a funcao computa o preco final isolada de qualquer dependencia server-only.
 // INFRA de teste: usa a funcao de PRODUCAO sem mock.
 type FinalPriceArgs = { priceCents: number; discountPct: number };
+// Seam PURA: chama cartTotals(lines) de PRODUCAO (lib/cart/totals.ts) com linhas
+// de carrinho montadas pela spec e devolve o CartTotals computado JUNTO com as
+// CONSTANTES de PRODUCAO (FREE_SHIPPING_THRESHOLD_CENTS, FLAT_SHIPPING_CENTS) lidas
+// do MESMO modulo. Este case NAO toca prisma nem o banco — cartTotals e a funcao
+// pura de checkout que decide frete gratis (mercadoria ja com desconto >= limite),
+// frete flat (abaixo do limite) e total. Devolver as constantes junto deixa a spec
+// asserir contra os limites REAIS de producao, nao contra numeros magicos copiados.
+// INFRA de teste: usa a funcao de PRODUCAO sem mock.
+type CartTotalsArgs = { lines: CartLine[] };
 // Espelha o call site de PRODUCAO do AJUSTE MANUAL DE PAGAMENTO pelo admin
 // (adjustOrderPaymentStatusAction -> adjustOrderPaymentStatus, lib/data/orders.ts
 // L624). Numa MESMA transacao a funcao: le o pedido (before), valida X->X no-op,
@@ -309,6 +324,19 @@ async function main(): Promise<void> {
         // em centavos (Int). Prova final-price-derived + pure-client-safe.
         const { priceCents, discountPct } = payload as FinalPriceArgs;
         result = finalPriceCents({ priceCents, discountPct });
+        break;
+      }
+      case "cartTotals": {
+        // Seam PURA — chama a funcao de PRODUCAO cartTotals diretamente, SEM abrir
+        // transacao nem tocar o banco. Devolve o CartTotals computado MAIS as
+        // constantes de PRODUCAO (threshold de frete gratis e frete flat), p/ a spec
+        // asserir frete-gratis-acima-do-limite contra os limites REAIS do checkout.
+        const { lines } = payload as CartTotalsArgs;
+        result = {
+          totals: cartTotals(lines),
+          FREE_SHIPPING_THRESHOLD_CENTS,
+          FLAT_SHIPPING_CENTS,
+        };
         break;
       }
       case "adjustOrderPaymentStatus": {
