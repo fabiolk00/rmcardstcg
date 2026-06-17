@@ -275,3 +275,47 @@ SESSAO 0004 — TIME QA (gate adversarial)
         (next-env.d.ts e playwright.config.ts revertidos — rewrites incidentais de
         next dev / harness, nao do QA).
   proximo   : estoque.product.create-invalid-rejected (priority 3, state=todo).
+
+--------------------------------------------------------------------------------
+SESSAO 0005 — TIME ESTOQUE
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 06:32 -0300
+  time      : estoque
+  feature   : estoque.product.create-invalid-rejected (priority 3)
+  seam      : createProduct(actor, input) em lib/data/products.ts. A validacao de
+              dominio vive em normalizeProductInput (L132-173), chamada NO TOPO de
+              createProduct (L228) ANTES de abrir a prisma.$transaction (L230). Cada
+              input invalido lanca ProductValidationError antes de qualquer escrita:
+              a transacao nunca abre -> nem produto nem audit_log. Mesma seam de baixo
+              nivel das sessoes 0001/0003; a server action createProductAction so
+              delega e exige requireAdmin() (contexto de request), por isso nao usada.
+  arquivos  : tests/harness/estoque/product-create-invalid-rejected.spec.ts (spec
+              DB-first, sem browser). Reusa o runner _run-seam.ts (INFRA ja existente,
+              suporta createProduct) SEM alteralo. Nenhuma mudanca de infra/produto.
+  o-que-fiz : Ritual de inicio OK (branch harness/admin; init.sh => smoke DB-first
+              VERDE, 3 UI VERMELHOS de proposito = blocker proxy.ts aceito). Marquei
+              SO o state da feature: todo -> building -> ready_for_qa. Escrevi spec que:
+              (1) conta N produtos / A audits; (2) dispara 6 casos invalidos com
+              nome+sku UNICOS cada — priceCents=-1, priceCents=1999.5 (float),
+              discountPct=81, discountPct=10.5 (float), stock=-3, stock=4.2 (float) —
+              e exige que CADA UM lance ProductValidationError com a mensagem de faixa
+              correta (Preco/Desconto/Estoque invalido); (3) CONTRA-PROVA: o MESMO
+              input base SEM o patch invalido cria 1 produto (prova que a rejeicao vem
+              so do campo invalido, nao do base); (4) products count==N+1 e audit_log
+              count==A+1 (so a sanidade entra), zero produtos/audits com os nomes dos
+              casos invalidos e zero vazamento pelo prefixo de SKU HARNESS-INV-;
+              (5) cents-only/final-price-derived: information_schema confirma price_cents
+              e discount_pct como integer, e NAO existe coluna final_price/final_price_cents
+              (preco final e derivado); (6) rede final: 0 linhas violam 0<=reserved<=stock.
+  invariante: cents-only (priceCents/discountPct/stock so Int — floats rejeitados +
+              colunas integer no DB), final-price-derived (discountPct so Int p/
+              derivacao integra; sem coluna de preco final persistida), audit-same-tx
+              (rejeicao na validacao ANTES da $transaction => nenhum produto nem audit
+              orfao; provado empiricamente por count e por nome/sku).
+  estado    : ready_for_qa (state da feature no ledger). passes NAO tocado (campo do QA).
+  resultado : VERDE — `pnpm harness tests/harness/estoque/product-create-invalid-rejected.spec.ts`
+              => 1 passed (5.0s). Seed 28 produtos / 8 pedidos. Gates: typecheck OK,
+              lint OK (0 warnings), prettier OK nos MEUS arquivos (spec + ledger).
+  commit    : (ver git log — commit desta sessao)
+  proximo   : estoque.product.increase-stock (priority 4, state=todo) — updateProduct
+              com stock=S+10, reserved inalterado, audit product.update na mesma tx.

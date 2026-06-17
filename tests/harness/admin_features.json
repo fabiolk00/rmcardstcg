@@ -64,7 +64,7 @@
       "discountPct so aceita inteiro (cents-only/derivacao integra)."
     ],
     "invariants": ["cents-only", "final-price-derived", "audit-same-tx"],
-    "state": "todo",
+    "state": "ready_for_qa",
     "passes": false,
     "qa_note": null,
     "fix_note": null,
