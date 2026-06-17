@@ -1383,3 +1383,52 @@ SESSAO 0024 — TIME ESTOQUE
   proximo   : estoque.restock.idempotent (priority 15, state=todo) — refund 2x no MESMO
               pedido: 2a aplicacao no-op (CAS WHERE stock_committed=true retorna 0 linhas),
               stock estavel pos-1a-reposicao, Order.stockCommitted continua false.
+
+--------------------------------------------------------------------------------
+SESSAO 0025 — TIME QA  (PORTAO)
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 08:38 -0300
+  time      : qa
+  feature   : estoque.restock.refund-of-paid (priority 14, state=ready_for_qa)
+  veredito  : APROVADA. passes false->true; qa_note=null; state mantido ready_for_qa
+              (QA nao altera state em aprovacao).
+  repro     : `pnpm harness tests/harness/estoque/restock-refund-of-paid.spec.ts`
+              rodado 2x do ZERO em PG efemero recem-seedado (28 produtos/8 pedidos):
+              1 passed (5.3s, teste 2.7s) e 1 passed (5.2s, teste 2.7s). VERDE
+              reproduzivel.
+  seam      : CONFIRMADO PRODUCAO, sem mock. _run-seam.ts op restockUnitsForOrder
+              reproduz BYTE-A-BYTE o ramo de refund de pago de
+              reconcileStockForPaymentStatus (lib/data/orders.ts L469-473): mesmo CAS
+              UPDATE "orders" SET stock_committed=false WHERE id=? AND stock_committed
+              =true; SE refunded===1 -> restockUnits(tx, lines) — a FUNCAO REAL
+              importada de lib/data/inventory (L127-140: stock += qty; reserved
+              INTOCADO; sem predicado de coluna proprio). lines lidas dos PROPRIOS
+              itens do pedido (== snap.items na producao). Nada injetado, nada mockado.
+  asserts   : [A1] stock += qty / reserved inalterado -> PROVADO (spec L233-241:
+              stock 30->34 == STOCK_AFTER_COMMIT+QTY; delta stock==+QTY; reserved
+              7->7, delta==0; price_cents intocado; ints). reserved=7 FORCADO >0
+              (anti-trivial). [A2] Order.stockCommitted==false via CAS -> PROVADO
+              (L252-255: committed false, reserved continua false). [A3] CHECK
+              0<=reserved<=stock valido -> PROVADO (L261-273: linha alvo 7<=34;
+              0 violacoes no catalogo). Idempotencia (reserve-lifecycle-idempotent):
+              2a aplicacao refunded===0, stock/reserved estaveis, flag continua false
+              (L282-300).
+  probe-ind : probe propria DESCARTAVEL com valores DIFERENTES da spec (RES_A=13,
+              STOCK_A=55, QTY_A=9; RES_B=2, STOCK_B=20, QTY_B=6) — provou a LOGICA,
+              nao a constante: (1) refund MULTI-PRODUTO com agregacao (pb 2x=4+2 ->
+              +6) repos stock+=qty por produto, reserved intocado, cents intocado;
+              (2) CHECK products_reserved_le_stock_chk REALMENTE bloqueia violacao
+              (UPDATE reserved=stock+1 -> ERROR do constraint, capturado); 0 violacoes;
+              (3) refund NAO grava audit_log (COUNT igual antes/depois) — confirma que
+              audit NAO se aplica a esta feature; (4) pedido pago com stockCommitted
+              =FALSE -> refunded===0, estoque NAO reposto (guard pela flag e real, nao
+              bypassado); (5) idempotencia 2x. 2 passed (8.2s). Probe REMOVIDA; tree
+              limpo (next-env.d.ts revertido — ruido do next dev).
+  invariante: reserved-le-stock -> CONFIRMADA (CHECKs products_reserved_le_stock_chk
+              e products_reserved_nonneg_chk presentes; CHECK bloqueia de verdade;
+              0 violacoes). reserve-lifecycle-idempotent -> CONFIRMADA (flag
+              stockCommitted como guard do CAS; 1a=refunded 1, 2a=refunded 0 no-op;
+              sem dupla reposicao). cents-only -> price_cents Int intocado. audit-
+              same-tx N/A (reconcile de estoque nao grava audit; confirmado por probe).
+  produto   : git diff e0e83a1..HEAD -- app lib prisma == VAZIO. Time NAO tocou produto.
+  estado    : ready_for_qa (inalterado). passes=true; qa_note=null.
