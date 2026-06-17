@@ -1221,3 +1221,36 @@ SESSAO 0020 — TIME ESTOQUE
               stock_committed=false retorna 0 linhas), reserved permanece pos-1o-estorno,
               CHECK reserved>=0 jamais violado. O runner ja suporta o ciclo
               (releaseStockForOrder devolve {released}) — sem extensao necessaria.
+
+================================================================================
+[QA GATE] estoque.release.reserved-on-cancel — VEREDITO: APROVADA (passes=true)
+================================================================================
+data      : 2026-06-17  | branch harness/admin | gate adversarial DB-first
+repro     : `pnpm harness tests/harness/estoque/release-reserved-on-cancel.spec.ts`
+            rodado 2x do ZERO em PG efemero recem-seedado (28 produtos/8 pedidos):
+            1 passed (5.3s) e 1 passed (5.3s). VERDE reproduzivel.
+anti-fake : Sem mock no spec nem no seam. _run-seam.ts op "releaseStockForOrder"
+            importa releaseStock REAL de lib/data/inventory e replica byte-a-byte o
+            ramo cancelled->release de reconcileStockForPaymentStatus (orders.ts
+            L457-466): mesmo CAS UPDATE orders SET stock_reserved=false WHERE
+            stock_reserved=true AND stock_committed=false; guard released===1; lines
+            lidas dos PROPRIOS itens do pedido (= snap.items). Mutacao em PG real,
+            assercoes via pg cru. Nenhum assert trivial (reserved residual >0 e !=stock).
+asserts   : [1] reserved-=qty / stock intocado  -> PROVADO (5->2; delta reserved==QTY,
+                delta stock==0; ints; residual>0 e !=stock).
+            [2] Order.stockReserved=false / committed continua false -> PROVADO (pre-state
+                true/false asserido antes; flip real apos a acao).
+            [3] CHECK 0<=reserved<=stock valido -> PROVADO (products_reserved_le_stock_chk
+                existe; 0 violacoes; residual>=0 e <=stock).
+invariant : reserve-lifecycle-idempotent -> PROVADA (2a aplicacao released===0, sem
+            decremento duplo; flags estaveis). reserved-le-stock -> PROVADA.
+probe QA  : probe independente com VALORES DIFERENTES (stock=30/res=9/qty=4 + 2o item
+            multi-linha stock=12/res=7/qty=6) -> reserved 9->5 e 7->1, stock intocado,
+            idempotencia (released=0 na 2a), pedido fantasma released=0 sem efeito,
+            audit_log total inalterado (release e efeito de inventario, sem audit),
+            e o CHECK provado DB-ENFORCED (UPDATE reserved=-1 ESTOUROU
+            products_reserved_nonneg_chk). Probe removida ao fim (tree limpo).
+produto   : git diff e0e83a1..HEAD -- app lib prisma == VAZIO. Time nao tocou produto.
+            Ledger commit so virou state todo->ready_for_qa (asserts/invariants/title
+            imutaveis). QA escreveu SO passes (false->true); qa_note=null; state mantido
+            ready_for_qa (nao alterado pelo QA, conforme ritual).
