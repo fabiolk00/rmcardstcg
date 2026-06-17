@@ -211,7 +211,7 @@
       "CHECK 0<=reserved<=stock jamais violado."
     ],
     "invariants": ["reserved-le-stock", "reserve-lifecycle-idempotent"],
-    "state": "todo",
+    "state": "ready_for_qa",
     "passes": false,
     "qa_note": null,
     "fix_note": null,

@@ -837,3 +837,64 @@ Gate1 reproducao: `pnpm harness tests/harness/estoque/reserve-reserves-units.spe
 Gate2 anti-fake-green: seam reserveStockForOrder chama a funcao de PRODUCAO reserveStock(tx,items) (lib/data/inventory.ts) via _run-seam.ts, sem mock; call-site espelha createPendingOrderWithReservation (orders.ts L193-221: reserveStock + Order.stockReserved=true na MESMA tx). Todos os 4 asserts do ledger sao exercitados de verdade contra o DB via pg; dados nao-triviais (R=2>0, soma real R->R+3, disponibilidade de sobra).
 Gate3 invariantes (probe QA independente, descartada ao fim, VALORES DIFERENTES R=5/STOCK=30/QTY=7): CASO1 reserved=12, stock=30 inalterado, flags ok; CASO2 oversell ao nivel da funcao -> ok:false + rollback (sem reserva parcial, productId real, flag do pedido permanece false); CASO3 CHECK products_reserved_le_stock_chk existe e barra reserved>stock por SQL cru, 0 violacoes; CASO4 reserveStock NAO grava audit_log (feature corretamente NAO reivindica audit-same-tx); CASO5 releaseStock estorna reserved->R (reserve-lifecycle).
 Gate4 produto intacto: git diff e0e83a1..HEAD -- app lib prisma VAZIO. next-env.d.ts (rewrite incidental do next dev) revertido; tree limpo.
+
+--------------------------------------------------------------------------------
+SESSAO 0014 — TIME ESTOQUE
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 07:40 -0300
+  time      : estoque
+  feature   : estoque.reserve.blocks-oversell (priority 9)
+  seam      : reserveStock(tx, items) em lib/data/inventory.ts (L62-82) — a funcao de
+              PRODUCAO que reserva atomica e condicionalmente em LOTE. O guard
+              `p.stock - p.reserved >= v.qty` vale POR LINHA dentro do mesmo UPDATE: a
+              linha que nao cabe nao e atualizada; como updated.length(0) !=
+              rows.length(1), reserveStock devolve { ok:false, productId } do produto
+              sem disponibilidade. Invocada via op "reserveStockForOrder" do
+              _run-seam.ts (JA EXISTENTE da sessao 0013): abre prisma.$transaction,
+              chama reserveStock e, ao receber ok:false, lanca ReserveAbort =>
+              ROLLBACK total (espelha OutOfStockError do checkout); o resultado
+              { ok:false, productId } e re-emitido apos o rollback p/ inspecao.
+              NENHUMA extensao de runner foi necessaria.
+  arquivos  : tests/harness/estoque/reserve-blocks-oversell.spec.ts (spec DB-first,
+              sem browser). _run-seam.ts INTOCADO. Nenhum codigo de PRODUTO tocado.
+  o-que-fiz : Ritual OK (branch harness/admin; smoke DB-first padrao). Marquei SO o
+              state da feature: todo -> building -> ready_for_qa. Escrevi spec que:
+              (1) cria produto PROPRIO via createProduct (SKU/nome unicos
+              HARNESS-OVERSELL-<uuid>) sem tocar o seed; (2) FORCA stock=5, reserved=4
+              (disponivel=1) via UPDATE direto em pg (anti-trivial: reserved=4>0, falta
+              de exatamente 1 unidade, disponivel(1) < QTY(2)); (3) cria pedido PROPRIO
+              via INSERT pg com stock_reserved=false; (4) chama o seam
+              reserveStockForOrder({orderId, items:[{productId, quantity:2}]});
+              (5) assertaa: reserveStock=={ok:false, productId} com o productId REAL do
+              input; products.reserved permanece 4 (delta 0, SEM incremento parcial) e
+              stock permanece 5; Order.stockReserved permanece false E stockCommitted
+              false (rollback descartou tudo, e o ramo da flag nem foi alcancado);
+              CHECK products_reserved_le_stock_chk existe + 0 violacoes de
+              0<=reserved<=stock + reserved(4)<=stock(5) (o oversell hipotetico 4+2=6>5
+              jamais persistiu); (6) defesa-em-profundidade: UPDATE reserved=6 (o estado
+              que o oversell criaria) e REJEITADO pelo DB (mensagem cita o CHECK) e a
+              linha permanece reserved=4/stock=5.
+  INFRA     : nenhuma mudanca de infra. Banco efemero novo por run => isolamento;
+              SKU/nome/pedido unicos (randomUUID). Categoria valida "Booster Box".
+              A linha de LOG "violates check constraint products_reserved_le_stock_chk
+              ... UPDATE reserved=6" e a SONDA INTENCIONAL de defesa-em-profundidade da
+              spec (rejeicao esperada do DB), NAO erro de teste.
+  invariante: reserved-le-stock PROVADA (reserva alem do disponivel barrada pela
+              funcao: reserved fica em 4 com stock 5; CHECK existe + 0 violacoes; DB
+              rejeita reserved>stock por SQL cru => invariante e do BANCO, defesa em
+              profundidade). reserve-lifecycle-idempotent PROVADA na parte coberta:
+              SEM efeito parcial e a flag Order.stockReserved permanece false apos o
+              rollback (a reserva nem comecou; nada a estornar).
+  estado    : ready_for_qa (state da feature no ledger). passes NAO tocado (campo do QA).
+  resultado : VERDE — `pnpm harness tests/harness/estoque/reserve-blocks-oversell.spec.ts`
+              => 1 passed (rodado 2x: 4.7s e 4.4s), seed 28 produtos / 8 pedidos. Gates:
+              typecheck OK, lint OK (0 warnings), prettier OK nos MEUS arquivos (spec +
+              ledger; _run-seam intocado). next-env.d.ts revertido (rewrite incidental
+              do next dev, nao comitado). Ruido EBUSY/rmdir no teardown (Windows, apos
+              passar) = cosmetico.
+  commit    : <preenchido no commit desta sessao>
+  proximo   : estoque.commit.reserved-to-committed (priority 10, state=todo) —
+              confirmacao de pagamento baixa estoque (reserved -> committed):
+              commitStock(tx, lines) com stock-=qty E reserved-=qty, flags
+              stock_committed=true/stock_reserved=false na mesma tx. O runner
+              precisara de uma op nova (commitStockForOrder) p/ esse ciclo.
