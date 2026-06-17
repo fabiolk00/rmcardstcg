@@ -418,3 +418,47 @@ SESSAO 0007 — TIME ESTOQUE
   proximo   : estoque.product.reduce-stock-above-reserved (priority 5, state=todo) —
               updateProduct com stock=5 mantendo stock>=reserved (R=2), reserved
               inalterado, audit product.update na mesma tx.
+
+--------------------------------------------------------------------------------
+SESSAO 0008 — TIME QA (gate adversarial)
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 06:50 -0300
+  time      : qa
+  feature   : estoque.product.increase-stock (priority 4)
+  veredito  : APROVADO (passes=true, state inalterado=ready_for_qa, qa_note=null).
+  reproduzi : `pnpm harness tests/harness/estoque/product-increase-stock.spec.ts`
+              => 1 passed DUAS vezes (4.4s e 3.5s), em PG efemero recem-seedado
+              (28 produtos / 8 pedidos). Smoke DB-first VERDE (1 passed); 3 UI
+              VERMELHOS = blocker proxy.ts aceito (ignorado).
+  nao-fake  : seam runner tests/harness/estoque/_run-seam.ts importa e chama
+              updateProduct de PRODUCAO (lib/data/products.ts) SEM mock (case
+              updateProduct no switch). Spec assertaa via `pg` cru sobre
+              DATABASE_URL. git diff e0e83a1..HEAD -- app lib prisma = VAZIO.
+  por-assert:
+    [1] products.stock==S+10 & reserved==R inalterado -> PROVADO. Spec (56->66 no
+        produto mais antigo, reserved do seed). PROBE INDEPENDENTE meu (driver +
+        _qa_probe) FORCOU reserved=3>0 e stock=56 antes do update e confirmou
+        reserved continua 3 (a spec sozinha poderia cair em reserved=0 trivial;
+        cobri o gap). updateProduct nem tem campo reserved no input.
+    [2] CHECK 0<=reserved<=stock valido -> PROVADO. Constraint
+        products_reserved_le_stock_chk existe (pg_constraint); 0 violacoes. Nota
+        de fidelidade: o CHECK real do test-supplement e so (reserved<=stock); a
+        query de violacao da spec (reserved>=0 AND reserved<=stock) e MAIS ESTRITA
+        que o CHECK, entao um pass continua provando a condicao. Nao enfraquece.
+    [3] audit_log +1, action=product.update, MESMA tx, before.stock=S/after.stock=S+10
+        -> PROVADO. Estrutural: writeAuditLog(tx, ...) com tx.auditLog.create
+        DENTRO do prisma.$transaction de updateProduct (audit.ts L74). Empirico
+        (meu probe): audit 0->1 exatamente, action 'product.update' (valor @map),
+        entity_type product, before.stock=56/after.stock=66, before/after.priceCents
+        intactos (delta limpo), e o snapshot NEM inclui reserved. Spec confere o
+        mesmo via +1 total E +1 por entity_id.
+  como-valid: ritual de inicio (branch harness/admin, init.sh smoke VERDE); li spec
+              + seam + updateProduct + writeAuditLog; rodei a spec 2x VERDE; escrevi
+              probe `pg` independente (driver com mesmo ephemeral-pg helper, push +
+              constraints + seed) que chama updateProduct de producao com reserved>0
+              forcado e checa 17 asserts proprios -> __PROBE_PASS__. Removi os
+              arquivos de probe (tree limpo). Confirmei prod diff vazio 2x.
+  estado    : ready_for_qa (NAO alterei). passes=true escrito pelo QA. qa_note=null.
+  commit    : harness(qa): aprova estoque.product.increase-stock
+  proximo   : estoque.product.reduce-stock-above-reserved (priority 5, state=todo)
+              — fora do escopo desta sessao (so 1 feature por gate).
