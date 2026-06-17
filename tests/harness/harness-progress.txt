@@ -191,3 +191,45 @@ SESSAO 0002 — TIME QA (gate adversarial)
         git diff e0e83a1..HEAD em app/lib/prisma = VAZIO (nenhum codigo de produto
         tocado pelo time estoque).
   proximo   : estoque.product.create-duplicate-sku (priority 2, state=todo).
+
+--------------------------------------------------------------------------------
+SESSAO 0003 — TIME ESTOQUE
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 06:21 -0300
+  time      : estoque
+  feature   : estoque.product.create-duplicate-sku (priority 2)
+  seam      : createProduct(actor, input) em lib/data/products.ts. A checagem de SKU
+              duplicado vive DENTRO da $transaction (L231-235: tx.product.findFirst com
+              `mode: "insensitive"` ANTES do create) e lanca ProductValidationError,
+              abortando a transacao inteira -> nem produto nem audit_log persistem
+              (rollback atomico). Mesma seam de baixo nivel da sessao 0001; a server
+              action createProductAction so delega e exige requireAdmin() (contexto de
+              request), por isso nao usada.
+  arquivos  : tests/harness/estoque/product-create-duplicate-sku.spec.ts (spec DB-first,
+              sem browser). Reusa o runner _run-seam.ts (INFRA, ja existente) sem alteralo.
+  o-que-fiz : Ritual de inicio OK (branch harness/admin; init.sh => smoke DB-first VERDE,
+              3 UI VERMELHOS de proposito = blocker proxy.ts aceito). Marquei SO o state
+              da feature: todo -> building -> ready_for_qa. Escrevi spec que: (1) le o sku
+              do 1o produto do seed via `pg` (created_at ASC) e exige que contenha letra
+              p/ a colisao case-insensitive ser distinta; conta N produtos / A audits;
+              (2) chama createProduct com o MESMO sku em UPPER e nome unico -> espera
+              ProductValidationError com /SKU/i; reforco: a versao toda-minuscula tambem
+              colide (so quando distinta do original) provando `mode: insensitive`;
+              (3) assertaa products count==N (sem linha nova) e exatamente 1 linha com
+              LOWER(sku)=LOWER(seed) que e o id original; (4) audit_log count==A (rollback)
+              e zero linhas product.create com o nome unico tentado (sem audit orfao);
+              (5) rede final: 0 linhas violam 0<=reserved<=stock.
+  INFRA     : nenhuma mudanca de infra. Caveat tecnico: ajustei a query de leitura para
+              ORDER BY created_at (coluna real snake_case; "createdAt" nao existe no DB).
+  invariante: audit-same-tx PROVADA empiricamente (rollback NAO deixa audit orfao:
+              count==A + zero product.create com o nome tentado). A atomicidade e
+              estrutural na producao (findFirst+throw dentro de prisma.$transaction antes
+              do tx.product.create e do writeAuditLog).
+  estado    : ready_for_qa (state da feature no ledger). passes NAO tocado (campo do QA).
+  resultado : VERDE — `pnpm harness tests/harness/estoque/product-create-duplicate-sku.spec.ts`
+              => 1 passed (4.5s). Gates: typecheck OK, lint OK (0 warnings), prettier OK
+              nos MEUS arquivos (spec + ledger).
+  commit    : 37f6f96
+  proximo   : estoque.product.create-invalid-rejected (priority 3, state=todo) — preco
+              negativo / desconto>80 / estoque negativo / preco nao-inteiro rejeitados,
+              sem produto e sem audit.

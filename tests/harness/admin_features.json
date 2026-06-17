@@ -41,7 +41,7 @@
       "audit_log NAO ganha linha (rollback da transacao inteira)."
     ],
     "invariants": ["audit-same-tx"],
-    "state": "todo",
+    "state": "ready_for_qa",
     "passes": false,
     "qa_note": null,
     "fix_note": null,
