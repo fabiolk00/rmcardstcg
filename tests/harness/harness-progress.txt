@@ -1432,3 +1432,58 @@ SESSAO 0025 — TIME QA  (PORTAO)
               same-tx N/A (reconcile de estoque nao grava audit; confirmado por probe).
   produto   : git diff e0e83a1..HEAD -- app lib prisma == VAZIO. Time NAO tocou produto.
   estado    : ready_for_qa (inalterado). passes=true; qa_note=null.
+
+--------------------------------------------------------------------------------
+SESSAO 0027 — TIME ESTOQUE
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 08:46 -0300
+  time      : estoque
+  feature   : estoque.restock.idempotent (priority 15)
+  seam      : restockUnits(tx, items) em lib/data/inventory.ts (L127-140) — a funcao
+              de PRODUCAO que repoe estoque no refund de pedido JA PAGO (stock += qty,
+              reserved INTOCADO). Invocada via op "restockUnitsForOrder" do _run-seam.ts
+              (JA EXISTENTE da sessao do refund-of-paid): abre prisma.$transaction, le
+              os PROPRIOS itens do pedido, faz o CAS idempotente
+                UPDATE "orders" SET stock_committed=false WHERE id=? AND stock_committed=true
+              e SO quando refunded===1 chama restockUnits. Espelha byte-a-byte o ramo de
+              refund de reconcileStockForPaymentStatus (orders.ts L467-473). NENHUMA
+              extensao de runner foi necessaria. NAO usei server action (requireAdmin =
+              contexto de request).
+  arquivos  : tests/harness/estoque/restock-idempotent.spec.ts (spec DB-first, sem
+              browser). _run-seam.ts INTOCADO. Nenhum codigo de PRODUTO tocado.
+  o-que-fiz : Ritual OK (branch harness/admin; harness-progress.txt + git log -15 lidos).
+              Marquei SO o state da feature: todo -> building -> ready_for_qa. Escrevi
+              spec (espelha release-idempotent.spec.ts, com VALORES DISTINTOS p/ evitar
+              cargo-cult) que: (1) cria produto PROPRIO via createProduct (SKU/nome unicos
+              HARNESS-RESTOCK-IDEM-<uuid>) sem tocar o seed; (2) pre-posiciona ESTADO
+              POS-COMMIT: stock=STOCK_AFTER_COMMIT(22) JA baixado, reserved=RES(9)>0 via
+              UPDATE direto (reserved e gerido pelo ciclo, nunca por create/update —
+              UPDATE direto e a forma honesta; DICA do QA: reserved>0 p/ "inalterado" nao
+              ser trivial); (3) cria pedido PROPRIO PAGO (payment_status='paid',
+              stockReserved=false, stockCommitted=true) com 1 item (productId, qty=QTY=6);
+              (4) 1a aplicacao do refund -> refunded===1, stock=22+6=28, reserved=9
+              intocado, flag stockCommitted->false, price_cents intocado; (5) [A1] 2a
+              aplicacao = no-op (CAS WHERE stock_committed=true acha flag ja virada => 0
+              linhas, refunded===0, restockUnits NAO roda); (6) [A2] stock estavel em 28
+              apos 2a E 3a (se repusesse por aplicacao iria 28->34->40 — constancia em 28
+              prova idempotencia), reserved=9 intocado o tempo todo; (7) [A3] Order.
+              stockCommitted continua false apos 2a/3a (nao re-virada); (8) rede final
+              (reserved-le-stock): CHECK 0<=reserved<=stock + 0 violacoes no catalogo
+              apos todas as aplicacoes.
+  INFRA     : nenhuma mudanca de infra/produto (runner _run-seam intocado; ja suportava
+              restockUnitsForOrder). Banco efemero novo por run => isolamento; SKU/nome/
+              pedido unicos (randomUUID). Categoria valida "Booster Box".
+  invariante: reserve-lifecycle-idempotent PROVADA (flag stockCommitted como guard do CAS;
+              1a aplicacao reivindica (refunded===1) e repoe 1x; 2a/3a sao no-op
+              (refunded===0) sem dupla reposicao; stock estavel em 28). reserved-le-stock
+              PROVADA (stock so cresce na 1a, reserved intacto; CHECK existe + 0 violacoes).
+  estado    : ready_for_qa (state da feature no ledger). passes NAO tocado (campo do QA).
+  resultado : VERDE — `pnpm harness tests/harness/estoque/restock-idempotent.spec.ts`
+              => 1 passed (rodado 2x: 3.6s e 3.6s; total ~6.2-6.4s), seed 28 produtos /
+              8 pedidos. Gates: typecheck OK, lint OK (0 warnings), prettier OK nos MEUS
+              arquivos (spec + ledger). Ruido EBUSY/rmdir no teardown (Windows, apos
+              passar) = cosmetico.
+  commit    : <preenchido no commit desta sessao>
+  proximo   : estoque.price.final-derived-pure (priority 16, state=todo) — finalPriceCents
+              puro round(priceCents*(1-discountPct/100))==9000, sem coluna de preco final
+              persistida, funcao pura em lib/data/pricing.ts sem importar prisma.

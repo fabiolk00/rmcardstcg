@@ -356,7 +356,7 @@
       "Order.stockCommitted continua false."
     ],
     "invariants": ["reserve-lifecycle-idempotent", "reserved-le-stock"],
-    "state": "todo",
+    "state": "ready_for_qa",
     "passes": false,
     "qa_note": null,
     "fix_note": null,
