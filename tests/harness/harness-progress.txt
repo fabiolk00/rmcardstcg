@@ -1902,3 +1902,63 @@ SESSAO QA — estoque.price.update-discount-audited (PORTAO ADVERSARIAL)
               produto JA inativo e no-op: setProductActive(false) novamente NAO grava
               audit (count == A; before.isActive===isActive => return before, sem UPDATE
               nem writeAuditLog). O runner ja suporta setProductActive — sem extensao.
+
+================================================================================
+SESSAO QA — estoque.product.reactivate-audited (PORTAO ADVERSARIAL)
+================================================================================
+  papel     : QA (unico autorizado a escrever passes/qa_note). NAO corrige produto.
+  feature   : estoque.product.reactivate-audited (priority 19), state=ready_for_qa.
+  veredito  : APROVADO — passes=true, qa_note=null. state INALTERADO (ready_for_qa).
+  ritual    : pwd /c/rmcardstcg; branch harness/admin OK. Li harness-progress.txt +
+              git log + spec + ledger + seam de PRODUCAO (setProductActive,
+              writeAuditLog, auditSnapshot) + schema.prisma (@map dotted).
+  repro     : `pnpm harness tests/harness/estoque/product-reactivate-audited.spec.ts`
+              rodado 2x do ZERO em PG efemero recem-seedado (db push + apply-test-
+              constraints + seed = 28 produtos / 8 pedidos): run1=1 passed (2.7s/5.4s),
+              run2=1 passed (2.7s/5.2s). VERDE reproduzivel. Isolamento OK (banco novo,
+              SKU/nome unicos por randomUUID). EBUSY/rmdir no teardown = cosmetico.
+  anti-fake : seam = setProductActive REAL de lib/data/products.ts via _run-seam.ts
+              (case setProductActive, import direto da funcao de PRODUCAO, SEM mock).
+              Spec assertaa via `pg` cru sobre DATABASE_URL. Estrutura confirmada:
+              setProductActive (products.ts L347-364) abre prisma.$transaction, le
+              before, no-op se ja no estado, senao UPDATE is_active + writeAuditLog
+              (action product_reactivate qdo isActive=true) na MESMA tx; @map dotted
+              'product.reactivate' (schema.prisma L51).
+  por-assert (cada assert do ledger PROVADO contra o DB real):
+    [1] products.isActive == true. -> PROVADO. Spec L181-205: le is_active do DB apos
+        a seam (==true, L197) + contagem de produtos inalterada (reativar nao cria/
+        remove linha). Reforco: price/discount/stock/reserved/slug/sku INTOCADOS
+        (so o flag muda); reserved FORCADO=3>0 no setup (L121) p/ "estoque inalterado"
+        NAO ser trivial (DICA do QA respeitada).
+    [2] audit_log +1 action=product.reactivate, before.isActive=false,
+        after.isActive=true, na MESMA tx. -> PROVADO. Spec L215-286: audit total +1 E
+        por-entity +1 (exatamente 1 nova; pre-estado tinha 2 = create+inactivate);
+        linha mais recente: action=='product.reactivate' (valor @map DOTTED lido da
+        coluna crua, nao a chave JS product_reactivate), entity_type=='product',
+        before.isActive=false, after.isActive=true, delta limpo (price/discount/stock
+        iguais nos 2 snapshots), exatamente 1 linha product.reactivate. same-tx:
+        estrutural (writeAuditLog(tx,...) com tx.auditLog.create DENTRO da
+        $transaction de setProductActive; audit.ts L74) + empirico (audit presente
+        apos a seam retornar).
+  invariante: audit-same-tx PROVADA (1 linha, mesma tx, action/before/after corretos;
+              sem orfao). reserved-le-stock como rede final: CHECK
+              products_reserved_le_stock_chk existe + 0 violacoes (spec L288-294).
+  probe-ind : escrevi PROBE PROPRIA (_qa_probe_reactivate.tmp.ts, removida ao fim —
+              tree limpo) que subiu SEU PROPRIO PG efemero (push+constraints+seed),
+              chamou o SEAM REAL setProductActive com VALORES DIFERENTES da spec
+              (P=55500, DISC=25, STOCK=14, RESERVED=7) p/ provar a LOGICA e nao a
+              constante, e validou com MINHAS queries pg: 23 PASS / 0 FAIL. Incl.
+              ANTI-FAKE EXTRA (alem da spec): reativar produto JA ATIVO = NO-OP que
+              NAO grava audit (audit nao cresce; segue exatamente 1 product.reactivate)
+              => prova que "1 linha" e LOGICA, a seam nao fabrica audit. Confirmou
+              tambem action @map dotted, before/after corretos, reserved(7)>0 intacto,
+              pg_constraint do CHECK presente, 0 violacoes.
+  nao-trapaca: nenhum assert trivial/tautologico; cobertura completa dos 2 asserts +
+              invariante. git diff e0e83a1..HEAD -- app lib prisma = VAZIO (nenhum
+              codigo de produto tocado pelo time estoque NEM por mim). Working tree
+              limpo apos QA (next-env.d.ts revertido — rewrite incidental do next dev;
+              probe removida). Time NAO tocou produto.
+  estado    : ready_for_qa (NAO alterei). passes=true escrito pelo QA. qa_note=null.
+  commit    : harness(qa): aprova estoque.product.reactivate-audited
+  proximo   : estoque.product.inactivate-idempotent (priority 20, state=todo) — fora do
+              escopo desta sessao (so 1 feature por gate).
