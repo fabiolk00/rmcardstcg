@@ -663,3 +663,55 @@ SESSAO QA — estoque.product.reduce-below-reserved-blocks (PORTAO ADVERSARIAL)
               Time NAO tocou produto. Nenhum fixer agiu nesta feature.
   VEREDITO  : APROVADO. Todos os 4 asserts provados ponta a ponta contra Postgres real.
               passes=true, qa_note=null. state mantido em ready_for_qa (campo do QA so passes/qa_note).
+
+--------------------------------------------------------------------------------
+SESSAO 0012 — TIME ESTOQUE
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 07:22 -0300
+  time      : estoque
+  feature   : estoque.product.available-derived (priority 7)
+  seam      : createProduct(actor, input) em lib/data/products.ts p/ criar um produto
+              PROPRIO (sem tocar o seed). A feature e de DERIVACAO/LEITURA: disponivel =
+              stock - reserved nao e persistido. reserved e gerido pelo ciclo de reserva
+              (reserveStock/commitStock/releaseStock em lib/data/inventory.ts), NUNCA por
+              create/update — entao stock=10/reserved=4 sao forcados via UPDATE direto em
+              `pg`. As assercoes sao 100% via pg sobre process.env.DATABASE_URL.
+  arquivos  : tests/harness/estoque/product-available-derived.spec.ts (spec DB-first,
+              sem browser). Reusa o runner _run-seam.ts (INFRA ja existente, suporta
+              createProduct) SEM alteralo. Nenhum codigo de PRODUTO tocado.
+  o-que-fiz : Ritual OK (branch harness/admin; git log conferido). Marquei SO o state da
+              feature: todo -> building -> ready_for_qa. Escrevi spec que: (1) cria produto
+              proprio (SKU/nome unicos HARNESS-AVAIL-<uuid>), priceCents=10000/discountPct=10
+              p/ provar tambem a paridade com final-price-derived; (2) FORCA stock=10,
+              reserved=4 via UPDATE direto em pg (anti-trivial: reserved>0 e != stock =>
+              disponivel=6 e subtracao real); (3) assert[1] le colunas-fonte cruas e deriva
+              (stock - reserved) em SQL no read-time => disponivel==6, Int; (4) assert[2]
+              via information_schema.columns: stock e reserved EXISTEM, mas NENHUMA coluna
+              casa /avail|disponi/i (sem disponivel persistido) — e, por paridade da
+              invariante final-price-derived, NENHUMA coluna casa /final.?price|preco.?final/i,
+              so price_cents/discount_pct; reforco numerico em pg: round(price_cents*
+              (1-discount_pct/100.0))==9000; (5) assert[3] CHECK products_reserved_le_stock_chk
+              existe (pg_constraint) + 0 violacoes de 0<=reserved<=stock + 0<=4<=10 na linha
+              alvo; (6) rede final (defesa em profundidade): UPDATE reserved=11 (>stock=10)
+              e REJEITADO pelo DB (mensagem cita products_reserved_le_stock_chk) e a linha
+              permanece reserved=4 (UPDATE invalido nao persistiu).
+  INFRA     : nenhuma mudanca de infra/produto (runner _run-seam intocado). Banco efemero
+              novo por run => isolamento; SKU/nome unicos (randomUUID). Categoria valida
+              "Booster Box". A linha de log do PG "violates check constraint
+              products_reserved_le_stock_chk ... UPDATE reserved=11" e ESPERADA: e a sonda
+              de defesa-em-profundidade (rejeicao intencional do DB), nao um erro do teste.
+  invariante: reserved-le-stock PROVADA (disponivel=stock-reserved=6; CHECK existe + 0
+              violacoes; 0<=4<=10; DB rejeita reserved>stock por SQL cru). final-price-derived
+              PROVADA por paridade (sem coluna de preco final; derivacao numerica
+              round(price*(1-desc/100))==9000), reforcando que disponivel tambem e so derivado.
+  estado    : ready_for_qa (state da feature no ledger). passes NAO tocado (campo do QA).
+  resultado : VERDE — `pnpm harness tests/harness/estoque/product-available-derived.spec.ts`
+              => 1 passed (rodado 3x: 3.7s / 3.5s / 3.7s), seed 28 produtos / 8 pedidos.
+              Gates: typecheck OK, lint OK (0 warnings), prettier OK nos MEUS arquivos
+              (spec + ledger). next-env.d.ts revertido (rewrite incidental do next dev,
+              nao comitado). Ruido EBUSY/rmdir no teardown (Windows, apos passar) = cosmetico.
+  commit    : <preenchido no commit desta sessao>
+  proximo   : estoque.reserve.reserves-units (priority 8, state=todo) — reserveStock(tx,
+              [{productId, quantity:3}]) incrementa reserved p/ R+3, stock inalterado,
+              Order.stockReserved=true/stockCommitted=false, CHECK valido. (vai exigir
+              estender _run-seam p/ reserveStock dentro de uma $transaction.)
