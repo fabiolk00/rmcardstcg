@@ -3687,3 +3687,16 @@ SESSAO — TIME QA
   RESULTADO: pnpm harness VERDE e reproduzivel (3 runs, 1 passed, ~4.5s em PG efemero recem-seedado). Gates: typecheck OK, lint OK (max-warnings 0), prettier --check do spec+runner OK.
   PRODUTO INTOCADO: git diff -- app lib prisma == VAZIO. needs_product_fix:false. NAO comitei next-env.d.ts (ruido next dev) nem harness-progress.txt da raiz (arquivo de outro agente).
   PROXIMO: QA aprova cupom.update.audited; depois pedido pega cupom.redeem.global-limit (priority 22, state todo).
+
+[2026-06-17 16:25] time:pedido feature:cupom.redeem.global-limit (priority 22) estado:ready_for_qa
+  O-QUE-FIZ: escrevi tests/harness/pedido/cupom-redeem-global-limit.spec.ts (DB-first, sem browser) provando "Limite global de redencoes (maxRedemptions) e atomico".
+  SEAM: redeemCoupon(tx, input) de PRODUCAO (lib/data/coupons.ts L364) via _run-seam.ts. ESTENDI o runner: adicionei import redeemCoupon + tipo RedeemCouponArgs + classe RedeemAbort + case 'redeemCoupon' (envelopa redeemCoupon num prisma.$transaction como o checkout; em ok:false lanca RedeemAbort p/ rollback total e re-emite o resultado) — INFRA de teste; produto (app/lib/prisma) INTOCADO.
+  ASSERTS PROVADOS via pg sobre process.env.DATABASE_URL (3/3):
+    A1 "1a redencao: ok, alreadyRedeemed=false; redeemed_count==1 (increment CAS WHERE redeemed_count<max)": cupom percent maxRedemptions=1, redeemed_count=0 (anti-trivial: parte de 0); redeemCoupon p/ orderA -> ok:true/alreadyRedeemed:false; coluna crua redeemed_count==1.
+    A2 "2a redencao (OUTRO pedido orderB): ok:false reason='max_redemptions'; redeemed_count permanece 1": updateMany do CAS casa 0 linhas (teto atingido) -> {ok:false,reason:'max_redemptions'} sem insert/increment; rollback total; redeemed_count segue ==1.
+    A3 "coupon_redemptions tem 1 linha; CHECK redeemed_count>=0 e <=max preservado": exatamente 1 linha p/ o cupom (a do orderA); orderB NAO deixou linha (rollback); CHECK coupons_redeemed_count_chk existe; 0 violacoes de redeemed_count>=0 nem do teto redeemed_count<=max.
+  INVARIANTE: coupon-redeem-limits (limite global atomico via CAS; nenhuma redencao alem do teto; contador e tabela coerentes). perUserLimit=null (ramo per-user fica p/ cupom.redeem.per-user-limit).
+  ANTI-TRIVIAL: maxRedemptions=1 (nao numero alto) -> 2a redencao realmente esbarra; DOIS pedidos distintos (order_id UNIQUE + FK) p/ provar que e o limite GLOBAL e nao a idempotencia por pedido que barra.
+  RESULTADO: pnpm harness VERDE e reproduzivel (2 runs, 1 passed, ~5.4s em PG efemero recem-seedado). Gates: typecheck OK, lint OK (max-warnings 0), prettier --check do spec+runner OK.
+  PRODUTO INTOCADO: git diff -- app lib prisma == VAZIO. needs_product_fix:false. NAO comitei next-env.d.ts (ruido next dev) nem harness-progress.txt da raiz.
+  PROXIMO: QA aprova cupom.redeem.global-limit; depois pedido pega cupom.redeem.per-user-limit (priority 23, state todo).

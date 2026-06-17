@@ -35,7 +35,12 @@ import {
   updateOrderShippingStatus,
   type PaymentRef,
 } from "../../../lib/data/orders";
-import { createCoupon, updateCoupon, type CouponInput } from "../../../lib/data/coupons";
+import {
+  createCoupon,
+  updateCoupon,
+  redeemCoupon,
+  type CouponInput,
+} from "../../../lib/data/coupons";
 import type { PaymentStatus, ShippingStatus } from "../../../lib/data/types";
 import type { AuditActor } from "../../../lib/data/audit";
 import { finalPriceCents } from "../../../lib/data/pricing";
@@ -199,6 +204,29 @@ type CreateCouponArgs = { actor: AuditActor; input: CouponInput };
 // request), por isso chamamos a funcao de lib/data direto. INFRA de teste: usa a
 // funcao de PRODUCAO sem mock; a spec assertaa o estado real via pg.
 type UpdateCouponArgs = { actor: AuditActor; id: string; input: CouponInput };
+// Espelha o call site de PRODUCAO da REDENCAO DE CUPOM no checkout
+// (placeOrder/confirmacao -> redeemCoupon, lib/data/coupons.ts L364). redeemCoupon
+// recebe um `tx` externo na PRODUCAO (corre DENTRO da transacao do checkout); aqui o
+// envelopamos num prisma.$transaction EXATAMENTE como o checkout faz com sua propria
+// $transaction. Dentro da tx a funcao: (1) verifica idempotencia por pedido
+// (coupon_redemptions.order_id UNIQUE — se ja existe, alreadyRedeemed:true, no-op);
+// (2) se perUserLimit!=null, pega advisory lock (cupom,usuario) e reconta; (3) faz o
+// increment ATOMICO do limite global via updateMany WHERE id=cupom AND
+// (max IS NULL OR redeemed_count < max) — count==0 => esgotado, retorna
+// { ok:false, reason:'max_redemptions' } SEM inserir; (4) senao insere a linha em
+// coupon_redemptions. Quando a redencao FALHA (ok:false) o checkout de PRODUCAO aborta
+// a transacao inteira (rollback) — espelhamos isso lancando RedeemAbort, re-emitindo o
+// resultado { ok:false } apos o rollback (nada parcial persiste). Quando ok:true a tx
+// commita. INFRA de teste: usa a funcao de PRODUCAO sem mock; a spec assertaa o estado
+// real via pg.
+type RedeemCouponArgs = {
+  couponId: string;
+  orderId: number;
+  userId: string;
+  discountCents: number;
+  perUserLimit: number | null;
+  maxRedemptions: number | null;
+};
 
 /**
  * Erro de aborto da reserva — carrega o resultado { ok:false, productId } do
@@ -211,6 +239,22 @@ class ReserveAbort extends Error {
   constructor(result: { ok: false; productId: string }) {
     super("reserve_abort");
     this.name = "ReserveAbort";
+    this.result = result;
+  }
+}
+
+/**
+ * Aborto da redencao — carrega o resultado { ok:false, reason } do redeemCoupon p/
+ * FORCAR o rollback da $transaction (espelha o checkout de PRODUCAO, que aborta a
+ * transacao inteira quando a redencao falha). O resultado e re-emitido como
+ * __SEAM_RESULT__ apos a transacao abortar, p/ a spec inspecionar { ok:false } E
+ * provar que nada foi gravado (sem increment parcial, sem linha em coupon_redemptions).
+ */
+class RedeemAbort extends Error {
+  readonly result: { ok: false; reason: string };
+  constructor(result: { ok: false; reason: string }) {
+    super("redeem_abort");
+    this.name = "RedeemAbort";
     this.result = result;
   }
 }
@@ -418,6 +462,24 @@ async function main(): Promise<void> {
         result = await updateCoupon(actor, id, input);
         break;
       }
+      case "redeemCoupon": {
+        // Redencao de cupom no checkout (idempotente por pedido + increment atomico do
+        // limite global + recontagem por usuario sob advisory lock), via a funcao de
+        // PRODUCAO. Envelopa redeemCoupon num $transaction como o checkout. Em ok:false
+        // lanca RedeemAbort p/ abortar a tx (rollback total, como a producao); em ok:true
+        // a tx commita. Devolve o RedeemResult; a spec assertaa o estado real via pg.
+        const args = payload as RedeemCouponArgs;
+        result = await prisma.$transaction(async (tx) => {
+          const redeem = await redeemCoupon(tx, args);
+          if (!redeem.ok) {
+            // Sinaliza p/ rollback (como o checkout aborta a tx quando a redencao falha);
+            // o payload do resultado vai junto p/ a spec inspecionar { ok:false }.
+            throw new RedeemAbort(redeem);
+          }
+          return redeem;
+        });
+        break;
+      }
       default:
         throw new Error(`operacao desconhecida: ${op}`);
     }
@@ -426,6 +488,12 @@ async function main(): Promise<void> {
     // Aborto intencional da reserva (ok:false): a transacao ja sofreu rollback;
     // re-emitimos o resultado como SUCESSO de protocolo p/ a spec assertaa.
     if (err instanceof ReserveAbort) {
+      process.stdout.write(`__SEAM_RESULT__${JSON.stringify(err.result)}\n`);
+      return;
+    }
+    // Aborto intencional da redencao (ok:false): a transacao ja sofreu rollback;
+    // re-emitimos o resultado como SUCESSO de protocolo p/ a spec assertaa.
+    if (err instanceof RedeemAbort) {
       process.stdout.write(`__SEAM_RESULT__${JSON.stringify(err.result)}\n`);
       return;
     }

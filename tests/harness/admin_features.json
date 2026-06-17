@@ -1015,7 +1015,7 @@
       "coupon_redemptions tem 1 linha; CHECK redeemed_count>=0 e <=max preservado."
     ],
     "invariants": ["coupon-redeem-limits"],
-    "state": "todo",
+    "state": "ready_for_qa",
     "passes": false,
     "qa_note": null,
     "fix_note": null,
