@@ -2592,3 +2592,40 @@ SESSAO QA — pedido.payment.cancelled-to-paid-blocked (PORTAO ADVERSARIAL)
   commit    : harness(qa): aprova pedido.payment.cancelled-to-paid-blocked
   proximo   : pedido.payment.idempotent-noop (priority 6, state=todo) — fora do escopo
               desta sessao (so 1 feature por gate).
+
+[2026-06-17 12:14 -03] time:pedido feature:pedido.payment.idempotent-noop (priority 6)
+  o-que-fiz : escrevi tests/harness/pedido/payment-idempotent-noop.spec.ts (DB-first, sem
+              browser). Seam = adjustOrderPaymentStatus(orderId,'paid',reason,actor) REAL de
+              lib/data/orders.ts (L624) via tests/harness/estoque/_run-seam.ts (case ja
+              suportado, SEM mock). Estado todo->building->ready_for_qa (so o campo state;
+              passes INTOCADO).
+  resultado : VERDE e reproduzivel. run1 = 1 passed (4.5s), run2 = 1 passed (4.6s). Gates
+              verdes: pnpm typecheck OK, pnpm lint OK, prettier --check do spec+runner OK.
+              Ruido EBUSY/rmdir/"connection forcibly closed" no teardown (Windows, apos
+              passar) = cosmetico, ignorado.
+  setup     : produto PROPRIO (createProduct, SKU/nome unicos por tag) FORCADO p/ estado
+              pos-commit stock=7, reserved=2 (>0, canario anti-trivial; reserved<=stock
+              respeita o CHECK). Pedido PROPRIO inserido cru em pg JA PAGO: payment_status=
+              paid, stock_committed=true, stock_reserved=false, 1 item QTY=3. audit_log
+              baseline A do pedido = 0 (INSERT cru nao audita).
+  por-assert (cada assert do ledger PROVADO contra DB real):
+    [1] changed=false (no-op X->X) -> spec assert 1. PROVADO. adjustOrderPaymentStatus com
+        from==to (paid->paid) retorna {ok:true,changed:false,order} em L641-643 ANTES do CAS/
+        reconcile/audit. res.order.paymentStatus permanece 'paid'.
+    [2] orders.payment_status permanece 'paid'; estoque INALTERADO (sem dupla baixa) -> spec
+        assert 2a/2b. PROVADO. payment_status='paid'; flags stockCommitted=true/stockReserved=
+        false inalteradas (reserve-lifecycle-idempotent); products.stock==7 e reserved==2
+        batem EXATAMENTE o pre-estado (igualdade exata pega qualquer reconciliacao vazada).
+        reserved-le-stock: CHECK products_reserved_le_stock_chk existe + 0 violacoes globais.
+    [3] audit_log NAO ganha linha (count == A) -> spec assert 3. PROVADO. Total global,
+        por-entity_id do pedido E por-action order.payment_status_update TODOS inalterados
+        (== A). audit-same-tx: a guarda X->X retorna ANTES do writeAuditLog => 0 orfaos.
+  invariantes: order-state-machine (X->X no-op, sem transicao), reserve-lifecycle-idempotent
+        (flags inalteradas, sem dupla baixa), audit-same-tx (0 orfao). Todas PROVADAS.
+  nao-trapaca: git diff e0e83a1..HEAD -- app lib prisma = VAZIO (nenhum codigo de produto
+        tocado). Teste honesto e VERDE (sem bug de produto). So escrevi spec + 1 linha de
+        state no ledger de features.
+  estado    : ready_for_qa (passes INTOCADO, segue false ate o QA). qa_note=null.
+  commit    : harness(pedido): cobre pedido.payment.idempotent-noop DB-first
+  proximo   : pedido.shipping.pending-to-sent (priority 7, state=todo) — fora do escopo
+              desta sessao (so 1 feature por gate).
