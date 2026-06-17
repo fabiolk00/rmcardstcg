@@ -29,6 +29,7 @@ import {
   commitStock,
   releaseStock,
   reserveStock,
+  restockUnits,
   type StockItem,
 } from "../../../lib/data/inventory";
 
@@ -58,6 +59,18 @@ type CommitArgs = { orderId: number };
 // idempotencia. INFRA de teste: usa a funcao de PRODUCAO (releaseStock) e o MESMO
 // CAS do reconcile, sem mock.
 type ReleaseArgs = { orderId: number };
+// Espelha o RAMO DE REFUND DE PEDIDO JA PAGO de reconcileStockForPaymentStatus
+// (orders.ts L467-473): quando o CAS de release NAO reivindica (pedido nao estava
+// apenas reservado), o reconcile cai no ramo de refund — numa MESMA transacao faz o
+// CAS da flag:
+//   UPDATE "orders" SET stock_committed=false
+//   WHERE id=? AND stock_committed=true
+// e — SE refunded===1 — chama restockUnits(tx, lines) (stock += qty; reserved
+// INTOCADO). As `lines` saem dos PROPRIOS itens do pedido (como snap.items no
+// reconcile), nao injetadas. Devolve { refunded } p/ a spec provar efeito/
+// idempotencia. INFRA de teste: usa a funcao de PRODUCAO (restockUnits) e o MESMO
+// CAS do reconcile, sem mock.
+type RestockArgs = { orderId: number };
 
 /**
  * Erro de aborto da reserva — carrega o resultado { ok:false, productId } do
@@ -161,6 +174,34 @@ async function main(): Promise<void> {
           `;
           if (released === 1) await releaseStock(tx, lines);
           return { released: Number(released) };
+        });
+        break;
+      }
+      case "restockUnitsForOrder": {
+        // Reposicao de estoque no REFUND de pedido JA PAGO (stock_committed=true), na
+        // MESMA transacao, com o MESMO compare-and-swap idempotente do reconcile de
+        // producao (ramo 'cancelled' -> refund de pago):
+        //   CAS WHERE stock_committed=true vira stock_committed p/ false; so quando
+        //   refunded===1 (a tx reivindicou a transicao) restockUnits roda (stock +=
+        //   qty; reserved INTOCADO).
+        // As `lines` saem dos PROPRIOS itens do pedido (como snap.items em
+        // reconcileStockForPaymentStatus), nao de um payload injetado.
+        const { orderId } = payload as RestockArgs;
+        result = await prisma.$transaction(async (tx) => {
+          const order = await tx.order.findUnique({
+            where: { id: orderId },
+            select: { items: { select: { productId: true, quantity: true } } },
+          });
+          const lines = (order?.items ?? []).map((it) => ({
+            productId: it.productId,
+            quantity: it.quantity,
+          }));
+          const refunded = await tx.$executeRaw`
+            UPDATE "orders" SET "stock_committed" = false
+            WHERE "id" = ${orderId} AND "stock_committed" = true
+          `;
+          if (refunded === 1) await restockUnits(tx, lines);
+          return { refunded: Number(refunded) };
         });
         break;
       }

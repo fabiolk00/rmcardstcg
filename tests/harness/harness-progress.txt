@@ -1329,3 +1329,57 @@ invariant : reserve-lifecycle-idempotent -> CONFIRMADA (flag stockReserved e o g
 produto   : git diff e0e83a1..HEAD -- app lib prisma == VAZIO. Time NAO tocou produto.
 veredito  : todos os 3 asserts provados ponta a ponta contra o DB real. passes false->true;
             qa_note=null; state mantido ready_for_qa (QA nao altera state em aprovacao).
+
+--------------------------------------------------------------------------------
+SESSAO 0024 — TIME ESTOQUE
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 08:35 -0300
+  time      : estoque
+  feature   : estoque.restock.refund-of-paid (priority 14)
+  seam      : RAMO DE REFUND DE PEDIDO JA PAGO de reconcileStockForPaymentStatus
+              (lib/data/orders.ts L467-473). Quando o CAS de RELEASE nao reivindica
+              (o pedido nao estava apenas reservado, mas COMMITTED), o reconcile cai
+              no ramo de refund: CAS WHERE stock_committed=true vira a flag p/ false e
+              — SE refunded===1 — chama restockUnits(tx, lines) (lib/data/inventory.ts
+              L127-140 -> stock += qty; reserved INTOCADO). E o caminho que
+              adjustOrderPaymentStatus(orderId,'cancelled',...) dispara num pedido pago.
+              A server action exige requireAdmin (contexto de request); o efeito desta
+              feature vive no CAS de stock_committed + restockUnits, exercitados sem mock.
+  arquivos  : tests/harness/estoque/restock-refund-of-paid.spec.ts (spec DB-first, sem
+              browser). ESTENDI o runner _run-seam.ts (INFRA) com a op "restockUnitsForOrder"
+              (importa restockUnits de lib/data/inventory; reproduz byte-a-byte o CAS de
+              refund + restockUnits do reconcile, lendo as lines dos PROPRIOS itens do
+              pedido). Nenhum codigo de PRODUTO tocado.
+  o-que-fiz : Ritual OK (branch harness/admin; smoke DB-first padrao; blocker proxy.ts
+              aceito). Marquei SO o state da feature: todo -> building -> ready_for_qa.
+              Escrevi spec que: (1) cria produto PROPRIO (HARNESS-RESTOCK-<uuid>) sem
+              tocar o seed; (2) pre-posiciona o ESTADO POS-COMMIT via UPDATE direto:
+              stock=STOCK_AFTER_COMMIT(30) e reserved=RES(7>0, anti-trivial pela DICA do
+              QA); (3) cria pedido PROPRIO PAGO (payment_status='paid', stockReserved=false,
+              stockCommitted=true) com 1 item qty=QTY(4); (4) aplica o refund via op
+              "restockUnitsForOrder" -> refunded===1; assertaa products.stock==30+4==34
+              (stock += qty), products.reserved==7 INTOCADO (delta reserved==0, delta
+              stock==+4), price_cents intocado, Order.stockCommitted==false e
+              stockReserved continua false; (5) [A3] reserved<=stock na linha alvo + 0
+              violacoes de 0<=reserved<=stock em todo o catalogo; (6) REFORCO de
+              idempotencia: 2a aplicacao no-op (refunded===0, stock/reserved estaveis,
+              flag continua false) — sem dupla reposicao.
+  INFRA     : runner estendido (op restockUnitsForOrder + import restockUnits). Banco
+              efemero novo por run => isolamento; SKU/nome unicos (randomUUID). Categoria
+              valida "Booster Box".
+  invariante: reserved-le-stock PROVADA (reserved==7 intocado, stock cresce 30->34,
+              reserved<=stock, 0 violacoes). reserve-lifecycle-idempotent PROVADA: flag
+              stockCommitted e o guard do CAS — 1a aplicacao refunded===1 (restock roda),
+              2a aplicacao refunded===0 (no-op, sem dupla reposicao). audit nao se aplica
+              a esta feature (reconcile de estoque nao grava audit; o audit do ajuste de
+              pagamento e da feature do time pedido).
+  estado    : ready_for_qa (state da feature no ledger). passes NAO tocado (campo do QA).
+  resultado : VERDE — `pnpm harness tests/harness/estoque/restock-refund-of-paid.spec.ts`
+              => 1 passed (rodado 3x: 2.8s/5.9s, 2.7s/5.3s, 2.7s/5.6s), seed 28 produtos /
+              8 pedidos. Gates: typecheck OK, lint OK (0 warnings), prettier OK nos MEUS
+              arquivos (spec + runner + ledger). Ruido EBUSY/rmdir no teardown (Windows,
+              apos passar) = cosmetico.
+  commit    : <preenchido no commit desta sessao>
+  proximo   : estoque.restock.idempotent (priority 15, state=todo) — refund 2x no MESMO
+              pedido: 2a aplicacao no-op (CAS WHERE stock_committed=true retorna 0 linhas),
+              stock estavel pos-1a-reposicao, Order.stockCommitted continua false.
