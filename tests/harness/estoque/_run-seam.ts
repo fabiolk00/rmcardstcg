@@ -31,9 +31,10 @@ import {
 import {
   adjustOrderPaymentStatus,
   applyPaymentStatusTx,
+  updateOrderShippingStatus,
   type PaymentRef,
 } from "../../../lib/data/orders";
-import type { PaymentStatus } from "../../../lib/data/types";
+import type { PaymentStatus, ShippingStatus } from "../../../lib/data/types";
 import type { AuditActor } from "../../../lib/data/audit";
 import { finalPriceCents } from "../../../lib/data/pricing";
 import { prisma } from "../../../lib/db";
@@ -129,6 +130,22 @@ type ApplyPaymentArgs = {
   orderId: number;
   status: PaymentStatus;
   payment: PaymentRef;
+};
+// Espelha o call site de PRODUCAO da MAQUINA DE ENVIO pelo admin
+// (updateOrderShippingStatusAction -> updateOrderShippingStatus, lib/data/orders.ts
+// L523). Numa MESMA transacao a funcao: le o pedido (before), trata X->X no-op,
+// valida a transicao contra SHIPPING_TRANSITIONS (transicao ilegal devolve
+// { ok:false, reason:'invalid_transition', from, to } SEM gravar nada), aplica via
+// compare-and-swap atomico (updateMany WHERE shippingStatus=from), concilia o estoque
+// SO quando to==='cancelled' (reconcileStockForPaymentStatus) e grava audit_log
+// (action order.shipping_status_update, before/after snapshots) — tudo na mesma tx. A
+// server action so DELEGA apos requireAdmin() (contexto de request), por isso chamamos
+// a funcao de lib/data direto. INFRA de teste: usa a funcao de PRODUCAO sem mock; a
+// spec assertaa o estado real via pg.
+type ShippingArgs = {
+  orderId: number;
+  to: ShippingStatus;
+  actor: AuditActor;
 };
 
 /**
@@ -298,6 +315,15 @@ async function main(): Promise<void> {
           (tx) => applyPaymentStatusTx(tx, orderId, status, payment),
           { timeout: 15000, maxWait: 5000 },
         );
+        break;
+      }
+      case "updateOrderShippingStatus": {
+        // Maquina de envio do admin (transicao validada + audit na MESMA tx; estoque
+        // so e conciliado em to==='cancelled'), via a funcao de PRODUCAO. Devolve o
+        // AdminOrderUpdate ({ ok, changed, order } | { ok:false, reason, from?, to? });
+        // a spec assertaa o estado real via pg.
+        const { orderId, to, actor } = payload as ShippingArgs;
+        result = await updateOrderShippingStatus(orderId, to, actor);
         break;
       }
       default:

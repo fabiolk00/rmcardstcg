@@ -2690,3 +2690,65 @@ SESSAO QA — pedido.payment.idempotent-noop (PORTAO ADVERSARIAL)
   commit    : harness(qa): aprova pedido.payment.idempotent-noop
   proximo   : pedido.shipping.pending-to-sent (priority 7) — fora do escopo desta
               sessao (so 1 feature por gate).
+
+--------------------------------------------------------------------------------
+SESSAO — TIME PEDIDO
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 12:25 -0300
+  time      : pedido
+  feature   : pedido.shipping.pending-to-sent (priority 7)
+  seam      : updateOrderShippingStatus(orderId, 'sent', actor) em lib/data/orders.ts
+              (L523). Funcao de menor nivel que prova as invariantes: abre
+              prisma.$transaction, le o pedido (before, adminOrderSelect), trata X->X
+              no-op, valida a transicao contra SHIPPING_TRANSITIONS (pending inclui
+              'sent' => legal; orderTransitions.ts L12-17), aplica via CAS atomico
+              (updateMany WHERE shippingStatus=from), NAO concilia estoque (so
+              to==='cancelled' dispara reconcileStockForPaymentStatus, L554) e grava
+              audit_log (action order.shipping_status_update, before/after snapshots)
+              na MESMA tx (L558-567). A server action updateOrderShippingStatusAction
+              so DELEGA apos requireAdmin() (contexto de request), por isso nao usada.
+  arquivos  : tests/harness/pedido/shipping-pending-to-sent.spec.ts (spec DB-first,
+              sem browser). ESTENDI o runner tests/harness/estoque/_run-seam.ts (INFRA)
+              p/ suportar updateOrderShippingStatus (import + type ShippingArgs + case
+              novo no switch). Nenhum codigo de PRODUTO tocado.
+  o-que-fiz : Ritual OK (branch harness/admin; init.sh smoke DB-first VERDE, 3 UI
+              VERMELHOS de proposito = blocker proxy.ts aceito). Marquei SO o state da
+              feature: todo -> building -> ready_for_qa. Escrevi spec que: (1) cria um
+              PRODUTO proprio via createProduct (SKU/nome unicos HARNESS-SHIP-<uuid>)
+              sem tocar o seed; (2) FORCA reserved=3(>0) e stock=10 via UPDATE direto
+              em pg + cria PEDIDO proprio (INSERT) com shipping_status=pending e
+              stock_reserved=true (reserva ATIVA — anti-trivialidade do "sem efeito de
+              estoque": se 'sent' conciliasse por engano, stock/reserved/flags mudariam);
+              + 1 item (QTY=3); (3) chama updateOrderShippingStatus(orderId,'sent',actor)
+              -> espera ok:true, changed:true, order.shippingStatus=='sent'; (4) ASSERT 1:
+              orders.shipping_status=='sent' e payment_status inalterado ('pending');
+              (5) ASSERT 3 (sem efeito de estoque): products.stock==10 e reserved==3
+              INALTERADOS + flags stock_reserved=true/stock_committed=false INALTERADAS +
+              rede final CHECK products_reserved_le_stock_chk existe e 0 violacoes;
+              (6) ASSERT 2: audit_log +1 total E +1 por entity_id (entity_id=String(orderId)),
+              pega a linha mais recente, action=='order.shipping_status_update' (valor
+              DOTTED do @map, schema.prisma L54; lido da coluna crua via pg),
+              entity_type=='order', before/after nao-null, before.shippingStatus=='pending',
+              after.shippingStatus=='sent', e paymentStatus identico nos dois snapshots
+              (delta limpo: so envio mudou).
+  INFRA     : runner _run-seam.ts estendido (updateOrderShippingStatus; import de
+              updateOrderShippingStatus + ShippingStatus). Banco efemero novo por run =>
+              isolamento; SKU/nome/usuario unicos (randomUUID). Categoria valida "Booster
+              Box". Ruido EBUSY/rmdir no teardown (Windows, apos passar) = cosmetico.
+  invariante: order-state-machine PROVADA (pending->sent legal via SHIPPING_TRANSITIONS,
+              CAS atomico; changed=true + shipping_status='sent'). audit-same-tx PROVADA:
+              estrutural na producao (writeAuditLog(tx,...) dentro de prisma.$transaction
+              de updateOrderShippingStatus) + empirica (exatamente 1 linha
+              order.shipping_status_update nova com before.shippingStatus=pending/
+              after.shippingStatus=sent). "Sem efeito de estoque" PROVADO de forma
+              nao-trivial (reserva ativa preservada).
+  estado    : ready_for_qa (state da feature no ledger). passes NAO tocado (campo do QA).
+  resultado : VERDE — `pnpm harness tests/harness/pedido/shipping-pending-to-sent.spec.ts`
+              => 1 passed (rodado 2x: 4.9s/2.0s e 4.8s/2.0s), seed 28 produtos / 8 pedidos.
+              Gates: typecheck OK, lint OK (0 warnings), prettier OK nos MEUS arquivos
+              (spec + runner + ledger). next-env.d.ts revertido (rewrite incidental do
+              next dev, nao comitado).
+  commit    : <preenchido no commit desta sessao>
+  proximo   : pedido.shipping.sent-to-delivered (priority 8, state=todo) —
+              updateOrderShippingStatus(orderId,'delivered',actor) a partir de sent;
+              transicao terminal legal, audit order.shipping_status_update na mesma tx.
