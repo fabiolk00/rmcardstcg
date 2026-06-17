@@ -2839,3 +2839,96 @@ SESSAO — TIME REVIEWER
               PG efemero recem-seedado (28 produtos / 8 pedidos).
   ledger    : reviewer escreveu review="approved" + review_note em admin_features.json.
               JSON valida. next-env.d.ts (rewrite incidental do next dev) NAO comitado.
+
+SESSAO — TIME QA (re-gate adversarial)
+  data      : 2026-06-17
+  feature   : pedido.shipping.pending-to-sent (priority 7) — VEREDITO: APROVADA (passes=true, qa_note=null)
+  repro     : pnpm harness tests/harness/pedido/shipping-pending-to-sent.spec.ts rodado 2x
+              em Postgres efemero recem-seedado (28 prod/8 ped) -> 1 passed nas DUAS
+              execucoes (7.0s / 4.4s). Reproduzivel, sem flake.
+  seam      : updateOrderShippingStatus (lib/data/orders.ts L523) — funcao de PRODUCAO,
+              invocada via tests/harness/estoque/_run-seam.ts case "updateOrderShippingStatus"
+              (sem mock). _run-seam.ts e INFRA (tests/), nao app/lib/prisma.
+  asserts   : [1] orders.shipping_status=='sent' (transicao legal SHIPPING_TRANSITIONS) —
+                  PROVADO via pg apos seam (changed=true + leitura DB; payment_status
+                  inalterado).
+              [2] audit_log +1 linha action='order.shipping_status_update' (valor @map
+                  DOTTED schema L54, lido cru via pg), MESMA tx, before.shippingStatus=
+                  pending / after.shippingStatus=sent, paymentStatus identico nos snaps —
+                  PROVADO (delta total +1 E por entity_id +1; orfaos descartados).
+              [3] Nenhum efeito de estoque (so cancelamento concilia) — PROVADO
+                  nao-trivial: reserva ativa (reserved=3>0, stockReserved=true) intacta.
+  probe     : sonda INDEPENDENTE (throwaway, removida ao fim — tree limpo) com VALORES
+              DIFERENTES da spec (stock=20, reserved=7, qty=5, payment=paid) chamando a
+              funcao de PRODUCAO direto:
+                A) pending->sent: flip + audit @map + before/after + SEM efeito estoque OK.
+                B) ANTI-TAUTOLOGIA: delivered->sent REJEITADO (invalid_transition),
+                   estado INALTERADO (delivered), NENHUMA linha de audit nova (sem orfao)
+                   -> a maquina de estados e REAL, nao constante.
+                E) products_reserved_le_stock_chk existe + 0 violacoes; colunas *_cents
+                   sao integer (cents-only).
+              Todas as assercoes da sonda passaram (PROBE-PASS).
+  produto   : git diff e0e83a1..HEAD -- app lib prisma == VAZIO. Nenhum conserto de
+              produto; a seam ja era correta (consistente com review). orderTransitions.ts
+              client-safe (sem prisma): pending->[sent,cancelled], delivered/cancelled
+              terminais.
+  campos    : imutaveis IDENTICOS ao baseline (id/team/category/title/route/priority/
+              steps/asserts/invariants). Alterados so: state (todo->ready_for_qa, pedido),
+              passes (false->true), review/review_note (reviewer). QA mantem
+              passes=true/qa_note=null (ja setados); NAO altera state (fica ready_for_qa).
+  ledger    : SEM nova alteracao do ledger nesta sessao (veredito = aprovado, ja refletido)
+              -> sem commit de ledger.
+
+--------------------------------------------------------------------------------
+SESSAO — TIME PEDIDO
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 12:55 -0300
+  time      : pedido
+  feature   : pedido.shipping.sent-to-delivered (priority 8)
+  seam      : updateOrderShippingStatus(orderId, 'delivered', actor) em lib/data/orders.ts
+              (L523) — funcao de menor nivel que prova as invariantes: abre
+              prisma.$transaction, le before (adminOrderSelect), trata X->X no-op, valida
+              a transicao contra SHIPPING_TRANSITIONS (sent inclui 'delivered' => legal),
+              aplica via CAS atomico (updateMany WHERE shippingStatus=from), NAO concilia
+              estoque (so to==='cancelled') e grava audit_log (order.shipping_status_update,
+              before/after) na MESMA tx. A server action updateOrderShippingStatusAction so
+              delega apos requireAdmin() (contexto de request), por isso nao usada. Runner
+              _run-seam.ts JA suportava updateOrderShippingStatus (case existente) — NAO
+              precisou estender.
+  arquivos  : tests/harness/pedido/shipping-sent-to-delivered.spec.ts (spec DB-first, sem
+              browser). Reusa o runner tests/harness/estoque/_run-seam.ts (INFRA) SEM
+              alteralo. Nenhum codigo de PRODUTO tocado.
+  o-que-fiz : Ritual OK (branch harness/admin; harness-progress + git log lidos). Marquei SO
+              o state da feature: todo -> building -> ready_for_qa. Escrevi spec que:
+              (1) cria PRODUTO proprio (createProduct, SKU/nome HARNESS-DELIV-<uuid>) sem
+              tocar o seed; FORCA stock=10 / reserved=3(>0) via UPDATE direto (reserva ativa,
+              anti-trivialidade do "sem efeito de estoque"); (2) INSERE pedido proprio com
+              shipping_status='sent', payment_status='paid', stockReserved=true + 1 item
+              (qty=3); sanidade do pre-estado; (3) chama updateOrderShippingStatus(.., 'delivered')
+              -> espera ok:true, changed:true, order.shippingStatus='delivered';
+              (4) ASSERT 1: orders.shipping_status=='delivered' (sent->delivered legal),
+              payment_status inalterado (paid); estoque/flags INTACTOS (stock=10/reserved=3/
+              stockReserved=true/stockCommitted=false); CHECK products_reserved_le_stock_chk
+              existe + 0 violacoes; (5) ASSERT 2: audit_log +1 total E +1 por entity_id,
+              action=='order.shipping_status_update' (valor @map DOTTED lido cru via pg),
+              entity_type='order', before.shippingStatus='sent'/after.shippingStatus='delivered',
+              paymentStatus identico nos dois snaps (delta limpo); (6) ASSERT 3 (delivered
+              terminal): APOS delivered, tenta sair p/ CADA outro estado (sent, pending,
+              cancelled) -> producao barra com ok:false, reason='invalid_transition',
+              from='delivered', to=target; shipping_status permanece 'delivered'; audit_log
+              total E por-entity INALTERADOS (nenhum orfao das tentativas barradas) — prova
+              empirica de SHIPPING_TRANSITIONS.delivered===[] (orderTransitions.ts L15).
+  invariante: order-state-machine PROVADA (sent->delivered legal via SHIPPING_TRANSITIONS +
+              CAS; delivered terminal => 3 destinos barrados com estado intacto). audit-same-tx
+              PROVADA: estrutural (writeAuditLog(tx,...) dentro do prisma.$transaction de
+              updateOrderShippingStatus) + empirica (exatamente 1 linha na transicao legal;
+              0 linhas novas nas transicoes ilegais — retorno ANTES de writeAuditLog).
+  estado    : ready_for_qa (state da feature no ledger). passes NAO tocado (campo do QA).
+  resultado : VERDE — `pnpm harness tests/harness/pedido/shipping-sent-to-delivered.spec.ts`
+              => 1 passed (rodado 2x: 7.2s e 7.1s; teste 4.5s), seed 28 produtos / 8 pedidos.
+              Gates: typecheck OK, lint OK (0 warnings), prettier OK nos MEUS arquivos (spec +
+              ledger; _run-seam intocado). Ruido "could not receive data from client" no
+              teardown do PG efemero (Windows, apos passar) = cosmetico.
+  commit    : <preenchido no commit desta sessao>
+  proximo   : pedido.shipping.skip-blocked (priority 9, state=todo) — pulo pending->delivered
+              barrado (invalid_transition), nada gravado, sem audit.
