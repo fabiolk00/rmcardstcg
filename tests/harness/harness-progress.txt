@@ -3660,3 +3660,17 @@ SESSAO — TIME QA
    A3 "toCouponData casa tipo<->campo": frente (B) via _run-seam.ts case createCoupon = funcao de PRODUCAO lib/data/coupons.ts (sem mock). (B1) percent + valueCents=9999 lixo -> persiste percent_off=25, value_cents=NULL; (B2) fixed + percentOff=55 lixo -> persiste value_cents=2500, percent_off=NULL. Anti-trivial (lixo no campo oposto). PROVADO via leitura pg do row persistido.
   Invariante coupon-coherence: coberta pelas duas frentes + fechamento (tabela inteira 0 violacoes apos as duas criacoes de dominio). audit-same-tx NAO e invariante listada desta feature.
   Produto intocado: git diff e0e83a1..HEAD -- app lib prisma VAZIO.
+
+[2026-06-17 16:07] time:pedido feature:cupom.code.ci-unique (priority 20) estado:ready_for_qa
+  O-QUE-FIZ: escrevi tests/harness/pedido/cupom-code-ci-unique.spec.ts (DB-first, sem browser) provando "codigo de cupom unico case-insensitive (LOWER(code))".
+  SEAM: createCoupon(actor, input) de PRODUCAO (lib/data/coupons.ts L150) via _run-seam.ts case createCoupon (JA existente; runner NAO precisou ser estendido). Sem mock.
+  ASSERTS PROVADOS via pg sobre process.env.DATABASE_URL:
+    - sanity: indice funcional UNIQUE coupons_code_key existe e indexa LOWER(code) (pg_indexes.indexdef ~ /UNIQUE/ e /lower(code)/).
+    - 1a criacao code caixa-mista 'VeRaO10-<slug>' -> ok; code persistido normalizado em UPPER (normalizeCouponCode); nao gravou a forma minuscula crua.
+    - 2a criacao MESMO code em minusculas -> {ok:false} com mensagem de codigo duplicado (P2002 tratado). Postgres log confirma "duplicate key ... coupons_code_key ... Key (lower(code))=...".
+    - 1 UNICA linha para LOWER(code) (sem 2a linha case-variante); linha sobrevivente e a 1a (mesmo id), code segue UPPER canonico.
+    - audit-same-tx: criacao FALHA nao audita -> delta GLOBAL de audit_log == +1 (so a 1a, bem-sucedida); audit coupon.create com after->>code casando LOWER(code) == exatamente 1 (zero orfao de rollback).
+  ANTI-TRIVIAL: caixa mista na 1a + minuscula na 2a pega indice case-sensitive/normalize quebrado; delta de audit medido global e por-entity.
+  RESULTADO: pnpm harness VERDE e reproduzivel (2 runs, 1 passed). Gates: typecheck OK, lint OK (max-warnings 0), prettier --check do meu spec OK.
+  PRODUTO INTOCADO: so escrevi teste; nenhum app/lib/prisma tocado. needs_product_fix:false.
+  PROXIMO: cupom.update.audited (priority 21) team=pedido.
