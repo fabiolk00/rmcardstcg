@@ -2130,3 +2130,19 @@ SESSAO PEDIDO — pedido.payment.pending-to-paid (priority 1)
   proximo   : pedido.payment.pending-to-cancelled (priority 2, state=todo) — estorna a
               reserva (releaseStock: reserved-=qty, stock INTOCADO), stockReserved=false,
               audit order.payment_status_update na mesma tx.
+
+=== [QA] pedido.payment.pending-to-paid — APROVADO (2026-06-17) ===
+GATE executado de verdade (nao confiei em relatorio):
+1) Repro do ZERO via `pnpm harness tests/harness/pedido/payment-pending-to-paid.spec.ts`, PG efemero recem-seedado (28 produtos/8 pedidos), 2x => VERDE reproduzivel (1 passed em ambas; ruido EBUSY rmdir no teardown e cosmetico).
+2) Anti-fake-green: seam adjustOrderPaymentStatus em _run-seam.ts chama a funcao de PRODUCAO lib/data/orders.ts:adjustOrderPaymentStatus (sem mock). Cada assert exercitado contra o DB real via pg:
+   - assert1 orders.payment_status=='paid' (transicao legal pending->paid via updateMany CAS): provado.
+   - assert2 estoque conciliado commitStock (stock-=qty, reserved-=qty), stock_committed=true/stock_reserved=false: provado (pre reserved>0 forcado, efeito nao-trivial).
+   - assert3 audit_log +1 na MESMA tx, action dotted order.payment_status_update, before.paymentStatus=pending, after.paymentStatus=paid, after.manualAdjustment=true, after.adjustmentReason=reason: provado.
+3) Invariantes ligadas validadas por PROBE INDEPENDENTE (ephemeral PG proprio) com VALORES DIFERENTES da spec (QTY=3+2 em DOIS itens, STOCK0=20, RESERVED0=8, reason com espacos):
+   - deltas observados A:20->17/8->5, B:20->18/8->6 => prova a LOGICA por-produto (nao a constante 7/0 da spec).
+   - adjustmentReason == reason.TRIMMED => prova o trimmedReason de producao (nao eco de constante).
+   - audit-same-tx: exatamente +1; no-op (paid->paid) NAO adiciona audit; caminho not_found NAO deixa orfao de audit.
+   - reserved-le-stock: CHECK products_reserved_le_stock_chk existe + 0 violacoes; cents-only (colunas Int).
+   Probe removido ao fim (tree limpo).
+4) Produto intocado: `git diff e0e83a1..HEAD -- app lib prisma` VAZIO. HEAD (3b03e2e) so adiciona infra de teste (_run-seam.ts), a spec, o flip de state no ledger e progress.
+VEREDITO: todos os asserts provados ponta a ponta => passes=true, qa_note=null, state inalterado (ready_for_qa).
