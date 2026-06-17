@@ -1659,3 +1659,66 @@ SESSAO QA — estoque.price.final-derived-pure (PORTAO ADVERSARIAL)
   commit    : harness(qa): aprova estoque.price.final-derived-pure
   proximo   : estoque.price.update-discount-audited (priority 17, state=todo) — fora do
               escopo desta sessao (so 1 feature por gate).
+
+--------------------------------------------------------------------------------
+SESSAO — TIME ESTOQUE
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 09:05 -0300
+  time      : estoque
+  feature   : estoque.price.update-discount-audited (priority 17)
+  seam      : updateProduct(actor, id, input) em lib/data/products.ts — funcao de
+              menor nivel que prova as invariantes: normalizeProductInput valida
+              discountPct na faixa 0..80 (products.ts L147: Number.isInteger + 0..80)
+              ANTES de abrir prisma.$transaction (L280); dentro da tx le o before,
+              aplica o UPDATE e grava writeAuditLog (before/after) na MESMA tx
+              (L303-327). priceCents (base) NUNCA e tocado ao mudar so o desconto.
+              Reforco do preco final usa a SEAM PURA finalPriceCents(p) de
+              lib/data/pricing.ts (Math.round(priceCents*(1-discountPct/100)),
+              nada persistido). As server actions exigem requireAdmin() (contexto de
+              request), por isso nao usadas — elas so delegam.
+  arquivos  : tests/harness/estoque/price-update-discount-audited.spec.ts (spec
+              DB-first, sem browser). Reusa o runner _run-seam.ts (INFRA ja existente,
+              suporta createProduct, updateProduct E finalPriceCents) SEM alteralo.
+              Nenhum codigo de PRODUTO tocado.
+  o-que-fiz : Ritual OK (branch harness/admin; progress lido; git log -15 conferido).
+              Marquei SO o state da feature: todo -> building -> ready_for_qa. Escrevi
+              spec que: (1) cria produto PROPRIO via createProduct (HARNESS-DISCOUNT-
+              <uuid>, priceCents=P=12345, discountPct=0, stock=30) sem tocar o seed;
+              (2) chama updateProduct com o MESMO input porem discountPct=20
+              (priceCents=P intocado, resto identico); (3) ASSERT[1]: discount_pct==20
+              (Int), price_cents==P intocado (Int), stock/sku/slug intactos (delta
+              limpo, mesmo nome => mesmo slug); (4) ASSERT[2]: finalPriceCents(P,20)
+              via FUNCAO REAL (seam pura, sem banco) == round(P*0.80)==9876 e Int +
+              sanidade finalPriceCents(P,0)==P; paridade com derivacao SQL
+              ROUND(price_cents*(1-discount_pct/100)) sobre o produto gravado == 9876;
+              information_schema confirma price_cents/discount_pct integer e NENHUMA
+              coluna de preco final (regex final.?price|preco.?final|price.?final==[]);
+              (5) ASSERT[3]: audit_log ganha EXATAMENTE 1 linha (total +1 E por
+              entity_id +1; createProduct deixou 1, o update soma a 2a), action=='product.
+              update' (valor DOTTED do @map lido cru), entity_type=='product',
+              before.discountPct==0/after.discountPct==20, before/after.priceCents==P e
+              stock iguais (delta limpo); (6) ASSERT[4]: reconstrucao do input com
+              discountPct=81 lanca ProductValidationError (/[Dd]esconto/) e NAO grava
+              nada (discount_pct persistido continua 20, price_cents=P, audit por-entity
+              inalterado em 2 — rollback antes da tx); reforco de fronteira: discountPct=80
+              ACEITO (limite superior valido) via funcao pura == round(P*0.2).
+  INFRA     : nenhuma mudanca de infra/produto (runner _run-seam intocado). Banco
+              efemero novo por run => isolamento; SKU/nome unicos (randomUUID).
+              Categoria valida "Booster Box".
+  invariante: final-price-derived PROVADA (funcao real round(P*0.80)==9876; paridade
+              com derivacao SQL sobre produto real; sem coluna persistida). cents-only
+              PROVADA (price_cents/discount_pct integer no DB; finalPriceCents Int).
+              audit-same-tx PROVADA: estrutural (writeAuditLog(tx,...) dentro da
+              prisma.$transaction de updateProduct) + empirica (exatamente 1 linha
+              product.update nova; rejeicao por validacao NAO deixa orfao).
+  estado    : ready_for_qa (state da feature no ledger). passes NAO tocado (campo do QA).
+  resultado : VERDE — `pnpm harness tests/harness/estoque/price-update-discount-audited.spec.ts`
+              => 1 passed (rodado 2x: 4.7s e 4.5s; total ~7.1-7.4s), seed 28 produtos /
+              8 pedidos. Gates: typecheck OK, lint OK (0 warnings), prettier OK nos MEUS
+              arquivos (spec + ledger). Ruido EBUSY/rmdir no teardown (Windows, apos
+              passar) = cosmetico.
+  commit    : <preenchido no commit desta sessao>
+  proximo   : estoque.product.inactivate-audited (priority 18, state=todo) —
+              setProductActive(actor,id,false): isActive->false (soft-delete), audit
+              product.inactivate (before.isActive=true/after=false) na mesma tx,
+              stock/reserved/preco inalterados.

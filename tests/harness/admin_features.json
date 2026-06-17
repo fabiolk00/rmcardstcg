@@ -405,7 +405,7 @@
       "discountPct rejeita >80 (faixa 0..80)."
     ],
     "invariants": ["final-price-derived", "cents-only", "audit-same-tx"],
-    "state": "todo",
+    "state": "ready_for_qa",
     "passes": false,
     "qa_note": null,
     "fix_note": null,
