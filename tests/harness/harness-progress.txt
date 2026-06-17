@@ -830,3 +830,10 @@ SESSAO 0014 — TIME ESTOQUE
               productId}, reserved permanece 4 (sem incremento parcial), chamador
               aborta a tx (nada gravado), CHECK jamais violado. O runner ja suporta o
               ramo ok:false (ReserveAbort + rollback) desta sessao.
+
+=== QA: estoque.reserve.reserves-units (2026-06-17) ===
+VEREDITO: APROVADO (passes=true, state permanece ready_for_qa, qa_note=null).
+Gate1 reproducao: `pnpm harness tests/harness/estoque/reserve-reserves-units.spec.ts` rodado 2x em PG efemero recem-seedado -> VERDE reproduzivel (1 passed cada).
+Gate2 anti-fake-green: seam reserveStockForOrder chama a funcao de PRODUCAO reserveStock(tx,items) (lib/data/inventory.ts) via _run-seam.ts, sem mock; call-site espelha createPendingOrderWithReservation (orders.ts L193-221: reserveStock + Order.stockReserved=true na MESMA tx). Todos os 4 asserts do ledger sao exercitados de verdade contra o DB via pg; dados nao-triviais (R=2>0, soma real R->R+3, disponibilidade de sobra).
+Gate3 invariantes (probe QA independente, descartada ao fim, VALORES DIFERENTES R=5/STOCK=30/QTY=7): CASO1 reserved=12, stock=30 inalterado, flags ok; CASO2 oversell ao nivel da funcao -> ok:false + rollback (sem reserva parcial, productId real, flag do pedido permanece false); CASO3 CHECK products_reserved_le_stock_chk existe e barra reserved>stock por SQL cru, 0 violacoes; CASO4 reserveStock NAO grava audit_log (feature corretamente NAO reivindica audit-same-tx); CASO5 releaseStock estorna reserved->R (reserve-lifecycle).
+Gate4 produto intacto: git diff e0e83a1..HEAD -- app lib prisma VAZIO. next-env.d.ts (rewrite incidental do next dev) revertido; tree limpo.
