@@ -1,0 +1,18 @@
+[QA] 2026-06-17 cupom.code.ci-unique -> APROVADO (passes=true, qa_note=null, state inalterado=ready_for_qa).
+  Repro: pnpm harness tests/harness/pedido/cupom-code-ci-unique.spec.ts em PG efemero recem-seedado (28 prod/8 ped) -> 1 passed (4.4s).
+  Anti-fake-green: 4/4 asserts provados ponta a ponta via pg sobre DATABASE_URL; seam=createCoupon de PRODUCAO (lib/data/coupons.ts:150) via _run-seam.ts (sem mock).
+    a1 {ok:false}+msg duplicado: L158-166 (P2002 real, log PG: duplicate key coupons_code_key Key (lower(code))=...).
+    a2 1 linha p/ LOWER(code): L108-115 guarda indice UNIQUE LOWER(code) + L170-185 COUNT==1 e id sobrevivente=1a (anti-trivial caixa mista vs minuscula).
+    a3 code em UPPER: L140-147 le code cru e == toUpperCase, != lowercase.
+    a4 audit nao cresce na falha: L118-210 delta global +1 e exatamente 1 coupon.create p/ esse LOWER(code) (audit-same-tx, rollback sem orfao; action lida dotted "coupon.create").
+  Invariantes coupon-code-ci-unique + audit-same-tx: ambas exercitadas no DB pela spec.
+  Produto intocado: git diff e0e83a1..HEAD -- app lib prisma VAZIO.
+
+[QA] 2026-06-17 cupom.update.audited -> APROVADO (passes=true, qa_note=null, state inalterado=ready_for_qa).
+  Repro: pnpm harness tests/harness/pedido/cupom-update-audited.spec.ts em PG efemero recem-seedado (28 prod/8 ped) -> 1 passed (2.7s).
+  Anti-fake-green: 3/3 asserts provados ponta a ponta via pg sobre DATABASE_URL; seam=updateCoupon de PRODUCAO (lib/data/coupons.ts:179) via _run-seam.ts (sem mock); createCoupon (L150) p/ semear o cupom inicial.
+    A1 editaveis atualizados + redeemed_count==R: L171-175 semeia redeemed_count=R=7 (anti-trivial, R>0); L202-205 NEW!=INITIAL; L237-242 pos-update min=8000/max=25/redeemed=7 via pg. toCouponData NUNCA emite redeemedCount (CouponInput nao tem o campo).
+    A2 coerencia tipo<->campo (CHECK valido): L143-146 sanity pg_constraint coupons_type_value_chk existe; L249-257 percent_off NOT NULL 1..100 + value_cents NULL + COUNT(*)==0 violacoes do predicado IDENTICO ao CHECK (test-schema-supplement.sql L38-41).
+    A3 audit 1 linha coupon.update na mesma tx, before/after: L261-267 delta GLOBAL +1; L271-280 exatamente 1 linha action='coupon.update' (dotted cru) p/ entity_id; L285-292 before=INITIAL / after=NEW + coerencia no snapshot (type=percent, percentOff set, valueCents null). Fonte: writeAuditLog grava via tx (audit-same-tx).
+  Invariantes coupon-coherence(A2)/coupon-redeem-limits(A1)/audit-same-tx(A3)/cents-only(Number.isInteger): todas exercitadas no DB pela spec.
+  Produto intocado: git diff e0e83a1..HEAD -- app lib prisma VAZIO. Seam dispara updateCoupon/createCoupon de PRODUCAO (sem mock).
