@@ -16,3 +16,14 @@
     A3 audit 1 linha coupon.update na mesma tx, before/after: L261-267 delta GLOBAL +1; L271-280 exatamente 1 linha action='coupon.update' (dotted cru) p/ entity_id; L285-292 before=INITIAL / after=NEW + coerencia no snapshot (type=percent, percentOff set, valueCents null). Fonte: writeAuditLog grava via tx (audit-same-tx).
   Invariantes coupon-coherence(A2)/coupon-redeem-limits(A1)/audit-same-tx(A3)/cents-only(Number.isInteger): todas exercitadas no DB pela spec.
   Produto intocado: git diff e0e83a1..HEAD -- app lib prisma VAZIO. Seam dispara updateCoupon/createCoupon de PRODUCAO (sem mock).
+
+[QA] 2026-06-17 cupom.redeem.idempotent-per-order -> APROVADO (passes=true, qa_note=null, state inalterado=ready_for_qa).
+  Repro: pnpm harness tests/harness/pedido/cupom-redeem-idempotent-per-order.spec.ts em PG efemero recem-seedado (28 prod/8 ped) -> 1 passed (5.3s).
+  Anti-fake-green: 3/3 asserts provados ponta a ponta via pg sobre DATABASE_URL; seam=redeemCoupon de PRODUCAO (lib/data/coupons.ts:364) via _run-seam.ts case redeemCoupon (L465-482, envelopa em $transaction como o checkout; RedeemAbort so em ok:false); createCoupon (L150) p/ semear o cupom. Sem mock.
+    Sanity: L132-139 indice UNIQUE coupon_redemptions.order_id (fonte da idempotencia) existe; L128-131 CHECK coupons_redeemed_count_chk existe. Schema: orderId @unique @map order_id; userId @map clerk_user_id (spec le clerk_user_id AS user_id, ok).
+    A1 ok:true alreadyRedeemed=true no-op: L184-194 1a redencao do orderX -> r1.ok=true/alreadyRedeemed=false; L209-224 2a do MESMO orderX -> r2.ok=true/alreadyRedeemed=true. Valores do retorno da funcao de PRODUCAO (curto-circuita em findUnique(orderId), L375-376).
+    A2 1 unica linha p/ orderId X: L197-201 COUNT==1 apos 1a; L227-237 rowCount==1 apos 2a E a unica linha e do userId da 1a (a 2a nao inseriu). Via pg.
+    A3 redeemed_count NAO incrementa na repeticao: L202-206 ==1 apos 1a; L240-248 continua ==1 apos 2a + Number.isInteger; L252-260 rede final 0 cupons violam redeemed_count>=0 AND <=max. Anti-trivial: pre redeemed_count=0/max=1 (L171-177), perUserLimit=null isola o ramo order_id @unique.
+  Invariante coupon-redeem-limits (facet idempotencia-por-pedido): exercitada no DB (indice UNIQUE order_id + net redeemed_count>=0/<=max). audit-same-tx NAO listada e correto: redeemCoupon corre na tx do checkout, nao grava audit_log (nao e mutacao admin auditada).
+  Produto intocado: git diff e0e83a1..HEAD -- app lib prisma VAZIO. So infra de teste (_run-seam.ts case redeemCoupon ja existente/verde nas irmas, spec) mudou.
+  Obs (nao reprova, QA nao edita spec): comentario L40-43 superestima que increment errado "estoura o CHECK" (CHECK e so >=0); irrelevante p/ o veredito pois A3 assere redeemed_count==1 direto via pg + net <=max explicito.
