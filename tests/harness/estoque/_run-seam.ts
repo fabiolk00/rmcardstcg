@@ -28,7 +28,11 @@ import {
   updateProduct,
   type ProductInput,
 } from "../../../lib/data/products";
-import { adjustOrderPaymentStatus } from "../../../lib/data/orders";
+import {
+  adjustOrderPaymentStatus,
+  applyPaymentStatusTx,
+  type PaymentRef,
+} from "../../../lib/data/orders";
 import type { PaymentStatus } from "../../../lib/data/types";
 import type { AuditActor } from "../../../lib/data/audit";
 import { finalPriceCents } from "../../../lib/data/pricing";
@@ -107,6 +111,24 @@ type AdjustPaymentArgs = {
   to: PaymentStatus;
   reason: string;
   actor: AuditActor;
+};
+// Espelha o NUCLEO da maquina de pagamento de PRODUCAO usada pelo webhook/reconcile
+// (applyPaymentStatusTx, lib/data/orders.ts L332). Recebe um `tx` externo na
+// producao; aqui o envelopamos num prisma.$transaction EXATAMENTE como o wrapper de
+// PRODUCAO setOrderPaymentStatus (orders.ts L411-420) faz para chamadores sem tx
+// proprio. A funcao valida a transicao contra PAYMENT_TRANSITIONS ANTES de qualquer
+// efeito de estoque: uma transicao ilegal (ex.: paid->pending, cancelled->paid)
+// retorna { found:true, ok:false, reason:'invalid_transition' } SEM tocar estoque e
+// SEM gravar audit (a guarda retorna antes de reconcileStockForPaymentStatus; a
+// propria applyPaymentStatusTx nunca escreve audit_log). A verificacao anti-replay
+// exige payment.id == orders.asaas_payment_id, entao a spec seta asaas_payment_id no
+// pedido e passa o `payment.id` casado p/ exercitar o ramo invalid_transition (e nao
+// payment_mismatch). INFRA de teste: usa a funcao de PRODUCAO sem mock; a spec
+// inspeciona o retorno E assertaa o estado real via pg.
+type ApplyPaymentArgs = {
+  orderId: number;
+  status: PaymentStatus;
+  payment: PaymentRef;
 };
 
 /**
@@ -263,6 +285,19 @@ async function main(): Promise<void> {
         // ({ ok, changed, order } | { ok:false, reason }); a spec assertaa via pg.
         const { orderId, to, reason, actor } = payload as AdjustPaymentArgs;
         result = await adjustOrderPaymentStatus(orderId, to, reason, actor);
+        break;
+      }
+      case "applyPaymentStatus": {
+        // Nucleo da maquina de pagamento (webhook/reconcile). Envelopa
+        // applyPaymentStatusTx num $transaction como o wrapper de PRODUCAO
+        // setOrderPaymentStatus. Devolve o PaymentStatusUpdate (incl. o ramo
+        // { found:true, ok:false, reason:'invalid_transition' }); a spec assertaa
+        // o estado real via pg (nada gravado em estoque/audit numa transicao ilegal).
+        const { orderId, status, payment } = payload as ApplyPaymentArgs;
+        result = await prisma.$transaction(
+          (tx) => applyPaymentStatusTx(tx, orderId, status, payment),
+          { timeout: 15000, maxWait: 5000 },
+        );
         break;
       }
       default:

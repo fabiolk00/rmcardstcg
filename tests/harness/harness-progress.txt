@@ -2372,3 +2372,60 @@ SESSAO — TIME QA (PORTAO ADVERSARIAL)
   resultado : todos os 3 asserts do ledger + 4 invariantes (order-state-machine, audit-same-tx,
               reserve-lifecycle-idempotent, reserved-le-stock) PROVADOS ponta a ponta.
   commit    : <preenchido no commit desta sessao>
+
+--------------------------------------------------------------------------------
+SESSAO — TIME PEDIDO
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 11:57 -0300
+  time      : pedido
+  feature   : pedido.payment.paid-to-pending-blocked (priority 4)
+  seam      : applyPaymentStatusTx(tx, orderId, status, payment) de lib/data/orders.ts
+              (L332) — o NUCLEO da maquina de pagamento (webhook Asaas + reconcile). E
+              a UNICA funcao que valida a transicao contra PAYMENT_TRANSITIONS
+              (orders.ts L300-304: paid -> ['cancelled'] APENAS; 'pending' NUNCA e
+              destino de paid). A guarda (L374-379) retorna { found:true, ok:false,
+              reason:'invalid_transition' } ANTES de reconcileStockForPaymentStatus
+              (zero efeito de estoque) e a propria applyPaymentStatusTx NUNCA escreve
+              audit_log (audit e tarefa das funcoes de admin). O ledger pede
+              explicitamente "via applyPaymentStatusTx (maquina de pagamento)". NAO usei
+              adjustOrderPaymentStatus (ajuste manual do admin): essa funcao e SEGREGADA
+              do webhook e NAO valida PAYMENT_TRANSITIONS — so barra o no-op X->X; ela
+              ACEITARIA paid->pending (CAS incondicional + audit), entao nao e a maquina
+              de estados que esta feature exige.
+  arquivos  : tests/harness/pedido/payment-paid-to-pending-blocked.spec.ts (spec DB-first,
+              sem browser). ESTENDI o runner tests/harness/estoque/_run-seam.ts (INFRA) p/
+              suportar applyPaymentStatus (case novo: envelopa applyPaymentStatusTx num
+              prisma.$transaction EXATAMENTE como o wrapper de PRODUCAO
+              setOrderPaymentStatus, orders.ts L411-420; importa applyPaymentStatusTx +
+              type PaymentRef de lib/data/orders). Nenhum codigo de PRODUTO tocado.
+  o-que-fiz : Ritual OK (branch harness/admin; progress + git log -15 lidos). Marquei SO o
+              state da feature: todo -> building -> ready_for_qa. Spec: (1) cria PRODUTO
+              proprio (createProduct, SKU/nome unicos HARNESS-BLOCKPP-<uuid>) sem tocar o
+              seed; FORCA stock=10/reserved=2 (>0, anti-trivial) via UPDATE direto; (2)
+              INSERT direto de PEDIDO proprio JA PAGO (payment_status='paid',
+              stock_committed=true, stock_reserved=false) + asaas_payment_id casado +
+              1 item QTY=3; (3) chama applyPaymentStatus com status='pending' e
+              payment.id CASADO com asaas_payment_id (satisfaz a verificacao anti-replay
+              L347-353 p/ exercitar a GUARDA DE TRANSICAO de fato, nao payment_mismatch);
+              (4) asserts via pg: [a1] res.found=true, res.ok=false, res.reason==
+              'invalid_transition'; [a2] orders.payment_status permanece 'paid', flags
+              intactas (committed=true/reserved=false); [a3] products.stock==10 e
+              reserved==2 INALTERADOS + CHECK products_reserved_le_stock_chk existe + 0
+              violacoes; [a4] audit_log total E por-entity INALTERADOS + 0 linhas
+              order.payment_status_update p/ o pedido (sem audit orfao).
+  invariante: order-state-machine PROVADA (paid->pending barrado por PAYMENT_TRANSITIONS,
+              ok:false reason='invalid_transition', payment_status segue 'paid').
+              audit-same-tx PROVADA (transicao ilegal retorna antes de qualquer escrita
+              => 0 audit; estrutural: a guarda L374-379 antecede reconcile e o unico
+              writeAuditLog do fluxo, que nem existe em applyPaymentStatusTx).
+              reserved-le-stock como rede final (CHECK + 0 violacoes; estoque intocado).
+  estado    : ready_for_qa (state da feature no ledger). passes NAO tocado (campo do QA).
+  resultado : VERDE — `pnpm harness tests/harness/pedido/payment-paid-to-pending-blocked.spec.ts`
+              => 1 passed (rodado 2x: 4.6s e 4.4s), seed 28 produtos / 8 pedidos. Gates:
+              typecheck OK, eslint 0 warnings, prettier OK nos MEUS arquivos (spec +
+              _run-seam + ledger). Ruido EBUSY/rmdir no teardown (Windows, apos passar) =
+              cosmetico.
+  commit    : <preenchido no commit desta sessao>
+  proximo   : pedido.payment.cancelled-to-paid-blocked (priority 5, state=todo) —
+              transicao ilegal cancelled->paid barrada via applyPaymentStatusTx, nenhum
+              commitStock disparado, payment_status segue 'cancelled', sem audit.
