@@ -1190,9 +1190,9 @@
   },
   {
     "category": "chaos",
-    "state": "ready_for_qa",
+    "state": "qa_failed",
     "passes": false,
-    "qa_note": null,
+    "qa_note": "ASSERT 4 nao provado. O assert (imutavel) exige duas coisas: (a) 'audit_log recebe a auditoria do commit na MESMA transacao do efeito' E (b) 'sem duplicar por entrega repetida'. A spec prova SO (b): mede delta de audit_log == 0 (global e do pedido) apos as 5 entregas (chaos-webhook-replay.spec.ts L404-418). NAO prova (a) — pelo contrario, prova a AUSENCIA de qualquer auditoria do commit. OBSERVADO: applyPaymentStatusTx (lib/data/orders.ts:332-404, o efeito do webhook) nao chama writeAuditLog (so as mutacoes de ADMIN o fazem: updateOrderShippingStatus L558, updateOrderInternalNote L600, adjustOrderPaymentStatus L655); o fluxo de webhook e de sistema e NAO audita por design (orders.ts:680). ESPERADO pelo assert: exatamente 1 linha de audit_log do commit, na mesma tx, nao duplicada sob replay. Contradicao na propria definicao da feature: o assert demanda auditoria do commit que o produto deliberadamente nao emite. Repro: pnpm harness tests/harness/estoque/chaos-webhook-replay.spec.ts -> 1 passed, mas o verde so cobre delta==0; a clausula (a) fica sem cobertura. ACAO (decisao do dono): ou o fixer faz o commit do webhook gravar 1 audit_log na mesma tx (e a spec passa a provar action/before/after + nao-duplicacao sob as 5 entregas), ou o dono corrige o texto do assert para nao exigir auditoria de fluxo de sistema (audit-same-tx tem escopo 'mutacao de admin' em invariants.md L15). QA nao edita asserts e nao pode reinterpretar a clausula imutavel como cumprida. Demais asserts (1/2/3) e invariantes webhook-idempotent/reserve-lifecycle-idempotent/reserved-le-stock estao OK e provados via pg.",
     "fix_note": null,
     "review": null,
     "review_note": null,
