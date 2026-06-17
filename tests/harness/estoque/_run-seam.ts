@@ -22,7 +22,12 @@
  * Exit code 0 sempre que o protocolo foi cumprido (sucesso OU erro de dominio
  * capturado); != 0 so para falhas inesperadas de processo.
  */
-import { createProduct, updateProduct, type ProductInput } from "../../../lib/data/products";
+import {
+  createProduct,
+  setProductActive,
+  updateProduct,
+  type ProductInput,
+} from "../../../lib/data/products";
 import type { AuditActor } from "../../../lib/data/audit";
 import { finalPriceCents } from "../../../lib/data/pricing";
 import { prisma } from "../../../lib/db";
@@ -36,6 +41,14 @@ import {
 
 type CreateArgs = { actor: AuditActor; input: ProductInput };
 type UpdateArgs = { actor: AuditActor; id: string; input: ProductInput };
+// Soft-delete / reativacao de produto: chama setProductActive(actor, id, isActive)
+// de PRODUCAO (lib/data/products.ts). A funcao roda prisma.$transaction { le before,
+// no-op idempotente se ja no estado pedido, senao UPDATE is_active + writeAuditLog
+// (action product.inactivate quando isActive=false, product.reactivate quando true)
+// na MESMA tx }. A spec dispara esta seam e asserta o estado real via pg. INFRA de
+// teste: usa a funcao de PRODUCAO sem mock — espelha o que setProductActiveAction
+// (app/admin/produtos/actions.ts) delega apos requireAdmin().
+type SetActiveArgs = { actor: AuditActor; id: string; isActive: boolean };
 // Espelha o call site de PRODUCAO (createPendingOrderWithReservation, orders.ts
 // L193-221): numa MESMA transacao, chama reserveStock(tx, items) e — se ok —
 // vira a flag stockReserved=true do pedido. Se reserveStock devolver ok:false, o
@@ -109,6 +122,13 @@ async function main(): Promise<void> {
       case "updateProduct": {
         const { actor, id, input } = payload as UpdateArgs;
         result = await updateProduct(actor, id, input);
+        break;
+      }
+      case "setProductActive": {
+        // Soft-delete (isActive=false) / reativacao (true) auditada na MESMA tx,
+        // via a funcao de PRODUCAO. Devolve o Product resultante (ou o before, se no-op).
+        const { actor, id, isActive } = payload as SetActiveArgs;
+        result = await setProductActive(actor, id, isActive);
         break;
       }
       case "reserveStockForOrder": {

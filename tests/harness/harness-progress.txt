@@ -1785,3 +1785,30 @@ SESSAO QA — estoque.price.update-discount-audited (PORTAO ADVERSARIAL)
               tree limpo (so .claude/agent-memory/ infra). Ruido EBUSY/rmdir no
               teardown do PG (Windows, apos passar) = cosmetico, ignorado.
   estado    : ready_for_qa (NAO alterei). passes=true escrito pelo QA. qa_note=null.
+
+[2026-06-17 09:14 -03] time:estoque feature:estoque.product.inactivate-audited (priority 18)
+  o-que-fiz : spec DB-first tests/harness/estoque/product-inactivate-audited.spec.ts
+              provando o soft-delete auditado. SEAM de PRODUCAO: setProductActive(
+              actor, id, false) de lib/data/products.ts — estendi _run-seam.ts com o
+              case "setProductActive" (INFRA de teste; nenhum codigo de produto
+              tocado). Produto PROPRIO criado via createProduct (sku/nome unicos),
+              ativo; FORCEI reserved=4>0 (UPDATE de fixture, respeita CHECK
+              reserved<=stock) p/ o assert "reserved inalterado" NAO virar trivial.
+  asserts   : [1] products.isActive true->false E NENHUMA linha removida (contagem
+                  de produtos inalterada — soft-delete, nao hard-delete) -> PROVADO.
+              [2] audit_log +1 linha (total E por entity_id) action=product.inactivate
+                  (valor @map DOTTED lido CRU, nao a chave JS product_inactivate);
+                  before.isActive=true / after.isActive=false; entity_type=product;
+                  MESMA tx estrutural (writeAuditLog(tx,...) dentro do
+                  prisma.$transaction de setProductActive) -> PROVADO.
+              [3] stock/reserved/preco/desconto/slug/sku INALTERADOS (reserved=4
+                  antes e depois; price=23456; disc=10; stock=12) -> PROVADO.
+  invariante: audit-same-tx (1 linha na mesma tx, action/before/after corretos);
+              reforco: CHECK products_reserved_le_stock_chk segue valido, 0 violacoes.
+  produto   : git diff -- app lib prisma => VAZIO (nenhum codigo de produto tocado).
+              next-env.d.ts (rewrite incidental do next dev) revertido. Ruido
+              EBUSY/rmdir no teardown do PG (Windows, apos passar) = cosmetico.
+  estado    : VERDE reproduzivel (2 runs, 1 passed cada). typecheck+lint(0 warn)+
+              prettier(meus arquivos) verdes. state -> ready_for_qa (NAO toquei passes).
+  proximo   : QA valida estoque.product.inactivate-audited; depois priority 19
+              estoque.product.reactivate-audited (todo) reusa o mesmo seam setProductActive.
