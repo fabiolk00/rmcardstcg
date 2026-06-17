@@ -3477,3 +3477,14 @@ SESSAO — TIME QA
   produto   : NAO toquei app/**, lib/**, prisma/** (so spec + ledger + progress).
   commit    : harness(pedido): cobre pedido.totals.formula DB-first
   proximo   : QA valida pedido.totals.formula; proximo todo de pedido = pedido.shipping.free-above-threshold (priority 15).
+
+[QA 2026-06-17] pedido.totals.formula -> APROVADO (passes=true, qa_note=null, state mantido ready_for_qa).
+  GATE 1 (repro do zero): pnpm harness tests/harness/pedido/totals-formula.spec.ts em PG efemero recem-seedado, 2x -> VERDE reproduzivel (1 passed).
+  GATE 2 (anti-fake-green): spec 100% pg cru sobre process.env.DATABASE_URL, sem mock. Asserts do ledger cobertos:
+    A1 total_cents == subtotal-discount-coupon+shipping: provado com termos NAO-triviais (50000/3000/1500/2500=>48000), lendo colunas cruas, total!=subtotal.
+    A2 cents-only/Int: runtime Number.isInteger em todas as colunas + information_schema.columns confirma data_type='integer' nas 5 colunas monetarias.
+    A3 CHECK coupon_discount_cents>=0: pg_constraint confirma orders_coupon_discount_cents_chk; insercao coupon=-1 barrada (23514) e 0 linhas vazadas.
+    A4 escopo catalogo: 0 violadores da formula/cupom-negativo em TODOS os pedidos (seed+meu), >1 pedido.
+  Natureza: feature estrutural (total gravado no checkout via lib/cart/totals.ts; nao ha mutacao de admin) -> sem seam de producao e CORRETAMENTE sem audit-same-tx (nao listado nos invariants da feature).
+  GATE 3 (invariantes ligadas, probe independente com valores DIFERENTES 77777/4321/2099/2500=>73857): formula derivada das colunas cruas confere; CHECK rejeita -999 (23514, 0 vazamento); 5 colunas integer; 8 pedidos do seed sem violacao. Probe removida (tree limpo).
+  GATE 4 (produto intacto): git diff e0e83a1..HEAD -- app lib prisma == VAZIO.
