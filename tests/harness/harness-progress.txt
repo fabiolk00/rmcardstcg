@@ -715,3 +715,57 @@ SESSAO 0012 — TIME ESTOQUE
               [{productId, quantity:3}]) incrementa reserved p/ R+3, stock inalterado,
               Order.stockReserved=true/stockCommitted=false, CHECK valido. (vai exigir
               estender _run-seam p/ reserveStock dentro de uma $transaction.)
+
+--------------------------------------------------------------------------------
+SESSAO 0013 — TIME QA (gate adversarial)
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 07:24 -0300
+  time      : qa
+  feature   : estoque.product.available-derived (priority 7), state=ready_for_qa.
+  veredito  : APROVADO (passes=true, qa_note=null, state INALTERADO=ready_for_qa).
+  ritual    : pwd /c/rmcardstcg; branch harness/admin OK; li harness-progress.txt +
+              git log + ledger + spec + _run-seam + pricing.ts + schema.prisma +
+              test-schema-supplement.sql.
+  repro     : `pnpm harness tests/harness/estoque/product-available-derived.spec.ts`
+              do ZERO em PG efemero recem-seedado (db push + apply-test-constraints +
+              seed = 28 produtos/8 pedidos), 2x: run1 = 1 passed (4.0s), run2 = 1 passed
+              (3.5s). VERDE reproduzivel. O exit code 1 do `pnpm harness` e SO o ruido
+              cosmetico EBUSY/rmdir do teardown no Windows (DEPOIS do teste passar); a
+              linha de LOG "violates check constraint products_reserved_le_stock_chk
+              ... UPDATE reserved=11" e a SONDA INTENCIONAL de defesa-em-profundidade
+              da propria spec (rejeicao esperada do DB), nao um erro de teste.
+  nao-fake  : seam = createProduct REAL de lib/data/products.ts via _run-seam.ts (import
+              direto da funcao de PRODUCAO, sem mock). Spec assertaa 100% via `pg` cru
+              sobre process.env.DATABASE_URL. Cada assert do ledger exercitado de verdade:
+    [1] disponivel == stock - reserved == 6 (read-time): spec L121-150 FORCA stock=10/
+        reserved=4 via UPDATE cru, deriva (stock-reserved) em SQL. ANTI-TRIVIAL:
+        reserved>0 (L146) e reserved!=stock (L147) garantem subtracao real (nao 0/cheio).
+        PROVADO.
+    [2] sem coluna persistida de disponivel: spec L155-169 lista information_schema.
+        columns, exige stock+reserved e 0 colunas /avail|disponi/i. Paridade final-
+        price-derived (L171-188): 0 colunas /final.?price|preco.?final/i + derivacao
+        numerica round(price_cents*(1-discount_pct/100.0))==9000. Casa com schema.prisma
+        (Product NAO tem coluna available nem final_price) e pricing.ts (finalPriceCents
+        puro, "Nunca salvo"). PROVADO.
+    [3] CHECK 0<=reserved<=stock valido: spec L191-203 confirma products_reserved_le_
+        stock_chk em pg_constraint + 0 violacoes + 0<=4<=10. Defesa-em-profundidade
+        (L205-225): UPDATE reserved=11 (>stock) e REJEITADO pelo DB citando o CHECK e
+        NAO persiste (reserved fica 4). Backed por test-schema-supplement.sql L21-28.
+        PROVADO.
+  invariantes: reserved-le-stock (CHECK existe + 0 violacoes + DB rejeita oversell cru)
+        e final-price-derived (sem coluna de preco final + derivacao pura). PROVADAS.
+  probe-ind : escrevi probe PROPRIA (c:\rmcardstcg\_qa_probe_available.tmp.ts, removida
+              ao fim — tree limpo) que sobe SEU PROPRIO PG efemero, push+constraints+
+              seed, chama o SEAM REAL createProduct via _run-seam.ts com VALORES
+              DIFERENTES da spec (stock=20, reserved=7 => disponivel=13; price=25000,
+              disc=20 => final=20000) p/ provar a LOGICA e nao a constante. 21 PASS /
+              0 FAIL, incl.: disponivel=13 derivado (nao 6), final=20000 derivado (nao
+              9000), pg_constraint do CHECK, DB rejeita reserved=21>stock=20 por SQL cru
+              citando o CHECK (e a linha continua 7), e BOUNDARY stock==reserved =>
+              disponivel 0 e legal (prova que o CHECK e `<=`, sem oversell).
+  produto   : git diff e0e83a1..HEAD -- app lib prisma => VAZIO (commit + working tree).
+              Nenhum codigo de produto tocado; nenhum fixer agiu nesta feature.
+              next-env.d.ts (rewrite incidental do next dev) revertido => tree limpo.
+  VEREDITO  : APROVADO. Os 3 asserts do ledger provados ponta a ponta contra Postgres
+              real, mais as 2 invariantes. passes=true, qa_note=null. state mantido em
+              ready_for_qa (campo do QA so passes/qa_note).
