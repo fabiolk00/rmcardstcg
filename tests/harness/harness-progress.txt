@@ -1009,3 +1009,55 @@ SESSAO 0016 — TIME ESTOQUE
               stock_reserved=true AND stock_committed=false retorna 0 linhas => claimed
               ==0, commitStock nao roda), sem dupla baixa. O runner ja suporta o ciclo
               (commitStockForOrder devolve {claimed}).
+
+--------------------------------------------------------------------------------
+SESSAO 0017 — TIME QA
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 07:57 -0300
+  time      : qa
+  feature   : estoque.commit.reserved-to-committed (priority 10) — VEREDITO: APROVADO
+  ritual    : pwd c:\rmcardstcg; branch harness/admin; harness-progress + git log lidos.
+  GATE 1 (repro do zero): `pnpm harness tests/harness/estoque/commit-reserved-to-
+              committed.spec.ts` em PG efemero recem-seedado (28 prod/8 ped), rodado 2x
+              => 1 passed nas duas (1.8s e 3.1s). Exit code 1 da 2a run e SO o ruido
+              cosmetico EBUSY/rmdir do teardown no Windows (apos o teste passar). VERDE
+              reproduzivel CONFIRMADO.
+  GATE 2 (anti-fake-green): li a spec E os 4 asserts do ledger. Seam = commitStock de
+              lib/data/inventory.ts (L109-119), funcao de PRODUCAO importada DIRETO no
+              _run-seam.ts (L28), NAO mock. A op commitStockForOrder (L106-121) e MIRROR
+              fiel do ramo 'paid' de reconcileStockForPaymentStatus (orders.ts L448-454):
+              MESMO CAS SQL (UPDATE orders SET stock_committed=true, stock_reserved=false
+              WHERE id=? AND stock_reserved=true AND stock_committed=false), MESMO guard
+              claimed===1, MESMA chamada commitStock(tx, lines). `lines` lidas dos
+              PROPRIOS itens do pedido (findUnique select items), espelhando snap.items
+              da producao — NAO injetadas. Cada assert exercitado contra DB real via pg:
+                A1 stock-=qty E reserved-=qty: 20->17 / 5->2; delta de CADA coluna ==QTY
+                   (efeitos separados, ambos ocorreram); reserved residual 2>0 e !=stock
+                   17 (anti-trivial, conforme dica reserved>0). PROVADO.
+                A2 Order.stockCommitted==true E stockReserved==false (pos-CAS). PROVADO.
+                A3 CHECK 0<=reserved<=stock valido apos baixa: constraint existe + 0
+                   violacoes na tabela + reserved(2)<=stock(17). PROVADO.
+                A4 centavos intocados: price_cents do produto, quantity/unit_price_cents
+                   do item, subtotal/total do pedido todos inalterados; so qtd muda;
+                   price_cents integer. PROVADO.
+                Rede: commit de estoque NAO grava audit_log (total e por-entity
+                   inalterados) — feature corretamente NAO reivindica audit-same-tx.
+  GATE 3 (invariantes ligadas, PROBE INDEPENDENTE com valores DIFERENTES): escrevi probe
+              propria (stock=30, reserved=12, qty=7 -> 23/5) usando o MESMO seam de
+              PRODUCAO. Provou: (a) LOGICA e nao constante (baixa de 7 em ambas as
+              colunas); (b) reserve-lifecycle-idempotent REAL — 2a chamada
+              commitStockForOrder no MESMO pedido => claimed=0, stock/reserved INALTERADOS
+              (sem dupla baixa); (c) reserved-le-stock — CHECK existe, UPDATE cru
+              reserved(28)>stock(23) REJEITADO pelo banco (ERROR products_reserved_le_
+              stock_chk no log), 0 violacoes; (d) cents-only price_cents integer; (e)
+              flags viradas. Probe VERDE (1 passed) e REMOVIDA ao fim (tree limpo,
+              git status sem residuo).
+  GATE 4 (produto intocado): git diff e0e83a1..HEAD -- app lib prisma VAZIO (inclusive
+              working tree). Commit da feature (0f53908) toca SO: _run-seam.ts (infra),
+              commit-reserved-to-committed.spec.ts, admin_features.json (so o campo state
+              todo->ready_for_qa) e harness-progress. Nenhum fixer agiu; nenhum codigo de
+              produto mudou. Field-ownership respeitado (estoque mexeu so em state).
+  veredito  : APROVADO. Todos os 4 asserts provados ponta a ponta contra DB real, seam =
+              producao, invariantes ligadas validadas com probe independente de valores
+              distintos. passes=true, qa_note=null. state INALTERADO (ready_for_qa).
+  commit    : <preenchido no commit desta sessao> (harness(qa): aprova ...)
