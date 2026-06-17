@@ -365,3 +365,56 @@ SESSAO 0006 — TIME QA (gate adversarial)
         na spec/seam; eslint 0 warnings; prettier OK. Tree limpo (next-env.d.ts revertido
         — rewrite incidental do next dev, nao do QA).
   proximo   : estoque.product.increase-stock (priority 4, state=todo).
+
+--------------------------------------------------------------------------------
+SESSAO 0007 — TIME ESTOQUE
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 06:45 -0300
+  time      : estoque
+  feature   : estoque.product.increase-stock (priority 4)
+  seam      : updateProduct(actor, id, input) em lib/data/products.ts. Funcao de
+              menor nivel que prova as invariantes: abre prisma.$transaction, le o
+              produto atual (before), aplica o guard data.stock < current.reserved
+              (irrelevante p/ AUMENTO), checa SKU unico excluindo o proprio id,
+              recalcula slug via uniqueSlug(tx, name, id) e grava audit product.update
+              (before/after) na MESMA tx (L273-331). A server action updateProductAction
+              so delega e exige requireAdmin() (contexto de request), por isso nao usada.
+  arquivos  : tests/harness/estoque/product-increase-stock.spec.ts (spec DB-first, sem
+              browser). ESTENDI o runner _run-seam.ts (INFRA) p/ suportar updateProduct
+              (case novo no switch; importa updateProduct de lib/data/products). Nenhum
+              codigo de PRODUTO tocado.
+  o-que-fiz : Ritual de inicio OK (branch harness/admin; init.sh => smoke DB-first VERDE
+              (1 passed) + 3 UI VERMELHOS de proposito = blocker proxy.ts aceito).
+              Marquei SO o state da feature: todo -> building -> ready_for_qa. Escrevi
+              spec que: (1) le a linha COMPLETA do produto mais antigo do seed (ORDER BY
+              created_at ASC, id ASC) p/ capturar S=stock, R=reserved e reconstruir um
+              ProductInput IDENTICO; conta audit_log total e por entity_id; (2) chama
+              updateProduct com o MESMO input porem stock=S+10 (so o estoque muda, p/
+              delta de audit limpo — reserved nem e campo do input); (3) assertaa
+              products.stock==S+10 (Int) e products.reserved==R (inalterado), e que
+              price_cents/discount_pct/sku/slug ficaram intactos (mesmo nome => mesmo
+              slug, uniqueSlug exclui o proprio id); (4) CHECK products_reserved_le_stock_chk
+              existe + 0 violacoes de 0<=reserved<=stock + reforco R<=S+10; (5) audit_log
+              ganha EXATAMENTE 1 linha (total +1 E por entity_id +1), pega a linha mais
+              recente do produto, action=='product.update' (valor DOTTED do @map),
+              entity_type=='product', before/after nao-null, before.stock==S e
+              after.stock==S+10, e priceCents/discountPct iguais nos dois snapshots
+              (delta limpo).
+  INFRA     : runner estendido (updateProduct). A escolha por created_at ASC e
+              deterministica e usa coluna real snake_case (created_at). Banco efemero
+              novo por run => isolamento; sem dados proprios seedados (a feature opera
+              sobre um produto pre-existente do seed, sem colisao de SKU/slug).
+  invariante: reserved-le-stock PROVADA (CHECK existe via pg_constraint + 0 violacoes +
+              reserved==R inalterado + R<=S+10). audit-same-tx PROVADA: estrutural na
+              producao (writeAuditLog(tx,...) dentro de prisma.$transaction de
+              updateProduct) + empirica (exatamente 1 linha product.update nova com
+              before.stock=S/after.stock=S+10 apos a chamada retornar).
+  estado    : ready_for_qa (state da feature no ledger). passes NAO tocado (campo do QA).
+  resultado : VERDE — `pnpm harness tests/harness/estoque/product-increase-stock.spec.ts`
+              => 1 passed (~0.9-1.0s), seed 28 produtos / 8 pedidos. Gates: typecheck OK,
+              lint OK (0 warnings), prettier OK nos MEUS arquivos (spec + runner + ledger).
+              next-env.d.ts revertido (rewrite incidental do next dev, nao comitado).
+  commit    : <preenchido no commit desta sessao>
+  proximo   : estoque.product.reduce-stock-above-reserved (priority 5, state=todo) —
+              updateProduct com stock=5 mantendo stock>=reserved (R=2), reserved
+              inalterado, audit product.update na mesma tx.

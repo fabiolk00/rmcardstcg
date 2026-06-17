@@ -88,7 +88,7 @@
       "audit_log recebe 1 linha action=product.update na MESMA transacao, before.stock=S e after.stock=S+10."
     ],
     "invariants": ["reserved-le-stock", "audit-same-tx"],
-    "state": "todo",
+    "state": "ready_for_qa",
     "passes": false,
     "qa_note": null,
     "fix_note": null,

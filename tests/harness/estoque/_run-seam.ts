@@ -22,10 +22,11 @@
  * Exit code 0 sempre que o protocolo foi cumprido (sucesso OU erro de dominio
  * capturado); != 0 so para falhas inesperadas de processo.
  */
-import { createProduct, type ProductInput } from "../../../lib/data/products";
+import { createProduct, updateProduct, type ProductInput } from "../../../lib/data/products";
 import type { AuditActor } from "../../../lib/data/audit";
 
 type CreateArgs = { actor: AuditActor; input: ProductInput };
+type UpdateArgs = { actor: AuditActor; id: string; input: ProductInput };
 
 async function main(): Promise<void> {
   const op = process.argv[2];
@@ -37,6 +38,11 @@ async function main(): Promise<void> {
       case "createProduct": {
         const { actor, input } = payload as CreateArgs;
         result = await createProduct(actor, input);
+        break;
+      }
+      case "updateProduct": {
+        const { actor, id, input } = payload as UpdateArgs;
+        result = await updateProduct(actor, id, input);
         break;
       }
       default:
