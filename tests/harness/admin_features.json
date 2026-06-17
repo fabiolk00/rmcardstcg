@@ -469,7 +469,7 @@
       "audit_log NAO ganha linha (count == A): no-op idempotente, sem audit duplicado."
     ],
     "invariants": ["audit-same-tx"],
-    "state": "todo",
+    "state": "ready_for_qa",
     "passes": false,
     "qa_note": null,
     "fix_note": null,

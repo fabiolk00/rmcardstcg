@@ -1962,3 +1962,53 @@ SESSAO QA — estoque.product.reactivate-audited (PORTAO ADVERSARIAL)
   commit    : harness(qa): aprova estoque.product.reactivate-audited
   proximo   : estoque.product.inactivate-idempotent (priority 20, state=todo) — fora do
               escopo desta sessao (so 1 feature por gate).
+
+--------------------------------------------------------------------------------
+SESSAO 0023 — TIME ESTOQUE
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 11:12 -0300
+  time      : estoque
+  feature   : estoque.product.inactivate-idempotent (priority 20) — ULTIMA todo de estoque.
+  seam      : setProductActive(actor, id, false) em lib/data/products.ts. O guard de
+              idempotencia vive em products.ts L352 — DENTRO de prisma.$transaction,
+              ANTES de tx.product.update E de writeAuditLog:
+                if (before.isActive === isActive) return before; // no-op idempotente
+              Como o early-return ocorre antes de qualquer escrita, uma 2a inativacao
+              de produto JA INATIVO nao muda a linha nem grava audit (sem audit
+              ruidoso/duplicado). Runner _run-seam.ts JA suporta setProductActive — sem
+              extensao de infra. A server action setProductActiveAction so delega e
+              exige requireAdmin() (contexto de request), por isso nao usada.
+  arquivos  : tests/harness/estoque/product-inactivate-idempotent.spec.ts (spec DB-first,
+              sem browser). Reusa o runner _run-seam.ts (INFRA, ja existente) SEM
+              alteralo. Nenhum codigo de PRODUTO tocado.
+  o-que-fiz : Ritual OK (branch harness/admin; li harness-progress.txt + git log). Marquei
+              SO o state da feature: todo -> building -> ready_for_qa. Escrevi spec que:
+              (1) cria um produto PROPRIO via createProduct (SKU/nome unicos
+              HARNESS-INACTIDEM-<uuid>) ATIVO, sem tocar o seed; (2) FORCA reserved=3>0
+              via UPDATE direto em pg (anti-trivialidade dos asserts de "estado
+              preservado"); (3) INATIVA uma 1a vez (true->false) — esta grava 1 audit
+              product.inactivate (coberto por inactivate-audited); SO ENTAO mede a
+              contagem-base A (audit_log total) + por-entity + por (entity,action), e
+              afirma sanidade: produto tem create+inactivate=2 audits e exatamente 1
+              product.inactivate; (4) chama setProductActive(false) DE NOVO no produto
+              ja inativo (o que o ledger testa) -> espera no-op; (5) assertaa
+              isActive permanece false, linha INTACTA (price/discount/stock/reserved/
+              slug/sku iguais ao pre), contagem de produtos inalterada (no-op nao cria/
+              remove); (6) audit_log NAO ganha linha: total == A E por-entity inalterado
+              E continua EXATAMENTE 1 product.inactivate (sem duplicar); (7) rede final:
+              CHECK products_reserved_le_stock_chk existe + 0 violacoes de 0<=reserved<=stock.
+  invariante: audit-same-tx PROVADA — o no-op nao deixa audit (total/por-entity/por-action
+              inalterados apos a 2a chamada). Atomicidade estrutural: early-return ANTES
+              de tx.product.update e writeAuditLog (products.ts L352), entao nem a linha
+              muda nem nasce audit. Empirico: contagens inalteradas + 1 product.inactivate.
+  estado    : ready_for_qa (state da feature no ledger). passes NAO tocado (campo do QA).
+  resultado : VERDE — `pnpm harness tests/harness/estoque/product-inactivate-idempotent.spec.ts`
+              => 1 passed (rodado 2x: 2.7s/5.3s ambas), seed 28 produtos / 8 pedidos.
+              Gates: typecheck OK, lint OK (0 warnings), prettier OK nos MEUS arquivos
+              (spec + ledger; _run-seam intocado). next-env.d.ts revertido (rewrite
+              incidental do next dev, nao comitado). Ruido EBUSY/rmdir no teardown
+              (Windows, apos passar) = cosmetico.
+  commit    : <preenchido no commit desta sessao>
+  proximo   : NAO HA MAIS feature team=estoque com state=todo. Todas as 20 features de
+              estoque foram cobertas (priority 1..20). Trabalho do time estoque concluido;
+              restam apenas features team=pedido (27) p/ o outro time.
