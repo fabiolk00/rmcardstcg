@@ -1152,3 +1152,72 @@ SESSAO QA — estoque.commit.idempotent  (2026-06-17)
   VEREDITO  : APROVADO. Todos os asserts provados ponta a ponta contra o DB real. passes=
               true, qa_note=null, state INALTERADO (ready_for_qa). Edit cirurgico no ledger
               (1 linha: passes false->true), nenhuma outra feature tocada.
+
+--------------------------------------------------------------------------------
+SESSAO 0020 — TIME ESTOQUE
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 08:12 -0300
+  time      : estoque
+  feature   : estoque.release.reserved-on-cancel (priority 12)
+  seam      : releaseStock(tx, items) em lib/data/inventory.ts (L89-102) — a funcao de
+              PRODUCAO que estorna a reserva em LOTE: reserved -= qty (guard por linha
+              reserved>=qty, via $executeRaw; stock INTOCADO). Como exige o `tx` do
+              chamador, ESTENDI o runner _run-seam.ts (INFRA) com a op
+              "releaseStockForOrder": abre prisma.$transaction e, na MESMA tx, espelha
+              FIELMENTE o ramo 'cancelled'->release de reconcileStockForPaymentStatus
+              (orders.ts L457-466): (1) le os PROPRIOS itens do pedido (snap.items na
+              producao); (2) faz o CAS UPDATE "orders" SET stock_reserved=false WHERE
+              id=? AND stock_reserved=true AND stock_committed=false; (3) SE released
+              ===1, chama releaseStock(tx, lines). E EXATAMENTE o que
+              adjustOrderPaymentStatus(orderId,'cancelled',...) executa via o reconcile
+              ao cancelar um pedido pendente. NAO usei adjustOrderPaymentStatus direto:
+              a server action exige requireAdmin (contexto de request); o efeito de
+              ESTOQUE desta feature vive inteiramente em releaseStock + o CAS das flags
+              (o MESMO CAS do reconcile de producao).
+  arquivos  : tests/harness/estoque/release-reserved-on-cancel.spec.ts (spec DB-first,
+              sem browser). tests/harness/estoque/_run-seam.ts ESTENDIDO (import de
+              releaseStock + op nova releaseStockForOrder + type ReleaseArgs). Nenhum
+              codigo de PRODUTO tocado.
+  o-que-fiz : Ritual OK (branch harness/admin; harness-progress + git log conferidos).
+              Marquei SO o state da feature: todo -> building -> ready_for_qa. Escrevi
+              spec que: (1) cria produto PROPRIO via createProduct (SKU/nome unicos
+              HARNESS-RELEASE-<uuid>) sem tocar o seed; (2) FORCA stock=20, reserved=R(5)
+              via UPDATE direto em pg (anti-trivial: reserved>0 e reserved-QTY=2>0, e
+              stock cravado em 20 distinto de reserved => prova que o estorno toca SO
+              reserved; pre-condicao reserved>=qty); (3) cria pedido PROPRIO PENDENTE via
+              INSERT pg com stock_reserved=true/stock_committed=false + UM order_item
+              (qty=QTY=3) — o estorno le ESSE item como `lines`; (4) chama o seam
+              releaseStockForOrder({orderId}); (5) assertaa: released===1 (CAS reivindicou
+              a transicao); products.reserved==R-QTY(2) E products.stock INALTERADO (20),
+              delta de reserved==QTY e delta de stock==0 (efeitos separados); reserved
+              residual >0 e !=stock; Order.stockReserved==false E stockCommitted continua
+              false; CHECK products_reserved_le_stock_chk existe + 0 violacoes + reserved
+              >=0 e <=stock; cents-only: price_cents intocado; (6) IDEMPOTENCIA: 2a
+              aplicacao do estorno no MESMO pedido => released===0 (CAS WHERE stock_
+              reserved=true... casa 0 linhas, a flag ja virou) => releaseStock nao roda,
+              reserved permanece 2 (sem decremento duplo -> jamais negativo), CHECK ainda
+              intacto; (7) rede final: o estorno de ESTOQUE NAO grava audit_log (total e
+              por-entity do produto inalterados — releaseStock e efeito de inventario).
+  INFRA     : runner estendido (releaseStockForOrder + import releaseStock + ReleaseArgs).
+              Banco efemero novo por run => isolamento; SKU/nome/pedido/item unicos
+              (randomUUID). Categoria valida "Booster Box". Coluna do pedido e
+              clerk_user_id (nao user_id).
+  invariante: reserve-lifecycle-idempotent PROVADA: o estorno so ocorre quando o CAS
+              reivindica a transicao (released===1) virando Order.stockReserved=false na
+              MESMA tx do releaseStock; a 2a aplicacao e no-op (released===0), sem
+              decremento duplo. reserved-le-stock PROVADA (estorno 5->2 com stock fixo 20;
+              CHECK existe + 0 violacoes; reserved residual nao fica negativo nem na
+              repeticao).
+  estado    : ready_for_qa (state da feature no ledger). passes NAO tocado (campo do QA).
+  resultado : VERDE — `pnpm harness tests/harness/estoque/release-reserved-on-cancel.spec.ts`
+              => 1 passed (rodado 2x: 2.8s/5.4s e 2.8s/5.4s), seed 28 produtos / 8 pedidos.
+              Gates: typecheck OK, lint OK (0 warnings), prettier OK nos MEUS arquivos
+              (spec + runner + ledger). next-env.d.ts revertido (rewrite incidental do
+              next dev, nao comitado). Ruido EBUSY/rmdir no teardown (Windows, apos
+              passar) = cosmetico (exit code 1 do pnpm harness e so isso).
+  commit    : <preenchido no commit desta sessao>
+  proximo   : estoque.release.idempotent (priority 13, state=todo) — cancelar pedido
+              pendente 2x: a 2a vez e no-op (CAS WHERE stock_reserved=true AND
+              stock_committed=false retorna 0 linhas), reserved permanece pos-1o-estorno,
+              CHECK reserved>=0 jamais violado. O runner ja suporta o ciclo
+              (releaseStockForOrder devolve {released}) — sem extensao necessaria.

@@ -25,7 +25,12 @@
 import { createProduct, updateProduct, type ProductInput } from "../../../lib/data/products";
 import type { AuditActor } from "../../../lib/data/audit";
 import { prisma } from "../../../lib/db";
-import { commitStock, reserveStock, type StockItem } from "../../../lib/data/inventory";
+import {
+  commitStock,
+  releaseStock,
+  reserveStock,
+  type StockItem,
+} from "../../../lib/data/inventory";
 
 type CreateArgs = { actor: AuditActor; input: ProductInput };
 type UpdateArgs = { actor: AuditActor; id: string; input: ProductInput };
@@ -43,6 +48,16 @@ type ReserveArgs = { orderId: number; items: StockItem[] };
 // { claimed } p/ a spec provar idempotencia/efeito. INFRA de teste: usa as funcoes
 // de PRODUCAO (commitStock) e o MESMO CAS do reconcile, sem mock.
 type CommitArgs = { orderId: number };
+// Espelha o ramo 'cancelled' (estorno de reserva) de reconcileStockForPaymentStatus
+// (orders.ts L457-466): numa MESMA transacao, faz o CAS da flag
+//   UPDATE "orders" SET stock_reserved=false
+//   WHERE id=? AND stock_reserved=true AND stock_committed=false
+// e — SE released===1 — chama releaseStock(tx, lines) (reserved -= qty; stock
+// INTOCADO). As `lines` saem dos PROPRIOS itens do pedido (como snap.items no
+// reconcile), nao injetadas. Devolve { released } p/ a spec provar efeito/
+// idempotencia. INFRA de teste: usa a funcao de PRODUCAO (releaseStock) e o MESMO
+// CAS do reconcile, sem mock.
+type ReleaseArgs = { orderId: number };
 
 /**
  * Erro de aborto da reserva — carrega o resultado { ok:false, productId } do
@@ -118,6 +133,34 @@ async function main(): Promise<void> {
           `;
           if (claimed === 1) await commitStock(tx, lines);
           return { claimed: Number(claimed) };
+        });
+        break;
+      }
+      case "releaseStockForOrder": {
+        // Estorno da reserva no cancelamento de pedido PENDENTE (nao pago), na MESMA
+        // transacao, com o MESMO compare-and-swap idempotente do reconcile de
+        // producao (ramo 'cancelled' -> release):
+        //   CAS WHERE stock_reserved=true AND stock_committed=false vira stock_reserved
+        //   p/ false; so quando released===1 (a tx reivindicou a transicao) releaseStock
+        //   roda (reserved -= qty; stock INTOCADO).
+        // As `lines` saem dos PROPRIOS itens do pedido (como snap.items em
+        // reconcileStockForPaymentStatus), nao de um payload injetado.
+        const { orderId } = payload as ReleaseArgs;
+        result = await prisma.$transaction(async (tx) => {
+          const order = await tx.order.findUnique({
+            where: { id: orderId },
+            select: { items: { select: { productId: true, quantity: true } } },
+          });
+          const lines = (order?.items ?? []).map((it) => ({
+            productId: it.productId,
+            quantity: it.quantity,
+          }));
+          const released = await tx.$executeRaw`
+            UPDATE "orders" SET "stock_reserved" = false
+            WHERE "id" = ${orderId} AND "stock_reserved" = true AND "stock_committed" = false
+          `;
+          if (released === 1) await releaseStock(tx, lines);
+          return { released: Number(released) };
         });
         break;
       }
