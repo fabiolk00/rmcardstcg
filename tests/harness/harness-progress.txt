@@ -3312,3 +3312,50 @@ SESSAO — TIME PEDIDO
   commit    : <preenchido no commit desta sessao>
   proximo   : pedido.note.empty-normalized-noop (priority 13, state=todo) — nota vazia/so-espacos
               normaliza p/ null; como ja era null, changed=false, sem audit.
+
+================================================================================
+[QA] pedido.note.update-audited — VEREDITO: APROVADO (passes=true)
+  data      : 2026-06-17 (sessao QA)
+  repro     : DB-first sem browser. O webServer de playwright.harness.config.ts
+              (next dev + Clerk) timeoutou aqui (Missing publishableKey) — IRRELEVANTE
+              p/ esta spec, que NUNCA usa `page`. Reproduzi do ZERO com orquestrador
+              proprio (c:\tmp, removido ao fim): mesmo fluxo do harness (embedded-pg +
+              prisma db push + apply-test-constraints + seed = 28 produtos/8 pedidos),
+              exporta DATABASE_URL, roda playwright SEM webServer. VERDE 2x:
+              run1 927ms, run2 1.2s (casa com o tempo do time, 945ms/1.3s — confirma
+              que a spec e DB-first e nao depende do dev server).
+  seam real : _run-seam.ts case 'updateOrderInternalNote' chama a funcao de PRODUCAO
+              updateOrderInternalNote (lib/data/orders.ts L579) SEM mock. Corpo conferido:
+              1 prisma.$transaction { normaliza note (trim; vazio/so-espaco -> null);
+              findUnique before (adminOrderSelect); no-op quando
+              (existing.internalNote ?? null)===normalized (changed:false, SEM audit);
+              senao tx.order.update internalNote + writeAuditLog(tx, order_note_update,
+              before=orderAuditSnapshot(existing), after=snapshot({...existing,
+              internalNote:normalized})) — TUDO na mesma tx }. @map dotted confirmado
+              no schema.prisma L55 (order_note_update @map("order.note_update")).
+  asserts   : TODOS provados ponta a ponta contra o DB real (sem mock/trivial):
+              1) orders.internal_note == NOTE — PROVADO (UPDATE real; lido via pg).
+              2) audit_log +1 total E +1 por entity_id, action coluna crua=
+                 'order.note_update' (@map dotted), entity_type='order', entity_id=
+                 String(orderId), before.internalNote=null, after.internalNote=NOTE,
+                 paymentStatus/shippingStatus identicos nos 2 snapshots (mesma tx,
+                 delta limpo) — PROVADO.
+              3) Status pagamento/envio inalterados — PROVADO NAO-TRIVIAL: pre-estado
+                 paid/sent (nao-default), conferido inalterado pos-acao.
+  invariantes: audit-same-tx exercitada: estrutural (writeAuditLog(tx,...) dentro do
+              prisma.$transaction) + empirica (exatamente 1 linha order.note_update).
+              PROBE INDEPENDENTE proprio (valores DIFERENTES da spec: payment=pending,
+              shipping=delivered, before.internalNote NAO-null='nota inicial qa', note
+              nova distinta) confirmou: change path (before non-null -> new, +1 audit
+              dotted, status intocados); NO-OP idempotente (mesma nota => changed=false,
+              SEM novo audit); NORMALIZACAO ('   ' -> null, real change +1 audit
+              before=nota/after=null; depois '' quando ja null => no-op sem audit);
+              reserved-le-stock CHECK products_reserved_le_stock_chk PRESENTE + 0
+              violacoes; cents-only (pg_typeof(total_cents)='integer'). Probe rodou
+              1 passed e foi REMOVIDO (tree limpo).
+  produto   : git diff e0e83a1..HEAD -- app lib prisma = VAZIO. Nenhum codigo de produto
+              tocado. _run-seam.ts e INFRA de teste (case updateOrderInternalNote delega
+              p/ a funcao de producao sem mock). next-env.d.ts regenerado pelo next/tsx
+              foi revertido; tree limpo.
+  veredito  : passes=true, qa_note=null, state inalterado (ready_for_qa). Edit cirurgico
+              no ledger (1 campo: passes false->true).
