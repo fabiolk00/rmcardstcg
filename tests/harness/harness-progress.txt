@@ -1812,3 +1812,38 @@ SESSAO QA — estoque.price.update-discount-audited (PORTAO ADVERSARIAL)
               prettier(meus arquivos) verdes. state -> ready_for_qa (NAO toquei passes).
   proximo   : QA valida estoque.product.inactivate-audited; depois priority 19
               estoque.product.reactivate-audited (todo) reusa o mesmo seam setProductActive.
+
+[2026-06-17 09:25 -03] time:QA feature:estoque.product.inactivate-audited (priority 18) -> APROVADO
+  gate      : reproduzi do ZERO via `pnpm harness tests/harness/estoque/product-inactivate-audited.spec.ts`
+              em PG efemero recem-seedado (28 prod/8 ped), 2x -> 1 passed cada (VERDE
+              reproduzivel). Sem mock: o seam case setProductActive (_run-seam.ts L127-133)
+              chama a funcao de PRODUCAO setProductActive de lib/data/products.ts.
+  asserts   : [1] products.isActive true->false E nenhuma linha removida -> PROVADO (spec L179-189:
+                  rowCount=1, is_active=false, COUNT(products) inalterado; leitura DB real).
+              [2] audit_log +1 (total E por entity_id), action=product.inactivate (valor @map
+                  DOTTED lido CRU, nao a chave JS), before.isActive=true/after=false, entity_type=
+                  product, MESMA tx (writeAuditLog(tx,...) dentro do prisma.$transaction de
+                  setProductActive, products.ts L347-367; audit.ts L70-88 confirma tx) -> PROVADO
+                  (spec L201-258).
+              [3] stock/reserved/preco/desconto/slug/sku inalterados, com reserved=4>0 FORCADO
+                  (assert nao-trivial) -> PROVADO (spec L192-197).
+  invariante: audit-same-tx -> PROVADO (1 linha na mesma tx + reforco: CHECK reserved_le_stock
+              valido, 0 violacoes).
+  prova-propria: PROBE INDEPENDENTE (c:\tmp\qa_probe_inactivate.ts, REMOVIDO ao fim — tree limpo)
+              subiu SEU PROPRIO PG efemero (push+constraints+seed), chamou o SEAM REAL com VALORES
+              DIFERENTES da spec (P=77700, DISC=55, STOCK=20, RESERVED=7). 26 PASS / 0 FAIL.
+              Provou a LOGICA, nao a constante:
+              - inativacao real true->false; price/disc/stock/reserved(=7) preservados;
+              - audit +1 product.inactivate (raw dotted), before.isActive=true/after=false;
+              - IDEMPOTENCIA no-op: 2a chamada false->false NAO grava audit novo (gap nao coberto
+                pela spec — provado aqui);
+              - ramo gemeo reactivate false->true audita product.reactivate (raw dotted);
+              - ROLLBACK/ORFAO: setProductActive(id inexistente) -> ProductValidationError e
+                audit_log total INALTERADO (falha nao deixa orfao — reforca audit-same-tx);
+              - CHECK products_reserved_le_stock_chk existe (pg_constraint) + 0 violacoes;
+              - cents-only: price_cents/discount_pct = integer (information_schema).
+  produto   : git diff e0e83a1..HEAD -- app lib prisma => VAZIO (time NAO tocou produto). Commit
+              do estoque (400ce07) so mexeu em spec + _run-seam.ts + ledger + progress.
+              next-env.d.ts (rewrite incidental do next dev) revertido; tree limpo (so
+              .claude/agent-memory/ infra). Ruido EBUSY/rmdir no teardown (Windows) = cosmetico.
+  veredito  : passes=true, qa_note=null. state mantido em ready_for_qa (NAO alterei).
