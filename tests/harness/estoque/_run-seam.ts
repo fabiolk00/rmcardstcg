@@ -25,7 +25,7 @@
 import { createProduct, updateProduct, type ProductInput } from "../../../lib/data/products";
 import type { AuditActor } from "../../../lib/data/audit";
 import { prisma } from "../../../lib/db";
-import { reserveStock, type StockItem } from "../../../lib/data/inventory";
+import { commitStock, reserveStock, type StockItem } from "../../../lib/data/inventory";
 
 type CreateArgs = { actor: AuditActor; input: ProductInput };
 type UpdateArgs = { actor: AuditActor; id: string; input: ProductInput };
@@ -35,6 +35,14 @@ type UpdateArgs = { actor: AuditActor; id: string; input: ProductInput };
 // throw aborta a transacao (rollback total), exatamente como o checkout faz com
 // OutOfStockError. INFRA de teste: usa as funcoes de PRODUCAO sem mock.
 type ReserveArgs = { orderId: number; items: StockItem[] };
+// Espelha o ramo 'paid' de reconcileStockForPaymentStatus (orders.ts L448-454):
+// numa MESMA transacao, faz o CAS da flag (stock_committed=true, stock_reserved=
+// false WHERE stock_reserved=true AND stock_committed=false) e — SE o CAS reivindicou
+// a linha (claimed===1) — chama commitStock(tx, lines). As `lines` sao lidas dos
+// PROPRIOS itens do pedido (snap.items na producao), nao injetadas. Devolve
+// { claimed } p/ a spec provar idempotencia/efeito. INFRA de teste: usa as funcoes
+// de PRODUCAO (commitStock) e o MESMO CAS do reconcile, sem mock.
+type CommitArgs = { orderId: number };
 
 /**
  * Erro de aborto da reserva — carrega o resultado { ok:false, productId } do
@@ -84,6 +92,32 @@ async function main(): Promise<void> {
             data: { stockReserved: true, stockCommitted: false },
           });
           return reserve;
+        });
+        break;
+      }
+      case "commitStockForOrder": {
+        // Baixa definitiva na confirmacao do pagamento, na MESMA transacao, com o
+        // MESMO compare-and-swap idempotente do reconcile de producao (ramo 'paid'):
+        //   CAS WHERE stock_reserved=true AND stock_committed=false vira as flags;
+        //   so quando claimed===1 (a tx reivindicou a transicao) commitStock roda.
+        // As `lines` saem dos PROPRIOS itens do pedido (como snap.items em
+        // reconcileStockForPaymentStatus), nao de um payload injetado.
+        const { orderId } = payload as CommitArgs;
+        result = await prisma.$transaction(async (tx) => {
+          const order = await tx.order.findUnique({
+            where: { id: orderId },
+            select: { items: { select: { productId: true, quantity: true } } },
+          });
+          const lines = (order?.items ?? []).map((it) => ({
+            productId: it.productId,
+            quantity: it.quantity,
+          }));
+          const claimed = await tx.$executeRaw`
+            UPDATE "orders" SET "stock_committed" = true, "stock_reserved" = false
+            WHERE "id" = ${orderId} AND "stock_reserved" = true AND "stock_committed" = false
+          `;
+          if (claimed === 1) await commitStock(tx, lines);
+          return { claimed: Number(claimed) };
         });
         break;
       }

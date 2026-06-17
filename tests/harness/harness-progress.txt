@@ -945,3 +945,67 @@ SESSAO QA — estoque.reserve.blocks-oversell (PORTAO ADVERSARIAL)
               idempotent PROVADA na parte coberta (sem efeito parcial; flag do pedido
               fica false apos rollback). cents-only confirmada (price_cents integer).
   veredito  : APROVADO. passes=true, qa_note=null. state INALTERADO (ready_for_qa).
+
+--------------------------------------------------------------------------------
+SESSAO 0016 — TIME ESTOQUE
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 07:54 -0300
+  time      : estoque
+  feature   : estoque.commit.reserved-to-committed (priority 10)
+  seam      : commitStock(tx, items) em lib/data/inventory.ts (L109-119) — a funcao de
+              PRODUCAO que baixa em LOTE stock-=qty E reserved-=qty (guard por linha
+              stock>=qty AND reserved>=qty, via $executeRaw). Como exige o `tx` do
+              chamador, ESTENDI o runner _run-seam.ts (INFRA) com a op
+              "commitStockForOrder": abre prisma.$transaction e, na MESMA tx, espelha
+              FIELMENTE o ramo 'paid' de reconcileStockForPaymentStatus (orders.ts
+              L448-454): (1) le os PROPRIOS itens do pedido (snap.items na producao);
+              (2) faz o CAS UPDATE "orders" SET stock_committed=true, stock_reserved=
+              false WHERE id=? AND stock_reserved=true AND stock_committed=false;
+              (3) SE claimed===1, chama commitStock(tx, lines). NAO usei
+              adjustOrderPaymentStatus/applyPaymentStatusTx direto: arrastam
+              verificacao de cobranca Asaas / requireAdmin (contexto de request); o
+              efeito de ESTOQUE desta feature vive inteiramente em commitStock + o CAS
+              das flags (o MESMO CAS do reconcile de producao).
+  arquivos  : tests/harness/estoque/commit-reserved-to-committed.spec.ts (spec DB-first,
+              sem browser). tests/harness/estoque/_run-seam.ts ESTENDIDO (import de
+              commitStock + op nova commitStockForOrder + type CommitArgs). Nenhum
+              codigo de PRODUTO tocado.
+  o-que-fiz : Ritual OK (branch harness/admin; harness-progress + git log conferidos).
+              Marquei SO o state da feature: todo -> building -> ready_for_qa. Escrevi
+              spec que: (1) cria produto PROPRIO via createProduct (SKU/nome unicos
+              HARNESS-COMMIT-<uuid>) sem tocar o seed; (2) FORCA stock=20, reserved=R(5)
+              via UPDATE direto em pg (anti-trivial: reserved>0 E reserved-QTY=2>0, e
+              reserved!=stock => prova que stock-=qty E reserved-=qty sao efeitos
+              SEPARADOS e AMBOS ocorreram; pre-condicao reserved>=qty e stock>=qty);
+              (3) cria pedido PROPRIO via INSERT pg com stock_reserved=true/
+              stock_committed=false e UM order_item (FK -> products) com quantity=QTY(3)
+              — o commit le ESSE item como `lines`; (4) chama o seam
+              commitStockForOrder({orderId}); (5) assertaa: claimed===1 (CAS reivindicou
+              a transicao); products.stock==STOCK-QTY(17) E reserved==R-QTY(2), delta de
+              cada coluna ==QTY, reserved residual >0 e !=stock; Order.stockCommitted
+              ==true E stockReserved==false; CHECK products_reserved_le_stock_chk existe
+              + 0 violacoes + reserved<=stock; cents-only: price_cents do produto E
+              quantity/unit_price_cents do item E subtotal/total do pedido INTOCADOS (so
+              quantidades de inventario mudam); (6) rede final: o commit de ESTOQUE NAO
+              grava audit_log (total e por-entity do produto inalterados — commitStock e
+              efeito de inventario, esta feature corretamente NAO reivindica audit-same-tx).
+  INFRA     : runner estendido (commitStockForOrder). Banco efemero novo por run =>
+              isolamento; SKU/nome/pedido/item unicos (randomUUID). Categoria valida
+              "Booster Box". Coluna do pedido e clerk_user_id (nao user_id).
+  invariante: reserve-lifecycle-idempotent PROVADA na parte coberta: a baixa so ocorre
+              quando o CAS reivindica a transicao (claimed===1) virando as flags
+              stockCommitted=true/stockReserved=false na MESMA tx do commitStock —
+              guardas de idempotencia do ciclo. reserved-le-stock PROVADA (baixa real
+              20->17 / 5->2; CHECK existe + 0 violacoes + reserved<=stock pos-baixa).
+  estado    : ready_for_qa (state da feature no ledger). passes NAO tocado (campo do QA).
+  resultado : VERDE — `pnpm harness tests/harness/estoque/commit-reserved-to-committed.spec.ts`
+              => 1 passed (rodado 2x: 1.9s/4.6s e 1.8s/4.4s), seed 28 produtos / 8 pedidos.
+              Gates: typecheck OK, lint OK (0 warnings), prettier OK nos MEUS arquivos
+              (spec + runner + ledger). Ruido EBUSY/rmdir no teardown (Windows, apos
+              passar) = cosmetico.
+  commit    : <preenchido no commit desta sessao>
+  proximo   : estoque.commit.idempotent (priority 11, state=todo) — aplicar a
+              conciliacao de 'paid' 2x no MESMO pedido: a 2a vez e no-op (CAS WHERE
+              stock_reserved=true AND stock_committed=false retorna 0 linhas => claimed
+              ==0, commitStock nao roda), sem dupla baixa. O runner ja suporta o ciclo
+              (commitStockForOrder devolve {claimed}).
