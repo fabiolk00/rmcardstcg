@@ -3359,3 +3359,48 @@ SESSAO — TIME PEDIDO
               foi revertido; tree limpo.
   veredito  : passes=true, qa_note=null, state inalterado (ready_for_qa). Edit cirurgico
               no ledger (1 campo: passes false->true).
+
+--------------------------------------------------------------------------------
+SESSAO — TIME PEDIDO
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 13:48 -0300
+  time      : pedido
+  feature   : pedido.note.empty-normalized-noop (priority 13)
+  seam      : updateOrderInternalNote(orderId, note, actor) em lib/data/orders.ts (L579),
+              via tests/harness/estoque/_run-seam.ts (case updateOrderInternalNote JA
+              existente — NAO precisei estender; o type NoteArgs ja aceita note: string|null).
+              O ramo provado: normalized = note && note.trim().length>0 ? note.trim() : null
+              (L585); if ((existing.internalNote ?? null) === normalized) return
+              { ok:true, changed:false, order } SEM writeAuditLog (L594-596). Como
+              internalNote JA e null e a nota vazia normaliza p/ null, null===null => no-op
+              ANTES de qualquer UPDATE e ANTES do audit; nada e gravado. A server action
+              updateOrderInternalNoteAction so DELEGA apos requireAdmin() (contexto de
+              request), por isso usei a funcao de lib/data direto.
+  arquivos  : tests/harness/pedido/note-empty-normalized-noop.spec.ts (spec DB-first, sem
+              browser). Reusa o runner _run-seam.ts (INFRA ja existente) SEM alteralo.
+              Nenhum codigo de PRODUTO tocado.
+  o-que-fiz : Ritual OK (branch harness/admin; harness-progress + git log lidos). Marquei
+              SO o state da feature: todo -> building -> ready_for_qa. Escrevi spec que:
+              (1) INSERE pedido proprio (pg) com internal_note=NULL e — DE PROPOSITO —
+              payment_status='paid' e shipping_status='sent' (estados NAO-default, p/
+              tornar "status inalterados" nao-trivial); sanidade do pre-estado +
+              auditForEntityBefore==0; (2) p/ CADA forma de vazio — '   ' (caso do ledger),
+              '' (string vazia) e null explicito — chama updateOrderInternalNote e exige
+              ok:true, changed:false, order.internalNote==null (ASSERT 1: normaliza p/ null,
+              ja era null => no-op); (3) ASSERT 2: orders.internal_note permanece null E
+              payment/shipping inalterados (paid/sent); (4) ASSERT 3: audit_log total E por
+              entity_id permanecem == A (== auditForEntityBefore=0) p/ cada tentativa
+              (acumulativo: nenhuma soma audit); (5) reforco final: 0 linhas action (coluna
+              crua) == 'order.note_update' (@map DOTTED) p/ este pedido.
+  invariante: audit-same-tx PROVADA: no-op idempotente NAO grava audit (delta total/por-
+              entity == 0 apos 3 tentativas vazias; nenhum orfao). Estrutural: a guarda
+              (L594) retorna ANTES de tx.order.update e writeAuditLog, dentro da $transaction.
+  estado    : ready_for_qa (state da feature no ledger). passes NAO tocado (campo do QA).
+  resultado : VERDE — `pnpm harness tests/harness/pedido/note-empty-normalized-noop.spec.ts`
+              => 1 passed (rodado 2x: 2.7s e 2.7s; suite 5.4s/5.3s), seed 28 produtos /
+              8 pedidos. Gates: typecheck OK, lint OK (0 warnings), prettier OK nos MEUS
+              arquivos (spec + ledger; _run-seam intocado). Ruido "could not receive data
+              from client" no teardown do PG efemero (Windows, apos passar) = cosmetico.
+  commit    : <preenchido no commit desta sessao>
+  proximo   : pedido.totals.formula (priority 14, state=todo) — total = subtotal - desconto
+              - cupom + frete; campos Int de centavos; CHECK coupon_discount_cents>=0.
