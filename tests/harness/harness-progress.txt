@@ -3079,3 +3079,41 @@ reserved-le-stock e cents-only verificadas independentemente.
 DIFF DE PRODUTO (git diff e0e83a1..HEAD -- app lib prisma) = VAZIO: time nao tocou
 produto (seam ja correta). Tree limpo (probes removidos; next-env.d.ts cosmetico nao
 comitado).
+
+
+PEDIDO — pedido.shipping.regression-blocked  (2026-06-17)
+--------------------------------------------------------------------------------
+O QUE FIZ: escrevi tests/harness/pedido/shipping-regression-blocked.spec.ts (DB-first,
+sem browser) provando que a regressao de envio delivered->sent e barrada. SEAM =
+PRODUCAO (sem mock): _run-seam.ts case "updateOrderShippingStatus" chama
+updateOrderShippingStatus de lib/data/orders.ts (L523) — ja suportado, nao precisei
+estender o runner.
+
+CAUSA-RAIZ provada: SHIPPING_TRANSITIONS.delivered === [] (orderTransitions.ts L15:
+'delivered' e TERMINAL). A guarda SHIPPING_TRANSITIONS[from].includes(to) (L541) retorna
+{ ok:false, reason:'invalid_transition', from:'delivered', to:'sent' } (L542) ANTES do
+updateMany (L545), da conciliacao de estoque (so to==='cancelled', L554) e do
+writeAuditLog (L558). Logo nada e gravado.
+
+PRE-ESTADO: 'delivered' e terminal e nao da p/ alcanca-lo via seam, entao montei a
+fixture com INSERT direto (shipping_status='delivered'); a unica escrita MEDIDA e a seam
+de PRODUCAO. Produto/pedido proprios, ids unicos por run. Forcei reserved=3(>0),
+stock=10, stockReserved=true p/ tornar "nada gravado" nao-trivial.
+
+ASSERTS (todos provados ponta a ponta via pg no DB real):
+  1. ok:false reason=invalid_transition from=delivered to=sent -> PROVADO.
+  2. shipping_status permanece 'delivered'; payment_status (paid), flags
+     stock_reserved/stock_committed e stock/reserved do produto INTACTOS -> PROVADO.
+  3. audit_log NAO ganha linha (total E por-entity; zero order.shipping_status_update
+     orfao) -> PROVADO.
+
+REFORCO DIRECIONAL: delivered->cancelled (outro destino) tambem barrado -> confirma
+terminal de fato; pedido-alvo segue 'delivered' sem audit.
+CONTRA-PROVA (nao-tautologica): como 'delivered' nao tem destino legal, usei 2o pedido
+em 'sent' -> sent->delivered APLICA (ok:true, changed:true) e deixa exatamente 1 audit;
+pedido-alvo segue sem audit. +rede reserved-le-stock (CHECK existe, 0 violacoes).
+
+ESTADO: VERDE e reproduzivel (`pnpm harness ...` 2x: 1 passed em 6.3s e 8.9s).
+Gates: typecheck/lint OK; prettier OK nos meus arquivos. DIFF DE PRODUTO (app/lib/prisma)
+= VAZIO: seam ja correta, nenhum conserto necessario. state -> ready_for_qa.
+PROXIMO: pedido.shipping.cancel-reconciles-stock (priority 11, todo).
