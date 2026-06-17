@@ -380,7 +380,7 @@
       "finalPriceCents e funcao pura em lib/data/pricing.ts e nao importa prisma."
     ],
     "invariants": ["final-price-derived", "cents-only", "pure-client-safe"],
-    "state": "todo",
+    "state": "ready_for_qa",
     "passes": false,
     "qa_note": null,
     "fix_note": null,

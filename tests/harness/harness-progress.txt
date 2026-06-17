@@ -1544,3 +1544,57 @@ SESSAO 0028 — TIME QA (gate adversarial)
   commit    : harness(qa): aprova estoque.restock.idempotent
   proximo   : estoque.price.final-derived-pure (priority 16, state=todo) — fora do escopo
               desta sessao (so 1 feature por gate).
+
+--------------------------------------------------------------------------------
+SESSAO — TIME ESTOQUE
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 08:55 -0300
+  time      : estoque
+  feature   : estoque.price.final-derived-pure (priority 16)
+  seam      : finalPriceCents(p) em lib/data/pricing.ts — funcao PURA (so importa o
+              TYPE Product de ./types; Math.round(priceCents*(1-discountPct/100))).
+              Reforco de paridade usa createProduct(actor,input) de lib/data/products.ts
+              p/ persistir um produto proprio. As server actions exigem requireAdmin()
+              (contexto de request), por isso nao usadas.
+  arquivos  : tests/harness/estoque/price-final-derived-pure.spec.ts (spec DB-first,
+              sem browser). ESTENDI o runner _run-seam.ts (INFRA) com o case
+              'finalPriceCents' — case PURO que chama a funcao real SEM abrir
+              prisma.$transaction nem tocar o banco (justamente p/ provar pureza).
+              Nenhum codigo de PRODUTO tocado.
+  o-que-fiz : Ritual OK (branch harness/admin; progress lido; git log conferido).
+              Marquei SO o state da feature: todo -> building -> ready_for_qa. Escrevi
+              spec que: (1) ASSERT[1] chama a FUNCAO REAL finalPriceCents(10000,10%)
+              via seam e exige ==9000 e Number.isInteger (cents-only); + 7 casos de
+              anti-trivialidade que EXERCITAM Math.round e os limites de faixa (0/0=>0;
+              10000/0=>10000; 10000/80=>2000; 333/10=>300 round-up; 199/50=>100 e
+              101/50=>51 half-up; 12999/15=>11049) — provam a LOGICA, nao a constante,
+              cada um pela funcao de producao e Int; (2) ASSERT[3] estatico: le o source
+              on-disk de pricing.ts e exige `export function finalPriceCents`, coleta
+              TODOS os import specifiers e prova que NENHUM e prisma/@prisma/lib-db/
+              generated-prisma/adapter-pg, e que o unico import e o TYPE Product
+              (./types) — pure-client-safe; + reforco empirico: a seam pura computou
+              sem transacao/conexao; (3) ASSERT[2]: cria produto proprio
+              (HARNESS-FINALPRICE-<uuid>) e via information_schema.columns prova que
+              products tem price_cents/discount_pct (integer, cents-only) e NENHUMA
+              coluna de preco final (regex final.?price|preco.?final|price.?final == []);
+              (4) paridade final-price-derived: round(price_cents*(1-discount_pct/100))
+              em SQL ==9000 E a FUNCAO REAL alimentada com os valores CRUS do DB devolve
+              o mesmo 9000.
+  INFRA     : runner estendido (case 'finalPriceCents', import de finalPriceCents).
+              Categoria valida "Booster Box". Banco efemero novo por run => isolamento;
+              SKU/nome unicos (randomUUID). PRICING_SRC lido via fs relativo ao __dirname.
+  invariante: final-price-derived PROVADA (funcao real ==9000; sem coluna persistida;
+              paridade com derivacao SQL sobre produto real). cents-only PROVADA (Int em
+              todos os casos incl. arredondamento; price_cents/discount_pct integer no DB).
+              pure-client-safe PROVADA (sem import de prisma/server-only; seam roda
+              isolada do banco).
+  estado    : ready_for_qa (state da feature no ledger). passes NAO tocado (campo do QA).
+  resultado : VERDE — `pnpm harness tests/harness/estoque/price-final-derived-pure.spec.ts`
+              => 1 passed (rodado 3x: 10.1s/9.6s/9.7s), seed 28 produtos / 8 pedidos.
+              Gates: typecheck OK, lint OK (0 warnings), prettier OK nos MEUS arquivos
+              (spec + runner + ledger). Ruido EBUSY/rmdir no teardown (Windows, apos
+              passar) = cosmetico.
+  commit    : <preenchido no commit desta sessao>
+  proximo   : estoque.price.update-discount-audited (priority 17, state=todo) —
+              updateProduct discountPct 0->20 mantendo priceCents=P, audit product.update
+              na mesma tx (before.discountPct=0/after=20), faixa 0..80.

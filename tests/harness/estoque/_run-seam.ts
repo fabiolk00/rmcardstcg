@@ -24,6 +24,7 @@
  */
 import { createProduct, updateProduct, type ProductInput } from "../../../lib/data/products";
 import type { AuditActor } from "../../../lib/data/audit";
+import { finalPriceCents } from "../../../lib/data/pricing";
 import { prisma } from "../../../lib/db";
 import {
   commitStock,
@@ -71,6 +72,12 @@ type ReleaseArgs = { orderId: number };
 // idempotencia. INFRA de teste: usa a funcao de PRODUCAO (restockUnits) e o MESMO
 // CAS do reconcile, sem mock.
 type RestockArgs = { orderId: number };
+// Seam PURA: chama finalPriceCents(p) de PRODUCAO (lib/data/pricing.ts) com
+// { priceCents, discountPct } e devolve o numero derivado. Este case NAO toca
+// prisma nem o banco — exatamente por isso prova a invariante pure-client-safe:
+// a funcao computa o preco final isolada de qualquer dependencia server-only.
+// INFRA de teste: usa a funcao de PRODUCAO sem mock.
+type FinalPriceArgs = { priceCents: number; discountPct: number };
 
 /**
  * Erro de aborto da reserva — carrega o resultado { ok:false, productId } do
@@ -203,6 +210,14 @@ async function main(): Promise<void> {
           if (refunded === 1) await restockUnits(tx, lines);
           return { refunded: Number(refunded) };
         });
+        break;
+      }
+      case "finalPriceCents": {
+        // Seam PURA — chama a funcao de PRODUCAO finalPriceCents diretamente, SEM
+        // abrir transacao nem tocar o banco. O resultado e o preco final derivado
+        // em centavos (Int). Prova final-price-derived + pure-client-safe.
+        const { priceCents, discountPct } = payload as FinalPriceArgs;
+        result = finalPriceCents({ priceCents, discountPct });
         break;
       }
       default:
