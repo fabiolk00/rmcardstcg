@@ -780,7 +780,7 @@
       "Status de pagamento/envio inalterados."
     ],
     "invariants": ["audit-same-tx"],
-    "state": "todo",
+    "state": "ready_for_qa",
     "passes": false,
     "qa_note": null,
     "fix_note": null,

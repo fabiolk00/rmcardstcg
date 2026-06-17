@@ -3266,3 +3266,49 @@ SESSAO — TIME PEDIDO
               de producao sem mock).
   veredito  : passes=true, qa_note=null, state inalterado (ready_for_qa). Edit cirurgico no ledger
               (1 linha: passes false->true).
+
+--------------------------------------------------------------------------------
+SESSAO — TIME PEDIDO
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 13:38 -0300
+  time      : pedido
+  feature   : pedido.note.update-audited (priority 12)
+  seam      : updateOrderInternalNote(orderId, note, actor) em lib/data/orders.ts (L579),
+              via tests/harness/estoque/_run-seam.ts (case NOVO updateOrderInternalNote —
+              ESTENDI o runner; INFRA de teste). Numa MESMA prisma.$transaction a funcao:
+              normaliza note (string vazia/so-espacos -> null), le before (adminOrderSelect),
+              trata no-op quando (existing.internalNote ?? null) === normalized (devolve
+              changed:false SEM audit), senao UPDATE internalNote e writeAuditLog
+              (action order.note_update, before/after = orderAuditSnapshot {paymentStatus,
+              shippingStatus, internalNote}) — tudo na mesma tx. A server action
+              updateOrderInternalNoteAction so delega apos requireAdmin() (contexto de
+              request), por isso usei a funcao de lib/data direto.
+  arquivos  : tests/harness/pedido/note-update-audited.spec.ts (spec DB-first, sem browser).
+              ESTENDI tests/harness/estoque/_run-seam.ts (import + case updateOrderInternalNote,
+              type NoteArgs) — INFRA de teste. Nenhum codigo de PRODUTO tocado.
+  o-que-fiz : Ritual OK (branch harness/admin; harness-progress + git log lidos). Marquei SO
+              o state da feature: todo -> building -> ready_for_qa. Escrevi spec que:
+              (1) INSERE pedido proprio (pg) com internal_note=NULL e — DE PROPOSITO —
+              payment_status='paid' e shipping_status='sent' (estados NAO-default, p/ tornar
+              "status inalterados" nao-trivial); sanidade do pre-estado + auditForEntityBefore==0;
+              (2) chama updateOrderInternalNote(orderId, 'verificar endereco', actor) -> exige
+              ok:true, changed:true, order.internalNote=='verificar endereco';
+              (3) ASSERT 1: orders.internal_note=='verificar endereco';
+              (4) ASSERT 3: payment_status segue 'paid' e shipping_status segue 'sent' (nota
+              nao toca a maquina de estados);
+              (5) ASSERT 2: audit_log +1 total E +1 por entity_id, action (coluna crua)==
+              'order.note_update' (@map DOTTED, schema.prisma L55), entity_type='order',
+              entity_id=String(orderId), before.internalNote=null/after.internalNote=NOTE,
+              paymentStatus(paid)/shippingStatus(sent) identicos nos 2 snapshots (delta limpo).
+  invariante: audit-same-tx PROVADA: estrutural (writeAuditLog(tx,...) dentro do
+              prisma.$transaction de updateOrderInternalNote) + empirica (exatamente 1 linha
+              order.note_update nova p/ o pedido; before/after corretos; status inalterados).
+  estado    : ready_for_qa (state da feature no ledger). passes NAO tocado (campo do QA).
+  resultado : VERDE — `pnpm harness tests/harness/pedido/note-update-audited.spec.ts`
+              => 1 passed (rodado 2x: 1.3s e 945ms; suite 3.9s), seed 28 produtos / 8 pedidos.
+              Gates: typecheck OK, lint OK (0 warnings), prettier OK nos MEUS arquivos (spec +
+              _run-seam + ledger). Ruido "could not receive data from client" no teardown do
+              PG efemero (Windows, apos passar) = cosmetico.
+  commit    : <preenchido no commit desta sessao>
+  proximo   : pedido.note.empty-normalized-noop (priority 13, state=todo) — nota vazia/so-espacos
+              normaliza p/ null; como ja era null, changed=false, sem audit.

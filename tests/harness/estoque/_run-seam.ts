@@ -31,6 +31,7 @@ import {
 import {
   adjustOrderPaymentStatus,
   applyPaymentStatusTx,
+  updateOrderInternalNote,
   updateOrderShippingStatus,
   type PaymentRef,
 } from "../../../lib/data/orders";
@@ -145,6 +146,20 @@ type ApplyPaymentArgs = {
 type ShippingArgs = {
   orderId: number;
   to: ShippingStatus;
+  actor: AuditActor;
+};
+// Espelha o call site de PRODUCAO da NOTA INTERNA do pedido pelo admin
+// (updateOrderInternalNoteAction -> updateOrderInternalNote, lib/data/orders.ts L579).
+// Numa MESMA transacao a funcao: normaliza note (string vazia/so-espacos -> null), le o
+// pedido (before, adminOrderSelect), trata no-op quando (existing.internalNote ?? null)
+// === normalized (devolve changed:false SEM audit), senao faz UPDATE internalNote e
+// grava audit_log (action order.note_update, before/after snapshots) — tudo na mesma tx.
+// A server action so DELEGA apos requireAdmin() (contexto de request), por isso chamamos
+// a funcao de lib/data direto. INFRA de teste: usa a funcao de PRODUCAO sem mock; a spec
+// assertaa o estado real via pg.
+type NoteArgs = {
+  orderId: number;
+  note: string | null;
   actor: AuditActor;
 };
 
@@ -324,6 +339,15 @@ async function main(): Promise<void> {
         // a spec assertaa o estado real via pg.
         const { orderId, to, actor } = payload as ShippingArgs;
         result = await updateOrderShippingStatus(orderId, to, actor);
+        break;
+      }
+      case "updateOrderInternalNote": {
+        // Nota interna do admin (normaliza vazio->null; grava audit order.note_update na
+        // MESMA tx; no-op idempotente quando a nota normalizada e identica), via a funcao
+        // de PRODUCAO. Devolve o AdminOrderUpdate ({ ok, changed, order } | { ok:false,
+        // reason }); a spec assertaa o estado real via pg.
+        const { orderId, note, actor } = payload as NoteArgs;
+        result = await updateOrderInternalNote(orderId, note, actor);
         break;
       }
       default:
