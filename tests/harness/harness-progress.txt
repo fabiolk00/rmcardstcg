@@ -3556,3 +3556,15 @@ SESSAO — TIME QA
   obstaculos: nenhum. cartTotals ja era correto (sem bug de produto); seam ja suportava o case.
   proximo   : QA valida pedido.shipping.flat-below-threshold; proximo todo de pedido =
               cupom.create.percent (priority 17).
+
+[2026-06-17] harness(qa) — pedido.shipping.flat-below-threshold => APROVADA (passes=true, qa_note=null, state mantido ready_for_qa).
+  Gate1 repro: pnpm harness tests/harness/pedido/shipping-flat-below-threshold.spec.ts rodado 2x em PG efemero recem-seedado (28 prod/8 ped) -> VERDE reproduzivel (1 passed 5.5s / 5.5s). (1a tentativa com CI=1 falhou no boot do next dev por chave Clerk ausente — flake do webServer, NAO da spec; reproduzido verde sem CI.)
+  Gate2 anti-fake: seam case 'cartTotals' (_run-seam.ts L329-341) chama a funcao de PRODUCAO cartTotals (lib/cart/totals.ts) SEM mock e devolve as CONSTANTES REAIS do mesmo modulo (FREE_SHIPPING_THRESHOLD_CENTS=29900, FLAT_SHIPPING_CENTS=2500); a spec asserta contra esses limites reais, com esperados derivados das constantes do teste (nao copiados da producao). Caso principal anti-trivial: price=15000 pct=20 => merch descontada=12000 != subtotal=15000, provando que o frete decide sobre a mercadoria JA DESCONTADA. Borda limite-1 (29899=>flat) e anti-falso-positivo no limite (29900=>gratis) presentes.
+  Gate3 invariantes (probe independente em c:/tmp, valores DIFERENTES da spec, removido ao fim):
+    - totals-formula: multi-linha+desconto (sub=29000 disc=6000 merch=23000<THR => FLAT 2500, total=25500); borda THR-1 via 25% off (39865=>29899=>flat); merch=sub-disc e total=merch+frete confirmados.
+    - fronteira do flat ESTRITAMENTE < threshold: 29899=>flat, 29900(==THR)=>gratis, THR+1=>gratis. Prova o ramo `>=` real, nao constante.
+    - ramo merchandiseCents===0 => gratis (carrinho vazio E linha quantity=0), nao cobra flat.
+    - cents-only: Number.isInteger em TODOS os 6 campos do CartTotals nos 6 casos.
+    - audit-same-tx / reserved-le-stock NAO se aplicam (funcao PURA, zero escrita no DB) e corretamente FORA da lista de invariantes da feature.
+  Gate4 produto intocado: git diff e0e83a1..HEAD -- app lib prisma == VAZIO. Commit da feature (afa9a19) so mudou spec novo + ledger (1 campo state) + progress; _run-seam.ts nao mudou (case cartTotals pre-existente). next-env.d.ts (regen cosmetico do next dev) restaurado; tree limpo (probe removido).
+  Asserts do ledger (3/3 provados ponta a ponta): A1 shippingCents==2500 quando 0<merch<29900; A2 totalCents==merchandiseCents+2500; A3 carrinho vazio (merch==0) => shippingCents==0. VEREDITO: APROVADA.
