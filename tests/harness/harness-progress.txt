@@ -1254,3 +1254,39 @@ produto   : git diff e0e83a1..HEAD -- app lib prisma == VAZIO. Time nao tocou pr
             Ledger commit so virou state todo->ready_for_qa (asserts/invariants/title
             imutaveis). QA escreveu SO passes (false->true); qa_note=null; state mantido
             ready_for_qa (nao alterado pelo QA, conforme ritual).
+
+================================================================================
+[BUILD] estoque.release.idempotent — VEREDITO: VERDE (state=ready_for_qa)
+================================================================================
+data      : 2026-06-17 | branch harness/admin | time estoque (build) | DB-first
+feature   : priority 13. Estorno de reserva idempotente (cancelar pendente 2x/3x
+            nao estorna em dobro).
+spec      : tests/harness/estoque/release-idempotent.spec.ts (NOVA).
+seam      : _run-seam.ts op "releaseStockForOrder" (JA existia; SEM extensao). Mesmo
+            CAS + releaseStock REAL do ramo 'cancelled'->release de
+            reconcileStockForPaymentStatus (orders.ts L457-466). Sem mock.
+repro     : `pnpm harness tests/harness/estoque/release-idempotent.spec.ts` rodado 2x
+            do ZERO em PG efemero recem-seedado (28 produtos/8 pedidos): 1 passed
+            (6.2s) e 1 passed (6.1s). VERDE reproduzivel.
+dados     : VALORES DISTINTOS da spec irma (release-reserved-on-cancel): stock=40,
+            reserved RES=11, qty=5 => pos-1o-estorno reserved=6 (>0, !=stock, !=0).
+asserts   : [A1] 2a aplicacao no-op (CAS released===0) -> PROVADO. Tambem 3a aplicacao
+                no-op (released===0).
+            [A2] reserved estavel em RES-QTY=6 apos 1a (delta==QTY), 2a e 3a aplicacoes
+                (sem decremento duplo) -> PROVADO. stock cravado em 40 nas 3.
+            [A3] CHECK reserved>=0 jamais violado -> PROVADO: products_reserved_nonneg_chk
+                presente; 0 violacoes (nonneg e 0<=reserved<=stock) apos todas as
+                aplicacoes; reserved residual 6>=0 e <=40. + probe DB-ENFORCED em
+                SAVEPOINT (UPDATE reserved-=7 -> -1 ESTOUROU products_reserved_nonneg_chk,
+                rollback do savepoint; estado intacto).
+invariant : reserve-lifecycle-idempotent -> PROVADA (flag stockReserved como guard do
+            CAS; 2x/3x = no-op; flags estaveis). reserved-le-stock -> PROVADA.
+gates     : pnpm typecheck OK; pnpm lint OK; prettier --check no spec OK.
+produto   : git diff -- app lib prisma == VAZIO. Time nao tocou produto. next-env.d.ts
+            (gerado pelo next dev) NAO comitado. Ledger so virou state todo->building->
+            ready_for_qa (asserts/invariants/title imutaveis); passes intocado (false).
+proximo   : estoque.restock.refund-of-paid (priority 14, state=todo) — refund de pedido
+            JA PAGO repoe stock (restockUnits via CAS stock_committed=true->false do
+            ramo 'cancelled'/refunded do reconcile). O runner NAO tem op p/ restockUnits
+            ainda; PRECISA estender _run-seam.ts (op "restockUnitsForOrder", espelhando
+            orders.ts L468-475) — INFRA de teste.
