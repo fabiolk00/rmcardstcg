@@ -60,6 +60,12 @@ import {
   restockUnits,
   type StockItem,
 } from "../../../lib/data/inventory";
+import {
+  ASAAS_PROVIDER,
+  isWebhookEventProcessed,
+  markWebhookEventProcessed,
+  recordWebhookEvent,
+} from "../../../lib/data/webhookEvents";
 
 type CreateArgs = { actor: AuditActor; input: ProductInput };
 type UpdateArgs = { actor: AuditActor; id: string; input: ProductInput };
@@ -154,6 +160,28 @@ type ApplyPaymentArgs = {
   orderId: number;
   status: PaymentStatus;
   payment: PaymentRef;
+};
+// Espelha O CORACAO DO HANDLER DE WEBHOOK DO ASAAS de PRODUCAO
+// (app/api/webhooks/asaas/route.ts L136-156): UMA prisma.$transaction com a MESMA
+// sequencia do route — recordWebhookEvent (INSERT ... ON CONFLICT DO NOTHING via
+// skipDuplicates do ledger webhook_events) + guard de idempotencia
+// (isWebhookEventProcessed quando !firstTime => no-op duplicate, exatamente como o
+// route) + applyPaymentStatusTx (CAS de status + conciliacao de estoque guardada por
+// flags) + markWebhookEventProcessed (processed_at = now()) na MESMA tx. As 4 funcoes
+// sao as de PRODUCAO (lib/data/webhookEvents + lib/data/orders), sem mock; so o
+// envelope HTTP (parse/token/teto-de-payload/email) — irrelevante p/ a idempotencia
+// de estoque/ledger e nao acessivel sem subir o middleware Proxy — fica de fora. O
+// eventId e o MESMO formato do route (asaasEventId = `${paymentId}|${event}`), montado
+// pela spec. Devolve { duplicate } e, quando aplicou, o PaymentStatusUpdate (changed/
+// status) p/ a spec contar exatamente-1-efetivo sob a rajada de N entregas do MESMO
+// (provider,eventId). INFRA de teste: a spec assertaa o estado real via pg.
+type WebhookReplayArgs = {
+  orderId: number;
+  status: PaymentStatus;
+  eventId: string;
+  type: string;
+  payment: PaymentRef;
+  payload?: unknown;
 };
 // Espelha o call site de PRODUCAO da MAQUINA DE ENVIO pelo admin
 // (updateOrderShippingStatusAction -> updateOrderShippingStatus, lib/data/orders.ts
@@ -447,6 +475,32 @@ async function main(): Promise<void> {
         const { orderId, status, payment } = payload as ApplyPaymentArgs;
         result = await prisma.$transaction(
           (tx) => applyPaymentStatusTx(tx, orderId, status, payment),
+          { timeout: 15000, maxWait: 5000 },
+        );
+        break;
+      }
+      case "processAsaasWebhook": {
+        // Coracao do handler de webhook do Asaas (route.ts L136-156) numa MESMA
+        // prisma.$transaction: ledger (record) + guard de idempotencia (processed)
+        // + efeito (applyPaymentStatusTx) + mark-processed. Reproduz BIT A BIT o
+        // ramo que decide entre no-op (duplicate) e processar. As funcoes sao de
+        // PRODUCAO, sem mock. Devolve o MESMO `outcome` do route.
+        const wh = payload as WebhookReplayArgs;
+        result = await prisma.$transaction(
+          async (tx) => {
+            const { firstTime } = await recordWebhookEvent(tx, {
+              provider: ASAAS_PROVIDER,
+              eventId: wh.eventId,
+              type: wh.type,
+              payload: (wh.payload ?? null) as never,
+            });
+            if (!firstTime && (await isWebhookEventProcessed(tx, ASAAS_PROVIDER, wh.eventId))) {
+              return { duplicate: true as const };
+            }
+            const applied = await applyPaymentStatusTx(tx, wh.orderId, wh.status, wh.payment);
+            await markWebhookEventProcessed(tx, ASAAS_PROVIDER, wh.eventId);
+            return { duplicate: false as const, result: applied };
+          },
           { timeout: 15000, maxWait: 5000 },
         );
         break;
