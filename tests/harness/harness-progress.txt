@@ -3728,3 +3728,15 @@ SESSAO — TIME QA
   Invariante coupon-redeem-limits (unica listada): exercitada no DB (per-user recontado, nenhuma redencao alem do teto); net CHECK coupons_redeemed_count_chk (redeemed_count>=0) 0 violacoes L248-256. audit-same-tx NAO listada e redeemCoupon nao grava audit_log -> correto nao asserir.
   Concorrencia de fato (2 checkouts simultaneos batendo no advisory lock) e o concern dormente do chaos-loop, NAO esta nos asserts desta feature; o assert listado (limite garantido pela recontagem) e provado pelo OUTCOME do seam de PRODUCAO. Aceito.
   Produto intocado: git diff e0e83a1..HEAD -- app lib prisma VAZIO (nenhum fixer agiu).
+
+[2026-06-17 16:37] time:pedido feature:cupom.redeem.idempotent-per-order (priority 24) estado:ready_for_qa
+  O-QUE-FIZ: escrevi tests/harness/pedido/cupom-redeem-idempotent-per-order.spec.ts (DB-first, sem browser), provando "Redencao e idempotente por pedido (order_id UNIQUE)" contra o Postgres efemero real via pg sobre process.env.DATABASE_URL. SEAM: redeemCoupon de PRODUCAO (lib/data/coupons.ts:364) via o case 'redeemCoupon' ja existente de _run-seam.ts (sem estender o runner). Setup via createCoupon de PRODUCAO. Verde e reproduzivel (2x: 1 passed, ~5.5s).
+  CAUSA-RAIZ exercitada: redeemCoupon L375-376 faz tx.couponRedemption.findUnique({where:{orderId}}) e, se ja existe, retorna {ok:true,alreadyRedeemed:true} ANTES do advisory lock / increment global / insert. order_id @unique (schema.prisma:264) e a fonte da idempotencia.
+  Dados PROPRIOS anti-trivial: cupom percent PROPRIO maxRedemptions=1 + perUserLimit=null (code unico por run). maxRedemptions=1 torna "sem increment na repeticao" load-bearing (um increment indevido iria p/ 2>max=1, estourando coupons_redeemed_count_chk / criando 2a linha). perUserLimit=null isola o ramo: na repeticao nem o teto global nem o por usuario sao reavaliados -- so o order_id @unique barra. UM pedido (orderX); a 2a redencao usa o MESMO orderX.
+    A1 "2a chamada ok:true alreadyRedeemed=true (no-op)": spec r1.ok==true & alreadyRedeemed==false (1a); r2.ok==true & alreadyRedeemed==true (2a, MESMO orderX).
+    A2 "coupon_redemptions 1 unica linha p/ orderId X": COUNT(*) WHERE order_id=orderX ==1 apos a 1a E rowCount==1 apos a 2a (a repeticao nao inseriu); a unica linha e do user da 1a.
+    A3 "redeemed_count NAO incrementa na repeticao": redeemed_count==1 apos a 1a E continua ==1 apos a 2a; Number.isInteger (cents-only adjacente). Net CHECK coupons_redeemed_count_chk + teto <=max: 0 violacoes.
+  Sanity de schema: assertei a existencia do CHECK coupons_redeemed_count_chk e do indice UNIQUE em coupon_redemptions.order_id (senao as redes finais seriam vacuas).
+  Invariante coupon-redeem-limits (unica listada): exercitada no DB no ramo idempotencia-por-pedido. audit-same-tx NAO listada e redeemCoupon nao grava audit_log -> correto nao asserir.
+  Produto INTOCADO (so escrevi teste; _run-seam.ts ja suportava redeemCoupon). Gates verdes: pnpm typecheck OK, pnpm lint OK (--max-warnings 0), prettier --check no spec OK.
+  PROXIMO: cupom.deactivate.audited (priority 25, state=todo).
