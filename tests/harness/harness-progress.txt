@@ -577,3 +577,60 @@ SESSAO 0010 — TIME QA (gate adversarial)
   commit    : harness(qa): aprova estoque.product.reduce-stock-above-reserved
   proximo   : estoque.product.reduce-below-reserved-blocks (priority 6, state=todo)
               — fora do escopo desta sessao (so 1 feature por gate).
+
+--------------------------------------------------------------------------------
+SESSAO 0011 — TIME ESTOQUE
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 07:12 -0300
+  time      : estoque
+  feature   : estoque.product.reduce-below-reserved-blocks (priority 6)
+  seam      : updateProduct(actor, id, input) em lib/data/products.ts. O guard de
+              producao vive em products.ts L289-293 — DENTRO de prisma.$transaction
+              porem ANTES de tx.product.update e de writeAuditLog:
+                if (data.stock < current.reserved) throw new ProductValidationError(
+                  `Nao e possivel definir o estoque (${data.stock}) abaixo das
+                   ${current.reserved} unidade(s) reservada(s)...`)
+              Como o throw ocorre antes de qualquer escrita, a transacao inteira
+              aborta -> nem produto muda nem nasce audit (rollback atomico). A server
+              action updateProductAction so delega e exige requireAdmin() (contexto de
+              request), por isso nao usada.
+  arquivos  : tests/harness/estoque/product-reduce-below-reserved-blocks.spec.ts
+              (spec DB-first, sem browser). Reusa o runner _run-seam.ts (INFRA ja
+              existente, suporta createProduct E updateProduct e emite __SEAM_ERROR__
+              em erro de dominio) SEM alteralo. Nenhum codigo de PRODUTO tocado.
+  o-que-fiz : Ritual OK (branch harness/admin). Marquei SO o state da feature:
+              todo -> building -> ready_for_qa. Escrevi spec que: (1) cria um produto
+              PROPRIO via createProduct (SKU/nome unicos HARNESS-BELOWRES-<uuid>) sem
+              tocar o seed; (2) FORCA reserved=3 e stock=10 via UPDATE direto em pg
+              (reserved e gerido pelo ciclo de reserva, nunca por updateProduct);
+              conta audit_log (createProduct ja deixou 1); (3) chama updateProduct com
+              o MESMO input porem stock=2 (< 3 reservadas) -> ESPERA throw com
+              name=='ProductValidationError' e mensagem que casa /reservada/i E contem
+              '3' (reservadas) E '2' (estoque tentado) — nao um throw generico;
+              (4) assertaa products.stock permanece 10 e reserved permanece 3 (linha
+              inteira intacta: price/discount/sku/slug/name iguais ao pre); (5) audit_log
+              NAO ganha linha (total E por entity_id inalterados) + 0 product.update
+              orfaos deste produto; (6) CHECK products_reserved_le_stock_chk existe +
+              0 violacoes de 0<=reserved<=stock + reforco 3<=10 (estado proibido 3>2
+              jamais persistido).
+  INFRA     : runSeam estendido p/ re-lancar __SEAM_ERROR__ preservando name+message
+              (Error com .name='ProductValidationError'); o _run-seam ja emitia o
+              ERROR, o helper das specs irmas so checava /msg/. Mudanca SO no spec
+              (helper local), nao no runner compartilhado. Banco efemero novo por run
+              => isolamento; SKU/nome unicos (randomUUID). Categoria valida "Booster Box".
+  invariante: reserved-le-stock PROVADA (guard bloqueia stock<reserved ANTES de escrever;
+              CHECK existe via pg_constraint + 0 violacoes + 3<=10 mantido). audit-same-tx
+              PROVADA: rollback NAO deixa audit orfao (count total/por-entity inalterado +
+              0 product.update) — atomicidade estrutural (throw dentro da $transaction
+              antes de update/writeAuditLog) + empirica.
+  estado    : ready_for_qa (state da feature no ledger). passes NAO tocado (campo do QA).
+  resultado : VERDE — `pnpm harness tests/harness/estoque/product-reduce-below-reserved-blocks.spec.ts`
+              => 1 passed (rodado 2x: 1.8s/4.5s e 1.8s/4.4s), seed 28 produtos / 8 pedidos.
+              Gates: typecheck OK, lint OK (0 warnings), prettier OK nos MEUS arquivos
+              (spec + ledger; _run-seam intocado). next-env.d.ts revertido (rewrite
+              incidental do next dev, nao comitado). Ruido EBUSY/rmdir no teardown
+              (Windows, apos passar) = cosmetico.
+  commit    : <preenchido no commit desta sessao>
+  proximo   : estoque.product.available-derived (priority 7, state=todo) — stock=10,
+              reserved=4 => disponivel=6 derivado; sem coluna available/disponivel
+              persistida; CHECK 0<=reserved<=stock valido.

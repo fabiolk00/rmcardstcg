@@ -137,7 +137,7 @@
       "CHECK 0<=reserved<=stock segue como rede final (jamais 3>2)."
     ],
     "invariants": ["reserved-le-stock", "audit-same-tx"],
-    "state": "todo",
+    "state": "ready_for_qa",
     "passes": false,
     "qa_note": null,
     "fix_note": null,
