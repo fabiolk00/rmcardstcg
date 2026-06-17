@@ -1598,3 +1598,64 @@ SESSAO — TIME ESTOQUE
   proximo   : estoque.price.update-discount-audited (priority 17, state=todo) —
               updateProduct discountPct 0->20 mantendo priceCents=P, audit product.update
               na mesma tx (before.discountPct=0/after=20), faixa 0..80.
+
+================================================================================
+SESSAO QA — estoque.price.final-derived-pure (PORTAO ADVERSARIAL)
+================================================================================
+  timestamp : 2026-06-17 09:00 -0300
+  papel     : QA (unico autorizado a escrever passes/qa_note). NAO corrige produto.
+  feature   : estoque.price.final-derived-pure (priority 16), state=ready_for_qa.
+  veredito  : APROVADO — passes=true, qa_note=null. state INALTERADO (ready_for_qa).
+  ritual    : pwd /c/rmcardstcg; branch harness/admin OK; li harness-progress.txt +
+              git log. Feature ledger lida (asserts/invariants imutaveis).
+  repro     : `pnpm harness tests/harness/estoque/price-final-derived-pure.spec.ts`
+              rodado 2x do ZERO em PG efemero recem-seedado (db push + apply-test-
+              constraints + seed = 28 produtos / 8 pedidos): VERDE as 2 vezes
+              (7.0s / 9.6s ambas). VERDE reproduzivel. Ruido EBUSY/rmdir teardown
+              (Windows, apos passar) = cosmetico, ignorado.
+  nao-fake  : seam = funcao de PRODUCAO finalPriceCents importada de lib/data/pricing.ts
+              em _run-seam.ts L27 e chamada DIRETO no case 'finalPriceCents' (L215-221),
+              SEM mock e SEM abrir prisma.$transaction/conexao. createProduct (case real)
+              persiste o produto da paridade. Spec assertaa via `pg` cru sobre
+              DATABASE_URL e le pricing.ts on-disk via fs.
+  por-assert (cada assert do ledger PROVADO contra a funcao/DB real):
+    [1] finalPriceCents == round(10000*(1-10/100)) == 9000 (Int centavos) -> PROVADO.
+        Spec L109-111 chama a FUNCAO REAL e exige 9000 + Number.isInteger. ANTI-TRIVIAL:
+        7 casos (L116-129) EXERCITAM Math.round e limites de faixa — 0/0=>0; 10000/0=>
+        10000; 10000/80=>2000; 333/10=>300 (round-up); 199/50=>100 e 101/50=>51 (half-up);
+        12999/15=>11049 — cada um pela funcao de PRODUCAO e Int (provam a LOGICA, nao a
+        constante 9000). Replicado por mim em node: 8/8 batem.
+    [2] products NAO tem coluna de preco final (so price_cents/discount_pct) -> PROVADO.
+        Spec L189-205 cria produto proprio e via information_schema.columns confirma
+        price_cents+discount_pct presentes e regex final.?price|preco.?final|price.?final
+        == []. Confirmei no schema.prisma/migrations/test-supplement: NENHUMA coluna
+        final_price em lugar nenhum (grep vazio).
+    [3] finalPriceCents e funcao PURA em lib/data/pricing.ts e NAO importa prisma ->
+        PROVADO. Estatico (spec L136-158): le o source, exige `export function
+        finalPriceCents`, coleta TODOS os import specifiers e prova que nenhum e
+        prisma/@prisma/lib-db/generated-prisma/adapter-pg e que o unico import e o TYPE
+        ./types. ANTI-TRIVIAL: testei a regex de guarda — CAPTURA @prisma/client,
+        lib/generated/prisma, ../db, ../../lib/db; deixa ./types limpa (nao e
+        passa-tudo). Empirico: a seam pura roda sem transacao/banco.
+  invariantes (verificadas com PROBE PROPRIA, valores DIFERENTES da spec):
+    - final-price-derived: PROVADA. Probe usou price=7777/disc=33 => funcao real ==5211
+      == round(price_cents*(1-discount_pct/100))::int do produto REALMENTE persistido
+      (paridade na LOGICA, nao no 9000). Sem coluna final_price (== []).
+    - cents-only: PROVADA. price_cents/discount_pct integer no DB; resultado Int em
+      todos os casos incl. round(2.5)=3 (half-up, sem vazar float).
+    - pure-client-safe: PROVADA. nenhum import server-only; seam roda isolada do banco.
+    - reserved-le-stock (rede do ritual): PROVADA na minha probe — pg_constraint
+      products_reserved_le_stock_chk presente + 0 violacoes (reserved<0 OR reserved>stock).
+    - audit-same-tx (rede do ritual): PROVADA na minha probe — createProduct deixou
+      EXATAMENTE 1 linha audit_log p/ o entity_id, action='product.create' (valor @map
+      DOTTED lido cru). Sem orfao.
+  probe-ind : escrevi tests/harness/estoque/_qa_probe_finalprice.spec.ts (valores
+              7777/33 e 5/50, distintos do spec), rodei via pnpm harness em PG proprio
+              efemero => 1 passed; depois REMOVI (tree limpo, git status sem residuo).
+  produto   : git diff e0e83a1..HEAD -- app lib prisma => VAZIO. Time NAO tocou produto;
+              nenhum fixer agiu nesta feature. lib/data/pricing.ts e a funcao pura
+              original (Math.round(priceCents*(1-discountPct/100))).
+  estado    : ready_for_qa (NAO alterei). passes=true escrito pelo QA. qa_note=null.
+  commit    : harness(qa): aprova estoque.price.final-derived-pure
+  proximo   : estoque.price.update-discount-audited (priority 17, state=todo) — fora do
+              escopo desta sessao (so 1 feature por gate).

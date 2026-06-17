@@ -381,7 +381,7 @@
     ],
     "invariants": ["final-price-derived", "cents-only", "pure-client-safe"],
     "state": "ready_for_qa",
-    "passes": false,
+    "passes": true,
     "qa_note": null,
     "fix_note": null,
     "review": null,
