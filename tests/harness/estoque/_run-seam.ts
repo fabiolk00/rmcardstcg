@@ -24,9 +24,32 @@
  */
 import { createProduct, updateProduct, type ProductInput } from "../../../lib/data/products";
 import type { AuditActor } from "../../../lib/data/audit";
+import { prisma } from "../../../lib/db";
+import { reserveStock, type StockItem } from "../../../lib/data/inventory";
 
 type CreateArgs = { actor: AuditActor; input: ProductInput };
 type UpdateArgs = { actor: AuditActor; id: string; input: ProductInput };
+// Espelha o call site de PRODUCAO (createPendingOrderWithReservation, orders.ts
+// L193-221): numa MESMA transacao, chama reserveStock(tx, items) e — se ok —
+// vira a flag stockReserved=true do pedido. Se reserveStock devolver ok:false, o
+// throw aborta a transacao (rollback total), exatamente como o checkout faz com
+// OutOfStockError. INFRA de teste: usa as funcoes de PRODUCAO sem mock.
+type ReserveArgs = { orderId: number; items: StockItem[] };
+
+/**
+ * Erro de aborto da reserva — carrega o resultado { ok:false, productId } do
+ * reserveStock p/ FORCAR o rollback da $transaction (espelha OutOfStockError do
+ * checkout). O resultado e re-emitido como __SEAM_RESULT__ apos a transacao
+ * abortar, p/ a spec inspecionar { ok:false } E provar que nada foi gravado.
+ */
+class ReserveAbort extends Error {
+  readonly result: { ok: false; productId: string };
+  constructor(result: { ok: false; productId: string }) {
+    super("reserve_abort");
+    this.name = "ReserveAbort";
+    this.result = result;
+  }
+}
 
 async function main(): Promise<void> {
   const op = process.argv[2];
@@ -45,11 +68,36 @@ async function main(): Promise<void> {
         result = await updateProduct(actor, id, input);
         break;
       }
+      case "reserveStockForOrder": {
+        // Reserva atomica + flag do pedido na MESMA transacao (mesmo padrao do
+        // checkout de producao). Devolve o resultado cru do reserveStock.
+        const { orderId, items } = payload as ReserveArgs;
+        result = await prisma.$transaction(async (tx) => {
+          const reserve = await reserveStock(tx, items);
+          if (!reserve.ok) {
+            // Sinaliza p/ rollback (como o checkout faz com OutOfStockError); o
+            // payload do resultado vai junto p/ a spec inspecionar { ok:false }.
+            throw new ReserveAbort(reserve);
+          }
+          await tx.order.update({
+            where: { id: orderId },
+            data: { stockReserved: true, stockCommitted: false },
+          });
+          return reserve;
+        });
+        break;
+      }
       default:
         throw new Error(`operacao desconhecida: ${op}`);
     }
     process.stdout.write(`__SEAM_RESULT__${JSON.stringify(result)}\n`);
   } catch (err) {
+    // Aborto intencional da reserva (ok:false): a transacao ja sofreu rollback;
+    // re-emitimos o resultado como SUCESSO de protocolo p/ a spec assertaa.
+    if (err instanceof ReserveAbort) {
+      process.stdout.write(`__SEAM_RESULT__${JSON.stringify(err.result)}\n`);
+      return;
+    }
     const name = err instanceof Error ? err.name : "Error";
     const message = err instanceof Error ? err.message : String(err);
     process.stdout.write(`__SEAM_ERROR__${JSON.stringify({ name, message })}\n`);
