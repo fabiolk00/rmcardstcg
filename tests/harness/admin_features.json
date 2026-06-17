@@ -1164,10 +1164,10 @@
   },
   {
     "category": "chaos",
-    "state": "building",
+    "state": "ready_for_qa",
     "passes": false,
     "qa_note": null,
-    "fix_note": null,
+    "fix_note": "CAUSA-RAIZ: updateProduct (lib/data/products.ts) fazia read-modify-write ingenuo sob READ COMMITTED — lia o `before` SEM lock e depois tx.product.update gravava a LINHA INTEIRA (9 campos) com o snapshot do input. Duas edicoes concorrentes do MESMO produto liam o mesmo before; a 2a a commitar sobrescrevia cegamente o campo que a 1a mudou, carregando seu valor stale (lost update classico): editor A (stock 10->15, carregando discountPct=0 stale) e editor B (discountPct 0->20, carregando stock=10 stale) — o discountPct final voltava a 0. CONSERTO (so codigo de produto, lib/data/products.ts): (1) DIFF DE INTENCAO — le o baseline no inicio da tx (o snapshot que o editor tinha ao montar o form; ambos os racers leem o mesmo) e monta o UPDATE so com os campos cujo valor enviado DIFERE do baseline. Campo igual ao baseline = nao tocado pelo editor => fica de fora do UPDATE. Editores que mudam campos disjuntos (um so stock, outro so discountPct) gravam colunas disjuntas e nao se sobrescrevem. (2) SERIALIZACAO — SELECT ... FOR UPDATE trava a linha antes de aplicar; a 2a tx bloqueia ate a 1a commitar e re-le o estado FRESCO sob o lock, validando reserved (CHECK reserved<=stock) contra a verdade atual e produzindo um `after` coerente (a ultima a commitar enxerga a mutacao da primeira: stock=15 E discount=20). SKU/reserved so sao re-validados quando o respectivo campo foi de fato alterado. INVARIANTES PRESERVADAS: audit-same-tx (1 product.update por update aplicado, na mesma tx, before/after nao-null, action dotted product.update); reserved-le-stock (validacao + CHECK final); cents-only (Int, sem float). Repro verde 2x (~1.9-2.8s); regressao verde nos specs irmaos que exercitam updateProduct (price-update-discount-audited, product-increase-stock, product-reduce-stock-above-reserved, product-reduce-below-reserved-blocks). typecheck/lint OK; prettier OK em lib/data/products.ts (ruido de format e so de arquivos .claude/agent-memory pre-existentes, nao tocados).",
     "review": null,
     "review_note": null,
     "id": "chaos.admin.concurrent-edit",

@@ -278,43 +278,71 @@ export async function updateProduct(
   const data = normalizeProductInput(input);
 
   return prisma.$transaction(async (tx) => {
-    const current = await tx.product.findUnique({ where: { id } });
-    if (!current) throw new ProductValidationError("Produto não encontrado.");
-    const before = toProduct(current);
+    // (1) BASELINE: le a linha que o editor TINHA ao montar o formulario (o snapshot
+    // de onde ele partiu). Sob READ COMMITTED, duas edicoes concorrentes que abrem o
+    // form ao mesmo tempo leem o MESMO baseline. E contra ESTE baseline — nao contra o
+    // estado mais recente — que decidimos quais campos o editor de fato pretendeu
+    // mudar (diff de intencao). Um campo cujo valor enviado == baseline e um campo que
+    // o editor NAO tocou (so carregou o valor do form), e nao deve ser reescrito.
+    const baseline = await tx.product.findUnique({ where: { id } });
+    if (!baseline) throw new ProductValidationError("Produto não encontrado.");
+    const before = toProduct(baseline);
 
-    // O estoque novo nunca pode ficar abaixo das unidades ja reservadas em pedidos
-    // pendentes: violaria o CHECK reserved<=stock e a UI receberia um 500 opaco.
-    // Mensagem clara em pt-BR. (O CHECK no DB segue como rede final contra uma
-    // reserva concorrente entre esta leitura e o UPDATE.)
-    if (data.stock < current.reserved) {
+    // (2) DIFF DE INTENCAO contra o baseline: monta o conjunto de campos que ESTE
+    // editor realmente alterou. Campos iguais ao baseline ficam de fora do UPDATE.
+    // Editores concorrentes que mudam campos DISJUNTOS (ex.: um so stock, outro so
+    // discountPct) gravam colunas disjuntas e nao se sobrescrevem — fim do lost
+    // update por write da linha inteira com snapshot stale. O slug e derivado do
+    // nome: so muda quando o nome mudou.
+    const slug = await uniqueSlug(tx, data.name, id);
+    const updateData: Prisma.ProductUpdateInput = {};
+    if (data.name !== baseline.name) {
+      updateData.name = data.name;
+      if (slug !== baseline.slug) updateData.slug = slug;
+    }
+    if (data.category !== baseline.category) updateData.category = data.category;
+    if (data.sku !== baseline.sku) updateData.sku = data.sku;
+    if (data.priceCents !== baseline.priceCents) updateData.priceCents = data.priceCents;
+    if (data.discountPct !== baseline.discountPct) updateData.discountPct = data.discountPct;
+    if (data.stock !== baseline.stock) updateData.stock = data.stock;
+    if (data.badge !== baseline.badge) updateData.badge = data.badge;
+    if (data.imageUrl !== baseline.imageUrl) updateData.imageUrl = data.imageUrl;
+    if (data.description !== baseline.description) updateData.description = data.description;
+
+    // (3) SERIALIZA a aplicacao: trava a LINHA com SELECT ... FOR UPDATE. Edicoes
+    // concorrentes do MESMO produto serializam aqui — a 2a transacao BLOQUEIA ate a
+    // 1a commitar. Apos o lock, re-le o estado FRESCO (que ja inclui o commit da
+    // edicao anterior). Isso garante: validacao de reserved contra a verdade atual E
+    // um `after` coerente (a ultima a commitar enxerga a mutacao da primeira).
+    const lockedRows = await tx.$queryRaw<
+      { id: string }[]
+    >`SELECT "id" FROM "products" WHERE "id" = ${id}::uuid FOR UPDATE`;
+    if (lockedRows.length === 0) throw new ProductValidationError("Produto não encontrado.");
+
+    const fresh = await tx.product.findUnique({ where: { id } });
+    if (!fresh) throw new ProductValidationError("Produto não encontrado.");
+
+    // O estoque novo (se este editor o mudou) nunca pode ficar abaixo das unidades ja
+    // reservadas em pedidos pendentes (rede final tambem no CHECK reserved<=stock).
+    // Mensagem clara em pt-BR, validada contra o `reserved` FRESCO sob o lock.
+    if (updateData.stock !== undefined && data.stock < fresh.reserved) {
       throw new ProductValidationError(
-        `Não é possível definir o estoque (${data.stock}) abaixo das ${current.reserved} unidade(s) reservada(s) em pedidos pendentes.`,
+        `Não é possível definir o estoque (${data.stock}) abaixo das ${fresh.reserved} unidade(s) reservada(s) em pedidos pendentes.`,
       );
     }
 
-    const skuClash = await tx.product.findFirst({
-      where: { sku: { equals: data.sku, mode: "insensitive" }, id: { not: id } },
-      select: { id: true },
-    });
-    if (skuClash) throw new ProductValidationError(`Já existe um produto com o SKU "${data.sku}".`);
+    // SKU unico (se este editor mudou o sku): checa contra o estado FRESCO.
+    if (updateData.sku !== undefined) {
+      const skuClash = await tx.product.findFirst({
+        where: { sku: { equals: data.sku, mode: "insensitive" }, id: { not: id } },
+        select: { id: true },
+      });
+      if (skuClash) {
+        throw new ProductValidationError(`Já existe um produto com o SKU "${data.sku}".`);
+      }
+    }
 
-    const slug = await uniqueSlug(tx, data.name, id);
-
-    const row = await tx.product.update({
-      where: { id },
-      data: {
-        slug,
-        name: data.name,
-        category: data.category,
-        sku: data.sku,
-        priceCents: data.priceCents,
-        discountPct: data.discountPct,
-        stock: data.stock,
-        badge: data.badge,
-        imageUrl: data.imageUrl,
-        description: data.description,
-      },
-    });
+    const row = await tx.product.update({ where: { id }, data: updateData });
     const product = toProduct(row);
 
     await writeAuditLog(tx, {
