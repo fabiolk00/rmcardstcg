@@ -3037,3 +3037,45 @@ SESSAO — TIME PEDIDO
   commit    : <preenchido no commit desta sessao>
   proximo   : pedido.shipping.regression-blocked (priority 10, state=todo) — regressao
               delivered->sent barrada (invalid_transition), nada gravado, sem audit.
+
+--------------------------------------------------------------------------------
+QA — pedido.shipping.skip-blocked  (2026-06-17)
+--------------------------------------------------------------------------------
+VEREDITO: APROVADO (passes=true, qa_note=null, state mantido ready_for_qa).
+
+REPRODUCAO (2x, PG efemero recem-seedado): `pnpm harness
+tests/harness/pedido/shipping-skip-blocked.spec.ts` -> 1 passed (5.3s) ambas as
+vezes. (Nota: com CI=1 o webServer next dev nao sobe neste ambiente por Clerk
+keyless -> timeout do webServer; a spec e DB-first e nao usa browser. Sem CI,
+reuseExistingServer=true e a spec passa em ~5s. Falha de webServer e ambiente,
+nao da feature.)
+
+SEAM = PRODUCAO (sem mock): _run-seam.ts case "updateOrderShippingStatus" chama
+updateOrderShippingStatus de lib/data/orders.ts (L523). Fonte confirma: a guarda
+SHIPPING_TRANSITIONS[from].includes(to) (L541) retorna invalid_transition (L542)
+ANTES de updateMany (L545), reconcile de estoque (L554) e writeAuditLog (L558).
+SHIPPING_TRANSITIONS.pending=["sent","cancelled"] (orderTransitions.ts) nao inclui
+"delivered" -> pulo barrado.
+
+ASSERTS (todos provados ponta a ponta via pg no DB real):
+  1. ok:false reason=invalid_transition from=pending to=delivered  -> PROVADO (spec
+     assert 1; probe independente idem).
+  2. shipping_status permanece pending, nada gravado (payment_status, flags
+     stock_reserved/stock_committed, e stock/reserved do produto intactos; pre-estado
+     reserved>0 torna nao-trivial) -> PROVADO.
+  3. audit_log NAO ganha linha (total E por-entity; zero order.shipping_status_update
+     orfao) -> PROVADO. Contra-prova: pending->sent legal aplica e deixa exatamente 1
+     audit (delta prova que o barrado retornou antes do writeAuditLog).
+
+PROBE INDEPENDENTE (valores DIFERENTES: stock=7, reserved=2, qty=2, price=12345),
+removido ao fim: barred=invalid_transition; estado intacto (7/2/pending/true/false);
+legal pending->sent ok + 1 audit; 2a ilegal sent->pending tambem invalid_transition
+(prova nao-tautologia em ambas as direcoes); CHECK products_reserved_le_stock_chk
+existe + 0 violacoes; colunas *_cents todas integer (cents-only).
+
+INVARIANTES: order-state-machine OK; audit-same-tx OK (sem orfao, mesma tx); +rede
+reserved-le-stock e cents-only verificadas independentemente.
+
+DIFF DE PRODUTO (git diff e0e83a1..HEAD -- app lib prisma) = VAZIO: time nao tocou
+produto (seam ja correta). Tree limpo (probes removidos; next-env.d.ts cosmetico nao
+comitado).
