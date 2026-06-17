@@ -2538,3 +2538,57 @@ SESSAO — TIME PEDIDO
   proximo   : pedido.payment.idempotent-noop (priority 6, state=todo) — reaplicar o
               MESMO status (paid->paid) e no-op: changed=false, estoque inalterado,
               audit_log nao ganha linha.
+
+================================================================================
+SESSAO QA — pedido.payment.cancelled-to-paid-blocked (PORTAO ADVERSARIAL)
+================================================================================
+  timestamp : 2026-06-17 12:10 -0300
+  papel     : QA (unico autorizado a escrever passes/qa_note). NAO corrige produto.
+  feature   : pedido.payment.cancelled-to-paid-blocked (priority 5), state=ready_for_qa.
+  veredito  : APROVADO — passes=true, qa_note=null. state INALTERADO (ready_for_qa).
+  ritual    : pwd /c/rmcardstcg; branch harness/admin OK. Li ledger + spec + _run-seam +
+              orders.ts (PAYMENT_TRANSITIONS L300-304, guarda L374-379, applyPaymentStatusTx
+              L332-404) + schema.prisma + test-schema-supplement.
+  repro     : `pnpm harness tests/harness/pedido/payment-cancelled-to-paid-blocked.spec.ts`
+              rodado 2x do ZERO em PG efemero recem-seedado (db push + apply-test-
+              constraints + seed = 28 produtos / 8 pedidos): run1 = 1 passed (4.6s);
+              run2 = 1 passed (4.4s). VERDE reproduzivel. Ruido EBUSY/rmdir no teardown
+              (Windows, apos passar) = cosmetico, ignorado.
+  nao-fake  : seam = applyPaymentStatusTx REAL de lib/data/orders.ts via _run-seam.ts
+              (case applyPaymentStatus, envelopado em prisma.$transaction como o wrapper
+              de PRODUCAO setOrderPaymentStatus), SEM mock. Spec assertaa via `pg` cru
+              sobre DATABASE_URL. PaymentRef={id,valueCents} bate o payload. Coluna
+              `reserved` sem @map (spec usa products.reserved correto); action gravado e
+              o @map DOTTED 'order.payment_status_update' (schema.prisma L53).
+  por-assert (cada assert do ledger PROVADO contra DB real):
+    [1] ok:false reason='invalid_transition' (cancelled nunca vira paid) -> spec L234-242.
+        PROVADO. id E valor casados (asaas_payment_id + valueCents==total_cents) p/
+        exercitar a GUARDA, nao mismatch. ADVERSARIAL (probe caso B): com payment.id
+        ERRADO o retorno e 'payment_mismatch' (caminho DISTINTO) — prova que
+        invalid_transition nao e tautologia "sempre ok:false".
+    [2] orders.payment_status permanece 'cancelled', flags false/false -> spec L244-257.
+        PROVADO.
+    [3] nenhum commitStock; products.stock/reserved inalterados -> spec L259-281.
+        PROVADO. ANTI-TRIVIAL: reserved FORCADO >0. CONTRA-PROVA (probe caso C): uma
+        transicao LEGAL pending->paid com id+valor casados DA efeito (ok:true changed:true,
+        flags viram, commitStock baixa stock 30->26 e reserved 4->0) — prova que a
+        AUSENCIA de efeito no caso bloqueado e a GUARDA agindo, nao codigo inerte.
+    [4] audit_log NAO ganha linha -> spec L283-308. PROVADO (count total + por-entity
+        inalterados + 0 linhas order.payment_status_update p/ o pedido). audit-same-tx:
+        applyPaymentStatusTx NUNCA escreve audit; a guarda retorna ANTES de
+        reconcileStockForPaymentStatus => 0 orfao.
+  invariantes: order-state-machine (cancelled terminal, bloqueio real), audit-same-tx
+        (0 orfao), reserved-le-stock (CHECK existe + 0 violacoes). Todas PROVADAS.
+  prova-propria: PROBE INDEPENDENTE (c:\rmcardstcg\_qa_probe_ctp.tmp.ts, removido ao fim)
+        subiu SEU PROPRIO PG efemero, push+constraints+seed, chamou o SEAM REAL
+        applyPaymentStatus via _run-seam.ts com VALORES DIFERENTES da spec (stock=25,
+        reserved=7, qty=4, unit=7333) + 2 contra-provas adversariais (B: id errado ->
+        payment_mismatch; C: pending->paid legal -> commit real). 21 PASS / 0 FAIL,
+        incl. pg_constraint do CHECK e 0 violacoes globais.
+  nao-trapaca: git diff e0e83a1..HEAD -- app lib prisma = VAZIO (0 linhas; nenhum codigo
+        de produto tocado). Tree limpo apos QA (probe removido; next-env.d.ts revertido —
+        rewrite incidental do next dev, nao do QA).
+  estado    : ready_for_qa (NAO alterei). passes=true escrito pelo QA. qa_note=null.
+  commit    : harness(qa): aprova pedido.payment.cancelled-to-paid-blocked
+  proximo   : pedido.payment.idempotent-noop (priority 6, state=todo) — fora do escopo
+              desta sessao (so 1 feature por gate).
