@@ -2487,3 +2487,54 @@ SESSAO QA — pedido.payment.paid-to-pending-blocked (PORTAO ADVERSARIAL)
   commit    : harness(qa): aprova pedido.payment.paid-to-pending-blocked
   proximo   : pedido.payment.cancelled-to-paid-blocked (priority 5, state=todo) — fora
               do escopo desta sessao (so 1 feature por gate).
+
+--------------------------------------------------------------------------------
+SESSAO — TIME PEDIDO
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 12:05 -0300
+  time      : pedido
+  feature   : pedido.payment.cancelled-to-paid-blocked (priority 5)
+  seam      : applyPaymentStatusTx(tx, orderId, status, payment) em lib/data/orders.ts
+              (L332) — NUCLEO da maquina de pagamento (webhook/reconcile). Unica funcao
+              que valida a transicao contra PAYMENT_TRANSITIONS (orders.ts L300-304:
+              cancelled -> [] TERMINAL). A guarda (L374-379) retorna 'invalid_transition'
+              ANTES de reconcileStockForPaymentStatus (L388) => nenhum commitStock; e a
+              propria applyPaymentStatusTx NUNCA escreve audit_log. Envelopada num
+              prisma.$transaction pelo _run-seam case applyPaymentStatus (ja existente),
+              espelhando o wrapper de PRODUCAO setOrderPaymentStatus (L411-420). NAO usei
+              adjustOrderPaymentStatus (ajuste manual nao valida PAYMENT_TRANSITIONS, so
+              barra no-op X->X) — nao e a maquina que o ledger pede.
+  arquivos  : tests/harness/pedido/payment-cancelled-to-paid-blocked.spec.ts (DB-first,
+              sem browser). Reusa o runner _run-seam.ts (INFRA ja existente, suporta
+              applyPaymentStatus) SEM alteralo. Nenhum codigo de PRODUTO tocado.
+  o-que-fiz : Ritual OK (branch harness/admin). Marquei SO o state da feature:
+              todo -> building -> ready_for_qa. Escrevi spec que: (1) cria produto
+              PROPRIO (SKU/nome unicos HARNESS-BLOCKCP-<uuid>) e FORCA stock=10,
+              reserved=2(>0, anti-trivial); (2) INSERT direto de PEDIDO PROPRIO JA
+              CANCELADO (payment_status='cancelled', stock_reserved=false,
+              stock_committed=false — estado pos-estorno) + asaas_payment_id casado, com
+              1 item QTY=3; (3) chama applyPaymentStatus com status='paid' e
+              payment={id casado, valueCents==total_cents} — id E valor casados para que
+              NEM payment_mismatch NEM value_mismatch (este ultimo so dispara p/
+              status='paid') disparem antes da guarda, exercitando a GUARDA DE TRANSICAO
+              de fato; (4) ASSERTS via pg: res.ok=false & reason=='invalid_transition';
+              payment_status permanece 'cancelled', flags intactas (false/false);
+              products.stock=10/reserved=2 INALTERADOS (nenhum commitStock); CHECK
+              products_reserved_le_stock_chk existe + 0 violacoes; audit_log total E
+              por-entity inalterados + 0 linhas order.payment_status_update p/ o pedido.
+  invariante: order-state-machine PROVADA (cancelled e terminal: PAYMENT_TRANSITIONS
+              .cancelled=[] => cancelled->paid retorna invalid_transition; estado nao
+              muda). audit-same-tx PROVADA (transicao ilegal retorna antes de qualquer
+              escrita => 0 audit orfao, count total/por-entity inalterado). reserved-le-
+              stock PROVADA (CHECK existe + 0 violacoes; stock/reserved intocados).
+  estado    : ready_for_qa (state da feature no ledger). passes NAO tocado (campo do QA).
+  resultado : VERDE — `pnpm harness tests/harness/pedido/payment-cancelled-to-paid-blocked.spec.ts`
+              => 1 passed (rodado 2x: 1.8s/4.5s e 1.8s/4.4s), seed 28 produtos / 8 pedidos.
+              Gates: typecheck OK, lint OK (0 warnings), prettier OK nos MEUS arquivos
+              (spec + ledger; _run-seam intocado). next-env.d.ts revertido (rewrite
+              incidental do next dev, nao comitado). Ruido EBUSY/rmdir no teardown
+              (Windows, apos passar) = cosmetico.
+  commit    : <preenchido no commit desta sessao>
+  proximo   : pedido.payment.idempotent-noop (priority 6, state=todo) — reaplicar o
+              MESMO status (paid->paid) e no-op: changed=false, estoque inalterado,
+              audit_log nao ganha linha.
