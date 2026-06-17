@@ -3443,3 +3443,37 @@ SESSAO — TIME QA
   tree      : limpo (next-env.d.ts regenerado pelo next/tsx revertido; probe removida; so
               .claude/agent-memory untracked, nao-relacionado).
   commit    : harness(qa): aprova pedido.note.empty-normalized-noop
+
+--------------------------------------------------------------------------------
+2026-06-17  time:pedido  feature: pedido.totals.formula (priority 14)
+  estado    : ready_for_qa (VERDE, reproduzivel 2x via pnpm harness)
+  spec      : tests/harness/pedido/totals-formula.spec.ts (DB-first, sem browser)
+  seam      : NENHUMA seam de lib/data — a feature e ESTRUTURAL (totals-formula +
+              cents-only sao propriedades do dado persistido em orders e do schema,
+              nao de uma mutacao de admin). Total e calculado no checkout (cartTotals)
+              e GRAVADO na linha; nao ha funcao de admin que recalcule total. Logo a
+              prova honesta nao precisa do _run-seam.ts: 100% das assercoes via pg
+              cru sobre process.env.DATABASE_URL.
+  o-que-fiz : montei PEDIDO PROPRIO (INSERT pg) com TODOS os termos > 0 e nao-triviais
+              (subtotal=50000, discount=3000, coupon=1500, shipping=2500 => total=48000,
+              total != subtotal) e provei cada assert:
+                A1 total_cents == subtotal - discount - coupon + shipping: spec calcula
+                   das COLUNAS CRUAS lidas via pg (nao de constantes) e compara com
+                   total_cents persistido; + sanidade total != subtotal (anti-trivial).
+                A2 cents-only / nenhum float: (a) runtime Number.isInteger em todos os 5
+                   campos; (b) ESTRUTURAL information_schema.columns => os 5 *_cents sao
+                   data_type='integer' (nao numeric/double).
+                A3 CHECK coupon_discount_cents >= 0 valido: pg_constraint confirma
+                   orders_coupon_discount_cents_chk (1 linha) E insercao de coupon=-1 e
+                   REJEITADA (codigo 23514, mensagem cita a constraint); 0 linha vazada.
+                + escopo de catalogo: 0 pedidos no banco (seed 8 + o meu) violam a formula
+                  ou tem coupon negativo; total de pedidos > 1 (assert nao-vazio).
+  obstaculos: nenhum. Seed.ts NAO passa couponDiscountCents (default 0) e seed-data tem
+              discount=coupon=0, entao na seed a formula e verdadeira mas trivial; por
+              isso o pedido proprio carrega todos os termos > 0. Ruido cosmetico: log
+              "violates check constraint orders_coupon_discount_cents_chk" no teardown e
+              a rejeicao INTENCIONAL do A3 (teste passou: 1 passed).
+  gates     : pnpm typecheck OK; pnpm lint OK; prettier --check no spec OK.
+  produto   : NAO toquei app/**, lib/**, prisma/** (so spec + ledger + progress).
+  commit    : harness(pedido): cobre pedido.totals.formula DB-first
+  proximo   : QA valida pedido.totals.formula; proximo todo de pedido = pedido.shipping.free-above-threshold (priority 15).
