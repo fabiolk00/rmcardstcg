@@ -3797,3 +3797,16 @@ SESSAO — TIME QA
     34 chaos.coupon.delete-guard — coupon-delete-guard, audit-same-tx. excluir cupom COM redencao: bloqueado (FK Restrict), caminho e inativar.
     35 chaos.money.no-float — cents-only, totals-formula, final-price-derived. property test >=100 conjuntos aleatorios: tudo Int em centavos, total exato, finalPriceCents derivado, zero drift/float.
   ESTADO: 11 chaos todo (3 estoque + 8 pedido). 47 functional intactas (passes=true). Total 58. PROXIMO: fase de build escreve as specs de chaos.
+
+[ESTOQUE] 2026-06-17 BRT chaos.stock.race (priority 21, category=chaos) -> ready_for_qa (passes intocado=false; QA grava).
+  O QUE FIZ: escrevi tests/harness/estoque/chaos-stock-race.spec.ts provando SOB CONCORRENCIA REAL que stock=1 com N=12 reservas concorrentes deixa exatamente 1 vencer (sem oversell). Marquei SO o state da minha feature (todo->building->ready_for_qa). Produto INTOCADO (so teste).
+  SEAM: reserveStock de PRODUCAO (lib/data/inventory.ts) via _run-seam.ts op "reserveStockForOrder" (ja existente; NAO precisei estender o runner). Cada reserva = 1 processo tsx independente, 1 prisma.$transaction, reservando qty=1 do MESMO produto + flip Order.stockReserved=true na MESMA tx; ok:false -> ReserveAbort -> rollback total.
+  CONCORRENCIA HONESTA (anti-fake-green): NAO usei spawnSync (serializaria); usei spawn() ASSINCRONO + Promise.all => N=12 tsx correndo de fato em paralelo, disputando a unica unidade no MESMO Postgres efemero. A seguranca vem do UPDATE condicional WHERE stock-reserved>=qty de reserveStock (lock de linha do PG): 1o trava, os outros bloqueiam e ao reavaliar veem disponivel=0 -> 0 linhas -> ok:false.
+  RESULTADO: VERDE e reproduzivel (pnpm harness ...chaos-stock-race.spec.ts: 1 passed em 7.2s e 3.1s, PG efemero recem-seedado 28prod/8ped).
+    A1 exatamente 1 ok:true e N-1 ok:false {productId} (sem efeito parcial): winners.length==1, losers.length==11, cada perdedora aponta o productId.
+    A2 products.reserved==1 e stock==1 ao final (disponivel=0; reserva nao baixa estoque fisico).
+    A3 CHECK products_reserved_le_stock_chk NUNCA violado: existe + 0 violacoes; reforco: UPDATE cru reserved=2 e rejeitado pelo DB (log do PG confirma a rejeicao INTENCIONAL desta sonda: ERROR ...products_reserved_le_stock_chk no STATEMENT UPDATE products SET reserved=$1 — e o probe da spec, nao a corrida de producao).
+    A4 exatamente 1 pedido com stockReserved=true (cruzado com o orderId do vencedor reportado pelo seam); 0 pedidos committed; perdedores em rollback total.
+  Invariantes (2/2): reserved-le-stock (oversell impossivel sob corrida) e reserve-lifecycle-idempotent (flag vira na MESMA tx da reserva; so o vencedor).
+  Produto INTOCADO: needs_product_fix=false. Gates verdes nos meus arquivos: pnpm typecheck OK; eslint --max-warnings 0 OK; prettier --check OK no spec + admin_features.json. Ruido de teardown "could not receive data from client"/EBUSY no Windows e cosmetico (apos passar) — ignorado.
+  ESTADO: ready_for_qa. PROXIMO: chaos.admin.concurrent-edit (priority 22, estoque) ou chaos.webhook.replay (priority 23).
