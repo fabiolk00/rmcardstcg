@@ -3614,3 +3614,14 @@ SESSAO — TIME QA
     - cents-only: Number.isInteger em percent_off, min_subtotal_cents (==5000) e redeemed_count via pg; sem float. COBERTO.
   Gate4 produto intocado: git diff e0e83a1..HEAD -- app lib prisma == VAZIO. Commit da feature (3fadcd3) so mudou: spec novo (cupom-create-percent.spec.ts), _run-seam.ts (+20 linhas, case INFRA createCoupon que chama a funcao de PRODUCAO), admin_features.json (SO o campo state: todo->ready_for_qa) e progress. asserts/invariants/title/priority IMUTAVEIS. Nenhum app/lib/prisma.
   VEREDITO: APROVADA. Escrevi passes=true, qa_note=null; state mantido ready_for_qa (nao alterado pelo QA).
+
+[2026-06-17 14:33] time:pedido | feature:cupom.create.fixed (priority 18) | DB-first, sem browser.
+  O QUE FIZ: escrevi tests/harness/pedido/cupom-create-fixed.spec.ts (espelho da spec irma VERDE cupom-create-percent.spec.ts, agora p/ type='fixed'). SEAM: case 'createCoupon' do _run-seam.ts (JA existente, NAO estendi runner) -> chama a funcao de PRODUCAO createCoupon(actor,input) (lib/data/coupons.ts L150) SEM mock; spec faz TODAS as assercoes via pg sobre process.env.DATABASE_URL (Prisma ESM quebra no CJS do Playwright; mutacao roda em processo tsx separado).
+  ANTI-TRIVIAL load-bearing: input carrega percentOff=77 JUNTO de type='fixed'; o CHECK (2o disjunto) passa com qualquer percent_off, entao o unico guardiao da coerencia e o assert `percent_off IS NULL` — feito direto na spec. code minusculo (harness-fix-xxxx) => assert code==UPPER prova normalizeCouponCode. valueCents=1500 (>0) casa o CHECK.
+  Asserts do ledger (4/4 provados via pg):
+    A1 coupons +1 (count==N+1) com type='fixed', value_cents=1500, percent_off NULL (coerencia toCouponData zera o campo do tipo oposto).
+    A2 CHECK coupons_type_value_chk existe (pg_constraint rowCount==1) E 0 violacoes (predicado real reaplicado sobre a tabela inteira; fixed: value_cents>0, percent_off NULL).
+    A3 value_cents Int de centavos (cents-only): Number.isInteger(value_cents)==true, ==1500, >0; min_subtotal_cents==8000 Int; redeemed_count==0 Int.
+    A4 audit_log +1 (count==A+1), action=='coupon.create' (DOTTED, lido da coluna crua via pg), entity_type=='coupon', entity_id casado, before=null, after=snapshot coerente (code UPPER, type fixed, valueCents 1500, percentOff NULL, minSubtotalCents 8000, isActive true) — na MESMA tx (delta total +1 casa delta por entity_id +1 => sem orfao).
+  ESTADO: VERDE e reproduzivel (pnpm harness: 1 passed, 3.6s). Gates: typecheck OK, lint OK (0 warnings), prettier --check do spec OK. Produto INTOCADO (app/lib/prisma nao tocados; runner nao alterado). admin_features.json: SO o campo state cupom.create.fixed todo->building->ready_for_qa.
+  COMMIT: <preenchido no commit>. PROXIMO: QA aprova cupom.create.fixed; depois pedido pega cupom.create.incoherent-blocked (priority 19, state todo).

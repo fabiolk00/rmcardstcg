@@ -919,7 +919,7 @@
       "audit_log recebe 1 linha action=coupon.create na mesma transacao."
     ],
     "invariants": ["coupon-coherence", "cents-only", "audit-same-tx"],
-    "state": "todo",
+    "state": "ready_for_qa",
     "passes": false,
     "qa_note": null,
     "fix_note": null,
