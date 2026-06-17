@@ -1,0 +1,1139 @@
+[
+  {
+    "id": "estoque.product.create",
+    "team": "estoque",
+    "category": "functional",
+    "title": "Admin cria produto novo (CRUD create + auditoria)",
+    "route": "/admin/produtos",
+    "priority": 1,
+    "steps": [
+      "Conta produtos iniciais N e linhas de audit_log iniciais A.",
+      "Chama createProduct(actor, input) com name/category/sku validos, priceCents inteiro, discountPct 0..80, stock>=0."
+    ],
+    "asserts": [
+      "products ganha 1 linha (count == N+1) com slug derivado do nome, isActive=true, reserved=0.",
+      "priceCents/discountPct/stock persistidos exatamente como Int (cents-only).",
+      "audit_log ganha 1 linha (count == A+1) action=product.create, entityType=product, before=null, after=snapshot do produto, na MESMA transacao.",
+      "CHECK 0<=reserved<=stock continua valido (reserved=0)."
+    ],
+    "invariants": ["cents-only", "audit-same-tx", "reserved-le-stock"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "estoque.product.create-duplicate-sku",
+    "team": "estoque",
+    "category": "functional",
+    "title": "Criar produto com SKU duplicado (case-insensitive) e bloqueado",
+    "route": "/admin/produtos",
+    "priority": 2,
+    "steps": [
+      "Pega o sku de um produto existente do seed.",
+      "Chama createProduct com o mesmo sku em outra caixa (ex.: UPPER)."
+    ],
+    "asserts": [
+      "createProduct lanca ProductValidationError com mensagem de SKU duplicado.",
+      "products NAO ganha linha nova (count inalterado).",
+      "audit_log NAO ganha linha (rollback da transacao inteira)."
+    ],
+    "invariants": ["audit-same-tx"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "estoque.product.create-invalid-rejected",
+    "team": "estoque",
+    "category": "functional",
+    "title": "Criar produto com valores invalidos (preco/desconto/estoque) e rejeitado",
+    "route": "/admin/produtos",
+    "priority": 3,
+    "steps": [
+      "Tenta createProduct com priceCents negativo; depois com discountPct=81; depois com stock negativo; depois com priceCents nao-inteiro."
+    ],
+    "asserts": [
+      "Cada chamada lanca ProductValidationError (preco>=0 inteiro; desconto 0..80; estoque>=0 inteiro).",
+      "products nao ganha nenhuma linha; audit_log nao ganha nenhuma linha.",
+      "discountPct so aceita inteiro (cents-only/derivacao integra)."
+    ],
+    "invariants": ["cents-only", "final-price-derived", "audit-same-tx"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "estoque.product.increase-stock",
+    "team": "estoque",
+    "category": "functional",
+    "title": "Admin aumenta o estoque de um produto",
+    "route": "/admin/produtos",
+    "priority": 4,
+    "steps": [
+      "Le stock S e reserved R de um produto.",
+      "Chama updateProduct com o mesmo input porem stock = S+10."
+    ],
+    "asserts": [
+      "products.stock == S+10; products.reserved == R (inalterado).",
+      "CHECK 0<=reserved<=stock continua valido.",
+      "audit_log recebe 1 linha action=product.update na MESMA transacao, before.stock=S e after.stock=S+10."
+    ],
+    "invariants": ["reserved-le-stock", "audit-same-tx"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "estoque.product.reduce-stock-above-reserved",
+    "team": "estoque",
+    "category": "functional",
+    "title": "Admin reduz o estoque mantendo stock >= reserved",
+    "route": "/admin/produtos",
+    "priority": 5,
+    "steps": [
+      "Define um produto com reserved=R>0 (ex.: UPDATE products SET reserved=2, stock=10).",
+      "Chama updateProduct com stock = 5 (ainda >= reserved)."
+    ],
+    "asserts": [
+      "products.stock == 5; products.reserved == R (inalterado).",
+      "CHECK 0<=reserved<=stock continua valido (5 >= 2).",
+      "audit_log recebe 1 linha action=product.update na mesma transacao."
+    ],
+    "invariants": ["reserved-le-stock", "audit-same-tx"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "estoque.product.reduce-below-reserved-blocks",
+    "team": "estoque",
+    "category": "functional",
+    "title": "Reduzir estoque ABAIXO de reserved e BLOQUEADO",
+    "route": "/admin/produtos",
+    "priority": 6,
+    "steps": [
+      "Define um produto com reserved=3, stock=10.",
+      "Chama updateProduct com stock = 2 (abaixo das 3 reservadas)."
+    ],
+    "asserts": [
+      "updateProduct lanca ProductValidationError citando as unidades reservadas (estoque nao pode ficar abaixo de reserved).",
+      "products.stock permanece 10; products.reserved permanece 3 (nada gravado).",
+      "audit_log NAO ganha linha.",
+      "CHECK 0<=reserved<=stock segue como rede final (jamais 3>2)."
+    ],
+    "invariants": ["reserved-le-stock", "audit-same-tx"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "estoque.product.available-derived",
+    "team": "estoque",
+    "category": "functional",
+    "title": "Disponivel para venda = stock - reserved (derivado, nao persistido)",
+    "route": "/admin/produtos",
+    "priority": 7,
+    "steps": [
+      "Define stock=10, reserved=4 num produto.",
+      "Verifica que nao existe coluna persistida de 'disponivel' e calcula stock-reserved."
+    ],
+    "asserts": [
+      "Disponivel == stock - reserved == 6 (derivado em tempo de leitura).",
+      "Nao existe coluna 'available'/'disponivel' na tabela products (so stock e reserved).",
+      "CHECK 0<=reserved<=stock valido."
+    ],
+    "invariants": ["reserved-le-stock", "final-price-derived"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "estoque.reserve.reserves-units",
+    "team": "estoque",
+    "category": "functional",
+    "title": "Reserva de estoque incrementa reserved e marca stockReserved",
+    "route": "/admin/produtos",
+    "priority": 8,
+    "steps": [
+      "Le reserved=R de um produto com disponibilidade.",
+      "Numa transacao, chama reserveStock(tx, [{productId, quantity:3}]) e cria/atualiza um pedido com stockReserved=true."
+    ],
+    "asserts": [
+      "reserveStock retorna {ok:true}; products.reserved == R+3.",
+      "products.stock inalterado (reserva nao baixa estoque fisico).",
+      "Order.stockReserved == true; Order.stockCommitted == false.",
+      "CHECK 0<=reserved<=stock valido (R+3 <= stock)."
+    ],
+    "invariants": ["reserved-le-stock", "reserve-lifecycle-idempotent"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "estoque.reserve.blocks-oversell",
+    "team": "estoque",
+    "category": "functional",
+    "title": "Reserva alem do disponivel falha sem efeito parcial",
+    "route": "/admin/produtos",
+    "priority": 9,
+    "steps": [
+      "Define stock=5, reserved=4 (disponivel=1).",
+      "Chama reserveStock(tx, [{productId, quantity:2}]) (pede 2, so ha 1)."
+    ],
+    "asserts": [
+      "reserveStock retorna {ok:false, productId} apontando o produto sem disponibilidade.",
+      "products.reserved permanece 4 (nenhum incremento parcial).",
+      "Chamador deve abortar a transacao; nada e gravado.",
+      "CHECK 0<=reserved<=stock jamais violado."
+    ],
+    "invariants": ["reserved-le-stock", "reserve-lifecycle-idempotent"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "estoque.commit.reserved-to-committed",
+    "team": "estoque",
+    "category": "functional",
+    "title": "Confirmacao de pagamento baixa estoque (reservado -> committed)",
+    "route": "/admin/pedidos",
+    "priority": 10,
+    "steps": [
+      "Pedido com stockReserved=true, stockCommitted=false; produto com reserved>=qty e stock>=qty.",
+      "Numa transacao, vira as flags (stock_committed=true, stock_reserved=false) e chama commitStock(tx, lines)."
+    ],
+    "asserts": [
+      "products.stock -= qty E products.reserved -= qty (baixa definitiva).",
+      "Order.stockCommitted == true; Order.stockReserved == false.",
+      "CHECK 0<=reserved<=stock continua valido apos a baixa.",
+      "Valores em centavos intocados; so quantidades mudam (cents-only nao afetado)."
+    ],
+    "invariants": ["reserve-lifecycle-idempotent", "reserved-le-stock"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "estoque.commit.idempotent",
+    "team": "estoque",
+    "category": "functional",
+    "title": "Baixa de estoque e idempotente (commit repetido = no-op)",
+    "route": "/admin/pedidos",
+    "priority": 11,
+    "steps": [
+      "Aplica commit uma vez (stockCommitted=true, stock/reserved abaixados).",
+      "Aplica a conciliacao de 'paid' de novo no MESMO pedido (reconcileStockForPaymentStatus / fluxo de adjust)."
+    ],
+    "asserts": [
+      "Segunda aplicacao e no-op: o CAS WHERE stock_reserved=true AND stock_committed=false retorna 0 linhas; commitStock nao roda.",
+      "products.stock e products.reserved permanecem nos valores pos-primeira-baixa (sem dupla baixa).",
+      "Order.stockCommitted continua true; stockReserved continua false."
+    ],
+    "invariants": ["reserve-lifecycle-idempotent", "reserved-le-stock"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "estoque.release.reserved-on-cancel",
+    "team": "estoque",
+    "category": "functional",
+    "title": "Cancelar pedido pendente estorna a reserva",
+    "route": "/admin/pedidos",
+    "priority": 12,
+    "steps": [
+      "Pedido com stockReserved=true, stockCommitted=false; produto com reserved>=qty.",
+      "Aplica cancelamento (paymentStatus->cancelled) que dispara releaseStock via reconcileStockForPaymentStatus."
+    ],
+    "asserts": [
+      "products.reserved -= qty; products.stock inalterado (reserva nunca baixou estoque fisico).",
+      "Order.stockReserved == false; stockCommitted continua false.",
+      "CHECK 0<=reserved<=stock valido (reserved nao fica negativo)."
+    ],
+    "invariants": ["reserve-lifecycle-idempotent", "reserved-le-stock"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "estoque.release.idempotent",
+    "team": "estoque",
+    "category": "functional",
+    "title": "Estorno de reserva e idempotente (cancelar 2x nao estorna em dobro)",
+    "route": "/admin/pedidos",
+    "priority": 13,
+    "steps": [
+      "Cancela um pedido pendente (reserva estornada, stockReserved=false).",
+      "Aplica a conciliacao de 'cancelled' de novo no MESMO pedido."
+    ],
+    "asserts": [
+      "Segunda aplicacao e no-op: CAS WHERE stock_reserved=true AND stock_committed=false retorna 0 linhas.",
+      "products.reserved permanece no valor pos-primeiro-estorno (sem decremento duplo).",
+      "CHECK reserved>=0 jamais violado."
+    ],
+    "invariants": ["reserve-lifecycle-idempotent", "reserved-le-stock"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "estoque.restock.refund-of-paid",
+    "team": "estoque",
+    "category": "functional",
+    "title": "Refund de pedido JA PAGO repoe o estoque baixado",
+    "route": "/admin/pedidos",
+    "priority": 14,
+    "steps": [
+      "Pedido pago com stockCommitted=true (estoque ja baixado por commitStock).",
+      "Aplica cancelamento (refund): reconcileStockForPaymentStatus com status=cancelled cai no ramo de restockUnits."
+    ],
+    "asserts": [
+      "products.stock += qty (reposicao); products.reserved inalterado.",
+      "Order.stockCommitted == false (flag virada via CAS).",
+      "CHECK 0<=reserved<=stock valido (stock cresce, reserved intacto)."
+    ],
+    "invariants": ["reserve-lifecycle-idempotent", "reserved-le-stock"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "estoque.restock.idempotent",
+    "team": "estoque",
+    "category": "functional",
+    "title": "Reposicao de estoque (refund) e idempotente",
+    "route": "/admin/pedidos",
+    "priority": 15,
+    "steps": [
+      "Aplica refund uma vez (stockCommitted=false, stock reposto).",
+      "Aplica a conciliacao de 'cancelled' de novo no MESMO pedido."
+    ],
+    "asserts": [
+      "Segunda aplicacao e no-op: CAS WHERE stock_committed=true retorna 0 linhas; restockUnits nao roda.",
+      "products.stock permanece no valor pos-primeira-reposicao (sem dupla reposicao).",
+      "Order.stockCommitted continua false."
+    ],
+    "invariants": ["reserve-lifecycle-idempotent", "reserved-le-stock"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "estoque.price.final-derived-pure",
+    "team": "estoque",
+    "category": "functional",
+    "title": "Preco final e derivado por funcao pura, nunca persistido",
+    "route": "/admin/produtos",
+    "priority": 16,
+    "steps": [
+      "Produto com priceCents=10000 e discountPct=10.",
+      "Calcula finalPriceCents(p) e inspeciona o schema da tabela products."
+    ],
+    "asserts": [
+      "finalPriceCents == round(10000 * (1 - 10/100)) == 9000 (Int centavos).",
+      "products NAO tem coluna de preco final/final_price (so price_cents e discount_pct).",
+      "finalPriceCents e funcao pura em lib/data/pricing.ts e nao importa prisma."
+    ],
+    "invariants": ["final-price-derived", "cents-only", "pure-client-safe"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "estoque.price.update-discount-audited",
+    "team": "estoque",
+    "category": "functional",
+    "title": "Admin altera desconto do produto (auditado, derivacao recalcula)",
+    "route": "/admin/produtos",
+    "priority": 17,
+    "steps": [
+      "Produto com discountPct=0, priceCents=P.",
+      "Chama updateProduct com discountPct=20 (mantendo priceCents=P)."
+    ],
+    "asserts": [
+      "products.discountPct == 20; priceCents == P (base intocada).",
+      "finalPriceCents passa a round(P*0.80) sem nenhuma coluna persistida nova.",
+      "audit_log recebe 1 linha action=product.update, before.discountPct=0, after.discountPct=20, na mesma transacao.",
+      "discountPct rejeita >80 (faixa 0..80)."
+    ],
+    "invariants": ["final-price-derived", "cents-only", "audit-same-tx"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "estoque.product.inactivate-audited",
+    "team": "estoque",
+    "category": "functional",
+    "title": "Admin inativa produto (soft-delete) com auditoria",
+    "route": "/admin/produtos",
+    "priority": 18,
+    "steps": ["Produto ativo (isActive=true).", "Chama setProductActive(actor, id, false)."],
+    "asserts": [
+      "products.isActive == false; nenhuma linha removida (soft-delete).",
+      "audit_log recebe 1 linha action=product.inactivate, before.isActive=true, after.isActive=false, na mesma transacao.",
+      "stock/reserved/preco inalterados."
+    ],
+    "invariants": ["audit-same-tx"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "estoque.product.reactivate-audited",
+    "team": "estoque",
+    "category": "functional",
+    "title": "Admin reativa produto inativo com auditoria",
+    "route": "/admin/produtos",
+    "priority": 19,
+    "steps": ["Produto inativo (isActive=false).", "Chama setProductActive(actor, id, true)."],
+    "asserts": [
+      "products.isActive == true.",
+      "audit_log recebe 1 linha action=product.reactivate, before.isActive=false, after.isActive=true, na mesma transacao."
+    ],
+    "invariants": ["audit-same-tx"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "estoque.product.inactivate-idempotent",
+    "team": "estoque",
+    "category": "functional",
+    "title": "Inativar produto ja inativo e no-op (sem audit ruidoso)",
+    "route": "/admin/produtos",
+    "priority": 20,
+    "steps": [
+      "Produto ja inativo (isActive=false). Conta audit_log = A.",
+      "Chama setProductActive(actor, id, false) de novo."
+    ],
+    "asserts": [
+      "products.isActive permanece false.",
+      "audit_log NAO ganha linha (count == A): no-op idempotente, sem audit duplicado."
+    ],
+    "invariants": ["audit-same-tx"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "pedido.payment.pending-to-paid",
+    "team": "pedido",
+    "category": "functional",
+    "title": "Admin marca pagamento pending -> paid (ajuste manual auditado)",
+    "route": "/admin/pedidos",
+    "priority": 1,
+    "steps": [
+      "Pedido paymentStatus=pending, stockReserved=true, stockCommitted=false.",
+      "Chama adjustOrderPaymentStatus(orderId, 'paid', reason, actor)."
+    ],
+    "asserts": [
+      "orders.payment_status == 'paid' (transicao legal pending->paid).",
+      "Estoque conciliado: commitStock aplicado (stock-=qty, reserved-=qty), stockCommitted=true, stockReserved=false.",
+      "audit_log recebe 1 linha action=order.payment_status_update na MESMA transacao, after.manualAdjustment=true e after.adjustmentReason=reason."
+    ],
+    "invariants": [
+      "order-state-machine",
+      "audit-same-tx",
+      "reserve-lifecycle-idempotent",
+      "reserved-le-stock"
+    ],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "pedido.payment.pending-to-cancelled",
+    "team": "pedido",
+    "category": "functional",
+    "title": "Admin marca pagamento pending -> cancelled (estorna reserva)",
+    "route": "/admin/pedidos",
+    "priority": 2,
+    "steps": [
+      "Pedido paymentStatus=pending, stockReserved=true, stockCommitted=false.",
+      "Chama adjustOrderPaymentStatus(orderId, 'cancelled', reason, actor)."
+    ],
+    "asserts": [
+      "orders.payment_status == 'cancelled' (transicao legal pending->cancelled).",
+      "releaseStock aplicado: products.reserved-=qty; stockReserved=false; products.stock inalterado.",
+      "audit_log recebe 1 linha action=order.payment_status_update na mesma transacao com adjustmentReason."
+    ],
+    "invariants": [
+      "order-state-machine",
+      "audit-same-tx",
+      "reserve-lifecycle-idempotent",
+      "reserved-le-stock"
+    ],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "pedido.payment.paid-to-cancelled-refund",
+    "team": "pedido",
+    "category": "functional",
+    "title": "Admin marca pagamento paid -> cancelled (refund repoe estoque)",
+    "route": "/admin/pedidos",
+    "priority": 3,
+    "steps": [
+      "Pedido paymentStatus=paid, stockCommitted=true (estoque ja baixado).",
+      "Chama adjustOrderPaymentStatus(orderId, 'cancelled', reason, actor)."
+    ],
+    "asserts": [
+      "orders.payment_status == 'cancelled' (transicao legal paid->cancelled).",
+      "restockUnits aplicado: products.stock+=qty; stockCommitted=false; reserved inalterado.",
+      "audit_log recebe 1 linha action=order.payment_status_update na mesma transacao."
+    ],
+    "invariants": [
+      "order-state-machine",
+      "audit-same-tx",
+      "reserve-lifecycle-idempotent",
+      "reserved-le-stock"
+    ],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "pedido.payment.paid-to-pending-blocked",
+    "team": "pedido",
+    "category": "functional",
+    "title": "Transicao ilegal de pagamento paid -> pending e barrada",
+    "route": "/admin/pedidos",
+    "priority": 4,
+    "steps": [
+      "Pedido paymentStatus=paid.",
+      "Tenta aplicar status 'pending' via applyPaymentStatusTx (maquina de pagamento)."
+    ],
+    "asserts": [
+      "Resultado ok:false reason='invalid_transition' (paid e terminal para pending).",
+      "orders.payment_status permanece 'paid' (nada gravado).",
+      "Nenhum efeito de estoque; products.stock/reserved inalterados.",
+      "audit_log NAO ganha linha."
+    ],
+    "invariants": ["order-state-machine", "audit-same-tx"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "pedido.payment.cancelled-to-paid-blocked",
+    "team": "pedido",
+    "category": "functional",
+    "title": "Transicao ilegal cancelled -> paid e barrada",
+    "route": "/admin/pedidos",
+    "priority": 5,
+    "steps": [
+      "Pedido paymentStatus=cancelled.",
+      "Tenta aplicar status 'paid' via applyPaymentStatusTx."
+    ],
+    "asserts": [
+      "Resultado ok:false reason='invalid_transition' (cancelled nunca vira paid).",
+      "orders.payment_status permanece 'cancelled'.",
+      "Nenhum commitStock disparado (evita 'pago sem baixa de estoque'); products.stock/reserved inalterados.",
+      "audit_log NAO ganha linha."
+    ],
+    "invariants": ["order-state-machine", "audit-same-tx", "reserved-le-stock"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "pedido.payment.idempotent-noop",
+    "team": "pedido",
+    "category": "functional",
+    "title": "Reaplicar o MESMO status de pagamento e no-op idempotente",
+    "route": "/admin/pedidos",
+    "priority": 6,
+    "steps": [
+      "Pedido paymentStatus=paid, stockCommitted=true. Conta audit_log=A.",
+      "Chama adjustOrderPaymentStatus(orderId, 'paid', reason, actor) (from==to)."
+    ],
+    "asserts": [
+      "Resultado changed=false (no-op X->X).",
+      "orders.payment_status permanece 'paid'; estoque inalterado (sem dupla baixa).",
+      "audit_log NAO ganha linha (count == A)."
+    ],
+    "invariants": ["order-state-machine", "reserve-lifecycle-idempotent", "audit-same-tx"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "pedido.shipping.pending-to-sent",
+    "team": "pedido",
+    "category": "functional",
+    "title": "Admin marca envio pending -> sent (auditado)",
+    "route": "/admin/pedidos",
+    "priority": 7,
+    "steps": [
+      "Pedido shippingStatus=pending.",
+      "Chama updateOrderShippingStatus(orderId, 'sent', actor)."
+    ],
+    "asserts": [
+      "orders.shipping_status == 'sent' (transicao legal de SHIPPING_TRANSITIONS).",
+      "audit_log recebe 1 linha action=order.shipping_status_update na MESMA transacao, before.shippingStatus=pending, after.shippingStatus=sent.",
+      "Nenhum efeito de estoque (so cancelamento concilia)."
+    ],
+    "invariants": ["order-state-machine", "audit-same-tx"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "pedido.shipping.sent-to-delivered",
+    "team": "pedido",
+    "category": "functional",
+    "title": "Admin marca envio sent -> delivered (terminal, auditado)",
+    "route": "/admin/pedidos",
+    "priority": 8,
+    "steps": [
+      "Pedido shippingStatus=sent.",
+      "Chama updateOrderShippingStatus(orderId, 'delivered', actor)."
+    ],
+    "asserts": [
+      "orders.shipping_status == 'delivered' (sent->delivered legal).",
+      "audit_log recebe 1 linha action=order.shipping_status_update na mesma transacao.",
+      "delivered e terminal (sem destinos validos depois)."
+    ],
+    "invariants": ["order-state-machine", "audit-same-tx"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "pedido.shipping.skip-blocked",
+    "team": "pedido",
+    "category": "functional",
+    "title": "Pulo de etapa de envio pending -> delivered e barrado",
+    "route": "/admin/pedidos",
+    "priority": 9,
+    "steps": [
+      "Pedido shippingStatus=pending.",
+      "Tenta updateOrderShippingStatus(orderId, 'delivered', actor) (pulando 'sent')."
+    ],
+    "asserts": [
+      "Resultado ok:false reason='invalid_transition' from=pending to=delivered.",
+      "orders.shipping_status permanece 'pending' (nada gravado).",
+      "audit_log NAO ganha linha."
+    ],
+    "invariants": ["order-state-machine", "audit-same-tx"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "pedido.shipping.regression-blocked",
+    "team": "pedido",
+    "category": "functional",
+    "title": "Regressao de envio delivered -> sent e barrada",
+    "route": "/admin/pedidos",
+    "priority": 10,
+    "steps": [
+      "Pedido shippingStatus=delivered (terminal).",
+      "Tenta updateOrderShippingStatus(orderId, 'sent', actor)."
+    ],
+    "asserts": [
+      "Resultado ok:false reason='invalid_transition' from=delivered to=sent (delivered e terminal).",
+      "orders.shipping_status permanece 'delivered'.",
+      "audit_log NAO ganha linha."
+    ],
+    "invariants": ["order-state-machine", "audit-same-tx"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "pedido.shipping.cancel-reconciles-stock",
+    "team": "pedido",
+    "category": "functional",
+    "title": "Cancelar envio de pedido pendente concilia estoque (estorno)",
+    "route": "/admin/pedidos",
+    "priority": 11,
+    "steps": [
+      "Pedido shippingStatus=pending (ou sent), stockReserved=true, stockCommitted=false.",
+      "Chama updateOrderShippingStatus(orderId, 'cancelled', actor)."
+    ],
+    "asserts": [
+      "orders.shipping_status == 'cancelled'.",
+      "Conciliacao de estoque: releaseStock aplicado, products.reserved-=qty, stockReserved=false.",
+      "audit_log recebe 1 linha action=order.shipping_status_update na mesma transacao.",
+      "CHECK 0<=reserved<=stock valido."
+    ],
+    "invariants": [
+      "order-state-machine",
+      "reserve-lifecycle-idempotent",
+      "audit-same-tx",
+      "reserved-le-stock"
+    ],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "pedido.note.update-audited",
+    "team": "pedido",
+    "category": "functional",
+    "title": "Admin grava nota interna do pedido (auditado)",
+    "route": "/admin/pedidos",
+    "priority": 12,
+    "steps": [
+      "Pedido com internalNote=null.",
+      "Chama updateOrderInternalNote(orderId, 'verificar endereco', actor)."
+    ],
+    "asserts": [
+      "orders.internal_note == 'verificar endereco'.",
+      "audit_log recebe 1 linha action=order.note_update na MESMA transacao, before.internalNote=null, after.internalNote='verificar endereco'.",
+      "Status de pagamento/envio inalterados."
+    ],
+    "invariants": ["audit-same-tx"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "pedido.note.empty-normalized-noop",
+    "team": "pedido",
+    "category": "functional",
+    "title": "Nota interna identica/vazia e no-op (normaliza vazio -> null)",
+    "route": "/admin/pedidos",
+    "priority": 13,
+    "steps": [
+      "Pedido com internalNote=null. Conta audit_log=A.",
+      "Chama updateOrderInternalNote(orderId, '   ', actor) (so espacos)."
+    ],
+    "asserts": [
+      "Vazio/espacos normalizam para null; como ja era null, changed=false.",
+      "orders.internal_note permanece null.",
+      "audit_log NAO ganha linha (count == A)."
+    ],
+    "invariants": ["audit-same-tx"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "pedido.totals.formula",
+    "team": "pedido",
+    "category": "functional",
+    "title": "Total do pedido = subtotal - desconto - cupom + frete",
+    "route": "/admin/pedidos",
+    "priority": 14,
+    "steps": [
+      "Inspeciona um pedido do seed (ou monta um) com subtotalCents, discountCents, couponDiscountCents, shippingCents."
+    ],
+    "asserts": [
+      "orders.total_cents == subtotal_cents - discount_cents - coupon_discount_cents + shipping_cents.",
+      "Todos os campos sao Int de centavos (cents-only); nenhum float.",
+      "CHECK coupon_discount_cents >= 0 valido."
+    ],
+    "invariants": ["totals-formula", "cents-only"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "pedido.shipping.free-above-threshold",
+    "team": "pedido",
+    "category": "functional",
+    "title": "Frete gratis quando mercadoria (ja com desconto) >= R$299",
+    "route": "/admin/pedidos",
+    "priority": 15,
+    "steps": [
+      "Monta carrinho cuja mercadoria (subtotal - desconto de produto) seja >= 29900 centavos.",
+      "Chama cartTotals(lines)."
+    ],
+    "asserts": [
+      "shippingCents == 0 (FREE_SHIPPING_THRESHOLD_CENTS=29900 sobre merchandiseCents).",
+      "merchandiseCents == subtotalCents - discountCents (desconto de produto aplicado antes do frete).",
+      "totalCents == merchandiseCents + 0."
+    ],
+    "invariants": ["totals-formula", "cents-only", "final-price-derived"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "pedido.shipping.flat-below-threshold",
+    "team": "pedido",
+    "category": "functional",
+    "title": "Frete flat R$25 quando mercadoria < R$299",
+    "route": "/admin/pedidos",
+    "priority": 16,
+    "steps": [
+      "Monta carrinho cuja mercadoria seja > 0 e < 29900 centavos.",
+      "Chama cartTotals(lines)."
+    ],
+    "asserts": [
+      "shippingCents == 2500 (FLAT_SHIPPING_CENTS).",
+      "totalCents == merchandiseCents + 2500.",
+      "Carrinho vazio (merchandiseCents==0) tem shippingCents==0 (caso de borda)."
+    ],
+    "invariants": ["totals-formula", "cents-only"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "cupom.create.percent",
+    "team": "pedido",
+    "category": "functional",
+    "title": "Admin cria cupom percentual (usa percentOff, coerencia)",
+    "route": "/admin/cupons",
+    "priority": 17,
+    "steps": ["Chama createCoupon(actor, {type:'percent', percentOff:10, valueCents:null, ...})."],
+    "asserts": [
+      "coupons ganha 1 linha type='percent', percent_off=10, value_cents=NULL (toCouponData zera o campo do outro tipo).",
+      "CHECK coupons_type_value_chk valido (percent: percent_off entre 1 e 100, value_cents NULL).",
+      "redeemed_count=0; isActive=true.",
+      "audit_log recebe 1 linha action=coupon.create na MESMA transacao, before=null."
+    ],
+    "invariants": ["coupon-coherence", "audit-same-tx", "cents-only"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "cupom.create.fixed",
+    "team": "pedido",
+    "category": "functional",
+    "title": "Admin cria cupom fixo (usa valueCents em centavos)",
+    "route": "/admin/cupons",
+    "priority": 18,
+    "steps": ["Chama createCoupon(actor, {type:'fixed', percentOff:null, valueCents:1500, ...})."],
+    "asserts": [
+      "coupons ganha 1 linha type='fixed', value_cents=1500, percent_off=NULL.",
+      "CHECK coupons_type_value_chk valido (fixed: value_cents>0, percent_off NULL).",
+      "value_cents e Int de centavos (cents-only).",
+      "audit_log recebe 1 linha action=coupon.create na mesma transacao."
+    ],
+    "invariants": ["coupon-coherence", "cents-only", "audit-same-tx"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "cupom.create.incoherent-blocked",
+    "team": "pedido",
+    "category": "functional",
+    "title": "Cupom incoerente (percent com value, ou fora de faixa) e barrado pelo CHECK",
+    "route": "/admin/cupons",
+    "priority": 19,
+    "steps": [
+      "Tenta inserir direto no DB um cupom type='percent' com percent_off=150 (fora de 1..100); depois type='fixed' com value_cents=0."
+    ],
+    "asserts": [
+      "O CHECK coupons_type_value_chk rejeita ambos (percent fora de 1..100; fixed com value_cents<=0).",
+      "Nenhuma linha incoerente persiste em coupons.",
+      "toCouponData no dominio sempre casa tipo<->campo (o outro fica NULL)."
+    ],
+    "invariants": ["coupon-coherence"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "cupom.code.ci-unique",
+    "team": "pedido",
+    "category": "functional",
+    "title": "Codigo de cupom e unico case-insensitive (LOWER(code))",
+    "route": "/admin/cupons",
+    "priority": 20,
+    "steps": [
+      "Cria cupom code='VERAO10'.",
+      "Tenta createCoupon com code='verao10' (mesma string, caixa diferente)."
+    ],
+    "asserts": [
+      "Segunda criacao retorna {ok:false} com mensagem de codigo duplicado (P2002 tratado).",
+      "coupons tem 1 unica linha para esse codigo (indice UNIQUE coupons_code_key em LOWER(code)).",
+      "code armazenado normalizado em UPPER (normalizeCouponCode).",
+      "audit_log NAO ganha linha pela criacao falha."
+    ],
+    "invariants": ["coupon-code-ci-unique", "audit-same-tx"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "cupom.update.audited",
+    "team": "pedido",
+    "category": "functional",
+    "title": "Admin edita cupom sem tocar redeemedCount (auditado)",
+    "route": "/admin/cupons",
+    "priority": 21,
+    "steps": [
+      "Cupom existente com redeemedCount=R.",
+      "Chama updateCoupon alterando minSubtotalCents/maxRedemptions."
+    ],
+    "asserts": [
+      "Campos editaveis atualizados; coupons.redeemed_count permanece R (update NUNCA toca redeemedCount).",
+      "Coerencia tipo<->campo preservada (CHECK valido).",
+      "audit_log recebe 1 linha action=coupon.update na MESMA transacao, before/after snapshots."
+    ],
+    "invariants": ["coupon-coherence", "coupon-redeem-limits", "audit-same-tx", "cents-only"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "cupom.redeem.global-limit",
+    "team": "pedido",
+    "category": "functional",
+    "title": "Limite global de redencoes (maxRedemptions) e atomico",
+    "route": "/admin/cupons",
+    "priority": 22,
+    "steps": [
+      "Cupom com maxRedemptions=1, redeemedCount=0.",
+      "Redime para um pedido (redeemCoupon), depois tenta redimir para OUTRO pedido."
+    ],
+    "asserts": [
+      "Primeira redencao: ok, alreadyRedeemed=false; coupons.redeemed_count==1 (increment CAS WHERE redeemed_count < max).",
+      "Segunda redencao (outro pedido): ok:false reason='max_redemptions'; redeemed_count permanece 1.",
+      "coupon_redemptions tem 1 linha; CHECK redeemed_count>=0 e <=max preservado."
+    ],
+    "invariants": ["coupon-redeem-limits"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "cupom.redeem.per-user-limit",
+    "team": "pedido",
+    "category": "functional",
+    "title": "Limite por usuario (perUserLimit) recontado na redencao",
+    "route": "/admin/cupons",
+    "priority": 23,
+    "steps": [
+      "Cupom com perUserLimit=1, maxRedemptions=null.",
+      "Mesmo userId redime para 2 pedidos diferentes."
+    ],
+    "asserts": [
+      "Primeira redencao do usuario: ok. Segunda do MESMO usuario: ok:false reason='per_user_limit'.",
+      "coupon_redemptions tem 1 linha para esse (couponId,userId).",
+      "Recontagem sob advisory lock por (cupom,usuario) garante o limite."
+    ],
+    "invariants": ["coupon-redeem-limits"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "cupom.redeem.idempotent-per-order",
+    "team": "pedido",
+    "category": "functional",
+    "title": "Redencao e idempotente por pedido (order_id UNIQUE)",
+    "route": "/admin/cupons",
+    "priority": 24,
+    "steps": [
+      "Redime um cupom para orderId X.",
+      "Redime o MESMO cupom para o MESMO orderId X de novo."
+    ],
+    "asserts": [
+      "Segunda chamada retorna ok:true alreadyRedeemed=true (no-op).",
+      "coupon_redemptions tem 1 unica linha para orderId X (order_id @unique).",
+      "coupons.redeemed_count NAO incrementa na repeticao."
+    ],
+    "invariants": ["coupon-redeem-limits"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "cupom.deactivate.audited",
+    "team": "pedido",
+    "category": "functional",
+    "title": "Admin inativa cupom (coupon.deactivate auditado)",
+    "route": "/admin/cupons",
+    "priority": 25,
+    "steps": ["Cupom ativo (isActive=true).", "Chama setCouponActive(actor, id, false)."],
+    "asserts": [
+      "coupons.is_active == false (cupom sai de circulacao sem ser apagado).",
+      "audit_log recebe 1 linha action=coupon.deactivate (ao desligar) na MESMA transacao.",
+      "Religar (setCouponActive true) audita como coupon.update."
+    ],
+    "invariants": ["audit-same-tx"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "cupom.delete.unused-ok",
+    "team": "pedido",
+    "category": "functional",
+    "title": "Admin exclui cupom SEM redencao (hard-delete auditado)",
+    "route": "/admin/cupons",
+    "priority": 26,
+    "steps": ["Cupom sem nenhuma linha em coupon_redemptions.", "Chama deleteCoupon(actor, id)."],
+    "asserts": [
+      "Resultado ok:true; a linha some de coupons (hard-delete, o 'D' do CRUD).",
+      "audit_log recebe 1 linha action=coupon.delete na MESMA transacao, before=snapshot, after=null."
+    ],
+    "invariants": ["coupon-delete-guard", "audit-same-tx"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  },
+  {
+    "id": "cupom.delete.used-blocked",
+    "team": "pedido",
+    "category": "functional",
+    "title": "Excluir cupom JA USADO e bloqueado (FK Restrict); deve inativar",
+    "route": "/admin/cupons",
+    "priority": 27,
+    "steps": [
+      "Cupom com >=1 linha em coupon_redemptions (historico financeiro).",
+      "Chama deleteCoupon(actor, id)."
+    ],
+    "asserts": [
+      "Resultado ok:false com a mensagem 'Cupom ja foi utilizado...' (in_use).",
+      "A linha PERMANECE em coupons (FK coupon_redemptions.coupon_id onDelete Restrict protege o historico).",
+      "audit_log NAO ganha linha de coupon.delete.",
+      "Caminho correto e inativar (setCouponActive false), nao excluir."
+    ],
+    "invariants": ["coupon-delete-guard", "audit-same-tx"],
+    "state": "todo",
+    "passes": false,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
+  }
+]

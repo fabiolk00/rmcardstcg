@@ -1,0 +1,117 @@
+================================================================================
+HARNESS DE ADMIN — RM Cards  (append-only log)
+================================================================================
+
+OBJETIVO
+  Verificar EXAUSTIVAMENTE toda operacao manual de admin (estoque, preco/desconto,
+  produto CRUD, maquinas de estado de pedido, nota interna, totais/frete, cupons)
+  contra um Postgres efemero REAL em modo mock-first. Cada feature do ledger
+  (admin_features.json) tem asserts concretos sobre colunas/CHECKs/enums reais e
+  mapeia para o catalogo de invariantes (invariants.md).
+
+AMBIENTE
+  - Runner: scripts/harness-with-ephemeral-pg.ts (espelha e2e-with-ephemeral-pg.ts).
+    Sobe embedded-postgres, db push, apply-test-constraints, seed, e roda Playwright
+    com playwright.harness.config.ts. SEM next build (usa next dev).
+  - Config: playwright.harness.config.ts (testDir ./tests/harness, porta 3200,
+    webServer `next dev` => NODE_ENV=development => /admin aberto mock-first).
+  - Script npm: `pnpm harness <spec>` para rodar uma spec isolada.
+  - Wrapper: tests/harness/init.sh (Git Bash, idempotente) roda o smoke.
+  - ISOLAMENTO: cada run recebe um banco efemero recem-seedado e unico. Nenhum
+    estado persiste entre runs. Cada spec assertaa via process.env.DATABASE_URL.
+
+MOCK-FIRST / SEGURANCA
+  Chaves Clerk em BRANCO => isClerkConfigured()=false. O gate em
+  app/admin/layout.tsx + lib/auth/requireAdmin.ts libera /admin SO em
+  NODE_ENV != production (por isso o harness usa `next dev`, nao `next start`).
+  O initializer NAO alterou nenhum codigo de produto nem afrouxou seguranca.
+
+LEDGER (admin_features.json) — contagem inicial
+  Total de features: 47   (todas state="todo", passes=false)
+    - estoque : 20
+    - pedido  : 27
+  Cobertura:
+    estoque -> product create/update/inactivate/reactivate (+idempotente) e
+      auditoria; SKU duplicado; validacao de preco/desconto/estoque; aumentar/
+      reduzir estoque; reduzir-abaixo-de-reserved BLOQUEIA; disponivel=stock-reserved
+      derivado; ciclo reservar->committed->estornado->reposto, todos idempotentes
+      via stockReserved/stockCommitted; preco final derivado por funcao pura.
+    pedido -> maquina de pagamento (pending->paid, pending->cancelled, paid->cancelled
+      legais; paid->pending e cancelled->paid barram; idempotente X->X) com
+      conciliacao de estoque + audit na mesma tx; maquina de envio (pending->sent->
+      delivered legais; pulo/regressao barram; cancelar concilia estoque) + audit;
+      nota interna (order.note_update, vazio->null no-op); totais (total=subtotal-
+      desconto-cupom+frete); frete (gratis >=R$299, senao R$25); cupom criar percent
+      (percentOff) e fixed (valueCents) + coerencia (CHECK); codigo CI-unico
+      (LOWER(code)); editar sem tocar redeemedCount; limites global/per-user/idempotente;
+      inativar; excluir-so-sem-redencao (FK Restrict) e usado->inativar.
+
+INVARIANTES (invariants.md): 13 catalogadas. 12 referenciadas pelo ledger;
+  webhook-idempotent fica catalogada como ancora do dominio de billing (nao e
+  operacao manual de admin, por isso sem feature funcional aqui).
+
+REGRAS DO LEDGER
+  steps/asserts/invariants sao IMUTAVEIS a partir daqui. state/passes/qa_note/
+  fix_note/review/review_note serao atualizados pelos times (estoque/pedido), QA e
+  review nas sessoes seguintes. NENHUMA feature pode ser marcada passes=true sem
+  prova de runtime (spec verde contra o banco efemero).
+
+--------------------------------------------------------------------------------
+SESSAO 0000 — INITIALIZER
+--------------------------------------------------------------------------------
+  Branch criada: harness/admin (a partir de main).
+  Arquivos de infra criados:
+    - playwright.harness.config.ts
+    - scripts/harness-with-ephemeral-pg.ts
+    - tests/harness/init.sh
+    - tests/harness/smoke.admin.spec.ts
+    - tests/harness/invariants.md
+    - tests/harness/admin_features.json   (47 features: estoque=20, pedido=27)
+    - tests/harness/harness-progress.txt  (este arquivo)
+    - package.json: + script "harness"
+  Infra E2E pre-existente (nao-versionada) trazida para a branch:
+    playwright.config.ts, scripts/e2e-with-ephemeral-pg.ts, tests/e2e/,
+    tests/helpers/ephemeral-pg.ts, e mudancas de package.json/pnpm-lock.
+  NENHUM codigo de produto (app/**, lib/**) foi alterado.
+
+  Resultado do smoke: PARCIAL (1 verde / 3 vermelhos) — BLOCKER de ambiente honesto.
+    - VERDE: "o banco efemero esta seedado e acessivel via DATABASE_URL" — prova
+      que a INFRA do harness funciona (embedded-postgres sobe, db push + CHECKs +
+      seed aplicados; products>0, orders>0, CHECK products_reserved_le_stock_chk
+      existe; assert via pg com process.env.DATABASE_URL). Este e o padrao DB-first
+      que TODAS as specs de feature vao usar.
+    - VERMELHO (3): /admin/produtos, /admin/pedidos, /admin/cupons redirecionam
+      para /entrar?redirect_url=... ANTES de a pagina renderizar.
+
+  ===========================================================================
+  BLOCKER (honesto, NAO consertado — exige decisao fora do escopo do harness):
+  ===========================================================================
+  /admin NAO abre mock-first via HTTP. A causa NAO e o layout nem requireAdmin
+  (esses liberam mock-first em dev) — e o MIDDLEWARE em proxy.ts (Next 16 renomeou
+  middleware->proxy). Ele chama clerkMiddleware(...) + auth.protect() em
+  "/admin(.*)" de forma INCONDICIONAL (sem checar isClerkConfigured()). O proprio
+  comentario do arquivo explica: a forma condicional (mock-first) quebrava o bundle
+  Edge na Vercel, entao foi fixada na forma canonica. Com chaves Clerk em branco,
+  auth.protect() ainda redireciona para /entrar.
+
+  Por que NAO foi "consertado": proxy.ts e CODIGO DE PRODUTO e tocar nele
+  afrouxaria a seguranca da rota /admin (regra inviolavel). O initializer deixou o
+  smoke escrito e vermelho de proposito, como sinal honesto.
+
+  IMPLICACAO PARA OS TIMES (ja refletida no design do harness):
+  As specs de feature NAO devem dirigir o admin pela UI sobre HTTP — devem assertar
+  ESTADO DE DB diretamente: chamar as funcoes de lib/data (createProduct,
+  updateProduct, setProductActive, adjustOrderPaymentStatus, updateOrderShippingStatus,
+  updateOrderInternalNote, createCoupon, redeemCoupon, deleteCoupon, etc.) e/ou SQL,
+  e conferir colunas/CHECKs/enums/audit_log via pg/Prisma com process.env.DATABASE_URL.
+  O smoke verde de DB ja exercita exatamente esse caminho. Os asserts do ledger
+  (admin_features.json) ja foram escritos nesse molde — independentes do gate HTTP.
+
+  Opcoes para destravar o smoke de UI (decisao do orquestrador, FORA do harness):
+    (a) aceitar o smoke de UI vermelho e operar 100% DB-first (recomendado: nao
+        toca produto nem seguranca);
+    (b) o time de produto tornar proxy.ts mock-first de forma Edge-safe (mudanca de
+        PRODUTO, fora do mandato do initializer);
+    (c) um futuro spec injetar um cookie/sessao Clerk de teste (exige chaves de teste,
+        sai do mock-first).
+  ===========================================================================
