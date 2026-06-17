@@ -2932,3 +2932,55 @@ SESSAO — TIME PEDIDO
   commit    : <preenchido no commit desta sessao>
   proximo   : pedido.shipping.skip-blocked (priority 9, state=todo) — pulo pending->delivered
               barrado (invalid_transition), nada gravado, sem audit.
+
+================================================================================
+SESSAO QA — pedido.shipping.sent-to-delivered (PORTAO ADVERSARIAL)
+================================================================================
+  papel     : QA (unico autorizado a escrever passes/qa_note). NAO corrige produto.
+  feature   : pedido.shipping.sent-to-delivered (priority 8), state=ready_for_qa.
+  veredito  : APROVADO — passes=true, qa_note=null. state INALTERADO (ready_for_qa).
+  ritual    : pwd C:\rmcardstcg; branch harness/admin OK. harness-progress + git log lidos.
+  repro     : `pnpm harness tests/harness/pedido/shipping-sent-to-delivered.spec.ts`
+              rodado 2x do ZERO em PG efemero recem-seedado (db push + apply-test-
+              constraints + seed = 28 produtos / 8 pedidos): run1 = 1 passed (7.1s; teste 4.5s),
+              run2 = 1 passed (7.0s). VERDE reproduzivel.
+  nao-fake  : seam = updateOrderShippingStatus REAL de lib/data/orders.ts L523, chamado via
+              _run-seam.ts (case updateOrderShippingStatus, import direto da funcao de
+              PRODUCAO, SEM mock). Spec assertaa via `pg` cru sobre DATABASE_URL. _run-seam.ts
+              NAO foi tocado nesta feature (ja suportava a op). Logica confirmada na producao:
+              valida from===to (no-op), checa SHIPPING_TRANSITIONS[from].includes(to) (barra
+              ilegal ANTES de escrever), CAS atomico updateMany WHERE shippingStatus=from,
+              concilia estoque SO em to==='cancelled', writeAuditLog(tx,...) na MESMA tx.
+              orderTransitions.ts L12-15: sent:['delivered','cancelled'], delivered:[] (terminal).
+  por-assert (cada assert do ledger PROVADO contra o DB real):
+    [A1] orders.shipping_status=='delivered' (sent->delivered legal) -> PROVADO (spec L219-231).
+         Reforco: payment_status intacto=paid (L233); ANTI-TRIVIAL p/ "sem efeito de estoque":
+         produto FORCADO reserved=3>0/stock=10 e pedido stockReserved=true antes do update;
+         apos delivered, stock/reserved do produto e flags do pedido INTACTOS (L237-245) —
+         prova que a maquina de ENVIO (nao-cancelamento) NAO concilia estoque.
+    [A2] audit_log +1 (total E por entity_id), action=order.shipping_status_update na MESMA
+         tx -> PROVADO (spec L258-309). action lido CRU via pg = valor @map DOTTED
+         'order.shipping_status_update' (schema), nao a chave JS do enum. before.shippingStatus=
+         'sent'/after.shippingStatus='delivered'; paymentStatus identico nos 2 snaps (delta
+         limpo). Estrutural: writeAuditLog(tx,...) dentro do prisma.$transaction (orders.ts L558).
+    [A3] delivered e terminal (sem destinos validos) -> PROVADO empiricamente (spec L313-360):
+         APOS delivered, tenta sair p/ CADA estado (sent/pending/cancelled) -> producao barra
+         com ok:false, reason='invalid_transition', from='delivered', to=target; shipping_status
+         permanece 'delivered'; audit_log total E por-entity INALTERADOS (0 orfao — retorno ANTES
+         de writeAuditLog). Prova SHIPPING_TRANSITIONS.delivered===[] sem ler a constante.
+  invariantes: order-state-machine + audit-same-tx PROVADAS (acima). reserved-le-stock como
+         rede final: CHECK products_reserved_le_stock_chk existe (pg_constraint) + 0 violacoes
+         de 0<=reserved<=stock (spec L247-256).
+  prova-propria: PROBE INDEPENDENTE (c:\tmp\qa_probe_deliver.ts, removido ao fim) subiu SEU
+         PROPRIO PG efemero (push+constraints+seed), criou produto/pedido proprios com VALORES
+         DIFERENTES da spec (qty=7, stock=40, reserved=5, price=12345) p/ provar a LOGICA e nao
+         a constante, chamou o SEAM REAL updateOrderShippingStatus via _run-seam.ts e validou
+         com MINHAS queries pg: 34 PASS / 0 FAIL. Incl. A1/A2/A3 completos + idempotencia
+         delivered->delivered (no-op ok:true changed:false, audit nao soma) + pg_constraint do
+         CHECK + 0 violacoes. Removido (tree limpo).
+  nao-trapaca: git diff e0e83a1..HEAD -- app lib prisma = VAZIO (nenhum codigo de produto
+         tocado; seam ja estava correta, sem fixer). Tree limpo apos QA (next-env.d.ts
+         revertido — rewrite incidental do next dev, nao do QA). Nenhum assert trivial/tautologico.
+  estado    : ready_for_qa (NAO alterei). passes=true escrito pelo QA. qa_note=null.
+  commit    : harness(qa): aprova pedido.shipping.sent-to-delivered
+  proximo   : pedido.shipping.skip-blocked (priority 9, state=todo) — fora do escopo (1 feature/gate).
