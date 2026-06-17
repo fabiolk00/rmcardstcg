@@ -65,7 +65,7 @@
     ],
     "invariants": ["cents-only", "final-price-derived", "audit-same-tx"],
     "state": "ready_for_qa",
-    "passes": false,
+    "passes": true,
     "qa_note": null,
     "fix_note": null,
     "review": null,

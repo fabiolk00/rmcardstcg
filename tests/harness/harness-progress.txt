@@ -316,6 +316,52 @@ SESSAO 0005 — TIME ESTOQUE
   resultado : VERDE — `pnpm harness tests/harness/estoque/product-create-invalid-rejected.spec.ts`
               => 1 passed (5.0s). Seed 28 produtos / 8 pedidos. Gates: typecheck OK,
               lint OK (0 warnings), prettier OK nos MEUS arquivos (spec + ledger).
-  commit    : (ver git log — commit desta sessao)
+  commit    : f674ab1
   proximo   : estoque.product.increase-stock (priority 4, state=todo) — updateProduct
               com stock=S+10, reserved inalterado, audit product.update na mesma tx.
+
+--------------------------------------------------------------------------------
+SESSAO 0006 — TIME QA (gate adversarial)
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 06:40 -0300
+  time      : qa
+  feature   : estoque.product.create-invalid-rejected (priority 3)
+  veredito  : APROVADO — passes=true, qa_note=null. state INALTERADO (ready_for_qa).
+  ritual    : pwd /c/rmcardstcg; branch harness/admin OK. init.sh => smoke DB-first
+              VERDE (1 passed) + 3 UI VERMELHOS (blocker proxy.ts aceito). Confirmado.
+  reproducao: `pnpm harness tests/harness/estoque/product-create-invalid-rejected.spec.ts`
+              rodado 2x em Postgres efemero recem-seedado (db push + apply-test-
+              constraints + seed = 28 produtos / 8 pedidos). VERDE as 2 vezes (~7.5s).
+              Isolamento OK: cada run banco novo; nome+sku unicos por caso (randomUUID).
+  anti-fake-green (cada assert do ledger E cada caso de invalidez PROVADO contra DB):
+    [assert 1] cada chamada lanca ProductValidationError com a mensagem de faixa do
+        CAMPO certo. Os 6 casos (steps + missao): priceCents=-1 e priceCents=1999.5
+        (float) -> /Pre[cç]o inv[aá]lido/; discountPct=81 e discountPct=10.5 (float)
+        -> /Desconto inv[aá]lido/; stock=-3 e stock=4.2 (float) -> /Estoque inv[aá]lido/.
+        spec L138-189. Mapeado ao seam real: normalizeProductInput (products.ts
+        L144 price, L147 discount, L150 stock) usa Number.isInteger + faixa, ANTES da
+        $transaction (L228->L230). PROVADO. Contra-prova: base SEM patch CRIA produto
+        (spec L191-194) — isola que a rejeicao vem so do campo invalido.
+    [assert 2] products nao ganha linha; audit_log nao ganha linha. spec L196-238:
+        products==N+1 e audit==A+1 (so a sanidade), 0 produtos/0 audits com os nomes
+        dos invalidos, 0 vazamento pelo prefixo de SKU. audit-same-tx: rejeicao na
+        validacao ANTES de prisma.$transaction => transacao nem abre. PROVADO.
+    [assert 3] discountPct so aceita inteiro (cents-only/derivacao integra). Provado
+        pela rejeicao do caso float (discountPct=10.5) + information_schema confirma
+        discount_pct integer; SEM coluna final_price/final_price_cents (spec L240-265).
+        PROVADO.
+  invariantes: cents-only (price_cents/discount_pct integer; floats rejeitados),
+        final-price-derived (sem coluna de preco final; discountPct so Int),
+        audit-same-tx (0 orfaos). Todas PROVADAS.
+  prova-propria: PROBE INDEPENDENTE (c:\tmp, removida ao fim) subiu SEU PROPRIO PG
+        efemero, seed (28 prod/0 audit), chamou o SEAM REAL createProduct via
+        _run-seam.ts para os 6 casos e a contra-prova, e validou com MINHAS queries
+        pg: 31 PASS / 0 FAIL. Inclui prova de que cada erro bate na MENSAGEM DO CAMPO
+        CERTO (nao tautologia "lancou algum erro"), pg_constraint do CHECK existe, e
+        que o base valido cria de fato (products 28->29, audit 0->1).
+  nao-trapaca: seam chama createProduct de PRODUCAO (sem mock); spec assertaa via `pg`
+        cru sobre DATABASE_URL. Nenhum assert trivial/tautologico. git diff e0e83a1..HEAD
+        em app/lib/prisma = VAZIO (nenhum codigo de produto tocado). tsc --noEmit limpo
+        na spec/seam; eslint 0 warnings; prettier OK. Tree limpo (next-env.d.ts revertido
+        — rewrite incidental do next dev, nao do QA).
+  proximo   : estoque.product.increase-stock (priority 4, state=todo).
