@@ -3599,3 +3599,18 @@ SESSAO — TIME QA
               state) — json.dump reformataria o arquivo inteiro.
   proximo   : QA valida cupom.create.percent; proximo todo de pedido = cupom.create.fixed
               (priority 18), que ja pode reusar o case 'createCoupon' do _run-seam.ts.
+
+[2026-06-17] harness(qa) — cupom.create.percent (priority 17) => APROVADA (passes=true, qa_note=null, state mantido ready_for_qa).
+  Gate1 repro: pnpm harness tests/harness/pedido/cupom-create-percent.spec.ts rodado 2x em PG efemero recem-seedado (28 prod/8 ped) -> VERDE reproduzivel (1 passed 3.7s / 3.5s). db push + suplemento (CHECKs + LOWER(code)) + seed confirmados no log.
+  Gate2 anti-fake: seam case 'createCoupon' (_run-seam.ts L392-399) chama a funcao de PRODUCAO createCoupon(actor,input) (lib/data/coupons.ts L150) SEM mock e devolve o CouponMutationResult cru; a spec faz TODAS as assercoes via pg sobre process.env.DATABASE_URL. A spec NAO importa lib/data (Prisma ESM quebra no CJS do Playwright) — mutacao via tsx separado, assercoes via pg. Anti-trivial REAL e load-bearing: input carrega valueCents=1234 JUNTO de type='percent'; como o CHECK (1o disjunto) passaria mesmo com value_cents=1234, o unico guardiao da coerencia e o assert `value_cents IS NULL` — que a spec faz direto (L150). code minusculo (harness-pct-xxxx) => assert code==UPPER prova normalizeCouponCode.
+  Asserts do ledger (4/4 provados ponta a ponta):
+    A1 coupons +1 (count==N+1) com type='percent', percent_off=10, value_cents NULL (coerencia toCouponData zera o campo do tipo oposto). PROVADO via pg (L138-156).
+    A2 CHECK coupons_type_value_chk existe (pg_constraint, rowCount==1) E nenhuma linha o viola (predicado real REAPLICADO sobre a tabela inteira; predicado identico ao migration 20260615050000 e ao test-schema-supplement.sql que o aplica no PG efemero). PROVADO (L177-191).
+    A3 redeemed_count==0; is_active==true. PROVADO via pg (L156-160).
+    A4 audit_log +1 (count==A+1), action=='coupon.create' (valor DOTTED do @map, lido da coluna crua via pg, NAO a chave do enum JS), entity_type=='coupon', entity_id casado, before=null, after=snapshot coerente (code UPPER, type percent, percentOff 10, valueCents NULL, minSubtotalCents 5000, isActive true) — na MESMA tx. PROVADO (L194-235).
+  Gate3 invariantes (spot-check por LEITURA da spec, sem probe extra):
+    - coupon-coherence: A1+A2 (CHECK existe+0 violacoes + value_cents zerado apesar do lixo no input). COBERTO.
+    - audit-same-tx: A4 prova 1 linha coupon.create na MESMA tx; delta total +1 (count audit) CASA com delta por entity_id +1 => sem orfao/duplicata; before=null/after=snapshot corretos. createCoupon de producao envolve tx.coupon.create + writeAuditLog(tx,...) no MESMO prisma.$transaction (rollback = rollback da auditoria, estrutural). Para feature de CREATE sem trigger de falha, a cobertura do caminho-feliz same-tx e genuina e nao-trivial. COBERTO.
+    - cents-only: Number.isInteger em percent_off, min_subtotal_cents (==5000) e redeemed_count via pg; sem float. COBERTO.
+  Gate4 produto intocado: git diff e0e83a1..HEAD -- app lib prisma == VAZIO. Commit da feature (3fadcd3) so mudou: spec novo (cupom-create-percent.spec.ts), _run-seam.ts (+20 linhas, case INFRA createCoupon que chama a funcao de PRODUCAO), admin_features.json (SO o campo state: todo->ready_for_qa) e progress. asserts/invariants/title/priority IMUTAVEIS. Nenhum app/lib/prisma.
+  VEREDITO: APROVADA. Escrevi passes=true, qa_note=null; state mantido ready_for_qa (nao alterado pelo QA).
