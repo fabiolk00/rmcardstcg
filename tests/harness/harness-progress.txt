@@ -2429,3 +2429,61 @@ SESSAO — TIME PEDIDO
   proximo   : pedido.payment.cancelled-to-paid-blocked (priority 5, state=todo) —
               transicao ilegal cancelled->paid barrada via applyPaymentStatusTx, nenhum
               commitStock disparado, payment_status segue 'cancelled', sem audit.
+
+================================================================================
+SESSAO QA — pedido.payment.paid-to-pending-blocked (PORTAO ADVERSARIAL)
+================================================================================
+  timestamp : 2026-06-17 12:02 -0300
+  papel     : QA (unico autorizado a escrever passes/qa_note). NAO corrige produto.
+  feature   : pedido.payment.paid-to-pending-blocked (priority 4), state=ready_for_qa.
+  veredito  : APROVADO — passes=true, qa_note=null. state INALTERADO (ready_for_qa).
+  ritual    : pwd /c/rmcardstcg; branch harness/admin OK. Li harness-progress.txt +
+              git log -15. Spec da feature, ledger (asserts/invariants), _run-seam.ts
+              e a maquina de pagamento de PRODUCAO (orders.ts L300-420) revisados.
+  reproducao: `pnpm harness tests/harness/pedido/payment-paid-to-pending-blocked.spec.ts`
+              rodado 2x do ZERO em PG efemero recem-seedado (db push + apply-test-
+              constraints + seed = 28 produtos/8 pedidos): run1 = 1 passed (4.5s);
+              run2 = 1 passed (4.4s). VERDE reproduzivel. Ruido EBUSY/rmdir no teardown
+              (Windows, apos passar) = cosmetico, ignorado.
+  anti-fake : seam = applyPaymentStatusTx REAL de lib/data/orders.ts via _run-seam.ts
+              (case applyPaymentStatus envelopa a funcao de PRODUCAO num
+              prisma.$transaction EXATAMENTE como o wrapper setOrderPaymentStatus
+              L411-420; import direto da funcao de producao, SEM mock). Spec assertaa
+              via `pg` cru sobre DATABASE_URL. Cada assert do ledger PROVADO contra DB:
+    [assert 1] res.ok:false reason='invalid_transition' (paid terminal p/ pending) ->
+        PROVADO (spec L224-231). Anti-replay satisfeito: a spec seta asaas_payment_id
+        e passa payment.id CASADO, entao o ramo exercitado e a GUARDA DE TRANSICAO
+        (orders.ts L374-379 contra PAYMENT_TRANSITIONS: paid->['cancelled'] APENAS),
+        NAO payment_mismatch. Confirmado no codigo de producao.
+    [assert 2] orders.payment_status permanece 'paid' (nada gravado); flags intactas
+        (committed=true/reserved=false) -> PROVADO (spec L233-244). Estrutural: a guarda
+        retorna ANTES do CAS (L399) e de reconcile.
+    [assert 3] nenhum efeito de estoque; products.stock/reserved INALTERADOS -> PROVADO
+        (spec L246-255). ANTI-TRIVIAL: a spec FORCA reserved=2>0 e stock=10 e exige
+        ambos inalterados (reserved>0, nao 0 trivial). Estrutural: a guarda antecede
+        reconcileStockForPaymentStatus (L388), entao nenhum commit/release/restock roda.
+        Rede final: CHECK products_reserved_le_stock_chk existe + 0 violacoes (spec L257-266).
+    [assert 4] audit_log NAO ganha linha -> PROVADO (spec L268-293). total E por-entity
+        inalterados + 0 linhas order.payment_status_update p/ o pedido. Estrutural:
+        applyPaymentStatusTx NUNCA chama writeAuditLog (so o ajuste MANUAL do admin
+        adjustOrderPaymentStatus audita) — uma transicao ilegal nao deixa audit orfao.
+  invariantes: order-state-machine PROVADA (paid->pending barrado, payment_status segue
+        'paid'). audit-same-tx PROVADA (0 audit orfao numa transicao ilegal).
+        reserved-le-stock como rede (CHECK + 0 violacoes; estoque intocado).
+  prova-propria: PROBE INDEPENDENTE (c:\rmcardstcg\_qa_probe_paid_to_pending.tmp.ts,
+        REMOVIDO ao fim) subiu SEU PROPRIO PG efemero (push+constraints+seed), chamou o
+        SEAM REAL applyPaymentStatus via _run-seam.ts com VALORES DIFERENTES da spec
+        (QTY=5, STOCK0=40, RESERVED0=7, preco 12345) e validou com MINHAS queries pg:
+        19 PASS / 0 FAIL. Inclui CONTROLE NEGATIVO DISCRIMINANTE (anti-tautologia): no
+        MESMO pedido pago, paid->pending => ok:false invalid_transition (sem efeito,
+        sem audit); MAS paid->cancelled (LEGAL) => ok:true changed:true, payment_status
+        vira 'cancelled' E dispara refund (restock 40->45, reserved intocado em 7) —
+        prova que a guarda NAO devolve invalid_transition p/ todo destino, discrimina
+        contra PAYMENT_TRANSITIONS de verdade. + CHECK existe, 0 violacoes, 4 colunas Int.
+  nao-trapaca: git diff e0e83a1..HEAD -- app lib prisma = VAZIO (0 linhas; nenhum codigo
+        de produto tocado pelo time pedido). Tree limpo apos QA (probe removido;
+        next-env.d.ts revertido — rewrite incidental do next dev, nao do QA).
+  estado    : ready_for_qa (NAO alterei). passes=true escrito pelo QA. qa_note=null.
+  commit    : harness(qa): aprova pedido.payment.paid-to-pending-blocked
+  proximo   : pedido.payment.cancelled-to-paid-blocked (priority 5, state=todo) — fora
+              do escopo desta sessao (so 1 feature por gate).
