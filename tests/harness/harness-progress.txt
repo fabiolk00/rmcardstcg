@@ -1487,3 +1487,60 @@ SESSAO 0027 — TIME ESTOQUE
   proximo   : estoque.price.final-derived-pure (priority 16, state=todo) — finalPriceCents
               puro round(priceCents*(1-discountPct/100))==9000, sem coluna de preco final
               persistida, funcao pura em lib/data/pricing.ts sem importar prisma.
+
+--------------------------------------------------------------------------------
+SESSAO 0028 — TIME QA (gate adversarial)
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 08:50 -0300
+  time      : qa
+  feature   : estoque.restock.idempotent (priority 15)
+  veredito  : APROVADO (passes=true, state inalterado=ready_for_qa, qa_note=null).
+  ritual    : pwd /c/rmcardstcg; branch harness/admin OK. Li harness-progress.txt
+              (sessoes 0027 estoque) + git log -20.
+  reproduzi : `pnpm harness tests/harness/estoque/restock-idempotent.spec.ts`
+              => 1 passed DUAS vezes (3.6s e 3.6s; total ~6.2s cada) do ZERO em PG
+              efemero recem-seedado (db push + apply-test-constraints + seed = 28
+              produtos / 8 pedidos). VERDE reproduzivel.
+  nao-fake  : o seam runner _run-seam.ts op "restockUnitsForOrder" (L180-207) espelha
+              BYTE-A-BYTE o ramo de refund de reconcileStockForPaymentStatus de
+              PRODUCAO (lib/data/orders.ts L469-473): mesmo CAS
+                UPDATE "orders" SET stock_committed=false WHERE id=? AND stock_committed=true
+              e SO quando refunded===1 chama restockUnits REAL (lib/data/inventory.ts
+              L127-140: stock=stock+qty, reserved NUNCA tocado). `lines` saem dos
+              PROPRIOS itens do pedido, nao injetados. SEM mock. Spec assertaa via `pg`
+              cru sobre DATABASE_URL. _run-seam.ts INTOCADO nesta feature (op pre-existia
+              do refund-of-paid; commit 204c065 mexeu so em ledger+spec+progress).
+  por-assert (cada assert do ledger PROVADO contra DB real):
+    [A1] 2a aplicacao no-op: CAS WHERE stock_committed=true retorna 0 linhas;
+         restockUnits nao roda -> PROVADO. Spec L262-263 (refunded===0 na 2a) +
+         L292-293 (3a tambem refunded===0). A 1a (L225-226) reivindica (refunded===1).
+    [A2] products.stock permanece no valor pos-1a-reposicao (sem dupla reposicao) ->
+         PROVADO. Spec L271-274 (stock==28 apos 2a) + L299-302 (stock==28 apos 3a).
+         ANTI-TRIVIAL: se cada aplicacao repusesse, stock iria 28->34->40; constancia
+         em 28 prova idempotencia. reserved FORCADO=9>0 (L136-151) e exigido inalterado
+         (L237,275,303) — restockUnits nem toca reserved => "inalterado" nao trivial.
+    [A3] Order.stockCommitted continua false -> PROVADO. Spec L282 (apos 2a) + L309
+         (apos 3a); flag virada so na 1a (L249), nao re-virada.
+    rede final reserved-le-stock -> PROVADO. CHECK products_reserved_le_stock_chk +
+         products_reserved_nonneg_chk existem (pg_constraint, spec L206-217) + 0
+         violacoes 0<=reserved<=stock no catalogo (L321-328). CHECKs confirmados em
+         prisma/test-schema-supplement.sql L21-28.
+  invariantes: reserve-lifecycle-idempotent (flag stockCommitted como guard do CAS;
+         1a=refunded 1 repoe 1x; 2a/3a=refunded 0 no-op; stock estavel) e reserved-le-
+         stock (stock so cresce na 1a, reserved intacto; CHECK + 0 violacoes). Ambas
+         PROVADAS. cents-only -> stock/reserved/price_cents Int (spec L240-242).
+  prova-propria: PROBE INDEPENDENTE (c:\rmcardstcg\_qa_probe_restock_idem.tmp, removido
+         ao fim) subiu SEU PROPRIO PG efemero (push+constraints+seed), chamou o SEAM
+         REAL restockUnitsForOrder via _run-seam.ts com VALORES DIFERENTES do spec
+         (STOCK_AFTER_COMMIT=15, RES=4, QTY=11 => 26), e validou com MINHAS queries pg:
+         18 PASS / 0 FAIL. Provou a LOGICA (nao a constante): 1a refunded===1 stock->26
+         reserved==4 intocado, 2a/3a refunded===0 stock estavel 26, stockCommitted
+         false apos cada, 0 violacoes; DEFESA EM PROFUNDIDADE: o DB CHECK rejeitou um
+         `UPDATE stock<reserved` cru (products_reserved_le_stock_chk) => invariante e
+         do BANCO, nao so da app. Probe removido (tree limpo).
+  produto   : git diff e0e83a1..HEAD -- app lib prisma => VAZIO (commit + working tree).
+              Time NAO tocou produto. Nenhum fixer agiu nesta feature.
+  estado    : ready_for_qa (NAO alterei). passes=true escrito pelo QA. qa_note=null.
+  commit    : harness(qa): aprova estoque.restock.idempotent
+  proximo   : estoque.price.final-derived-pure (priority 16, state=todo) — fora do escopo
+              desta sessao (so 1 feature por gate).

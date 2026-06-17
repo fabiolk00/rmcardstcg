@@ -357,7 +357,7 @@
     ],
     "invariants": ["reserve-lifecycle-idempotent", "reserved-le-stock"],
     "state": "ready_for_qa",
-    "passes": false,
+    "passes": true,
     "qa_note": null,
     "fix_note": null,
     "review": null,
