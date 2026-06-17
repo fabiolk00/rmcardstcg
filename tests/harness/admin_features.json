@@ -17,7 +17,7 @@
       "CHECK 0<=reserved<=stock continua valido (reserved=0)."
     ],
     "invariants": ["cents-only", "audit-same-tx", "reserved-le-stock"],
-    "state": "todo",
+    "state": "ready_for_qa",
     "passes": false,
     "qa_note": null,
     "fix_note": null,
