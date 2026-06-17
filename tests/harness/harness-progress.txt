@@ -3519,3 +3519,13 @@ SESSAO — TIME QA
               gerado/pre-existente, conforme regra do harness).
   proximo   : QA valida pedido.shipping.free-above-threshold; proximo todo de pedido =
               pedido.shipping.flat-below-threshold (priority 16).
+
+[2026-06-17] harness(qa) — pedido.shipping.free-above-threshold => APROVADA (passes=true, qa_note=null, state mantido ready_for_qa).
+  Gate1 repro: pnpm harness tests/harness/pedido/shipping-free-above-threshold.spec.ts rodado 2x em PG efemero recem-seedado (28 prod/8 ped) -> VERDE reproduzivel (1 passed 5.1s / 4.8s).
+  Gate2 anti-fake: seam case 'cartTotals' (_run-seam.ts) chama a funcao de PRODUCAO cartTotals (lib/cart/totals.ts) SEM mock e devolve as constantes REAIS (FREE_SHIPPING_THRESHOLD_CENTS=29900, FLAT_SHIPPING_CENTS=2500) do mesmo modulo; specs asserem contra limite real, esperados derivados de constantes do teste (nao copiados da producao).
+  Gate3 invariantes (probe independente, valores DIFERENTES da spec, removido ao fim):
+    - totals-formula/final-price-derived: caso D prova frete decidido sobre MERCADORIA JA DESCONTADA, nao sobre subtotal bruto (sub=30000>=thr mas merch=24000<thr => FLAT). Caso B borda exata via desconto (price=33222 pct=10 => merch=29900 => FREE). Caso C 1 centavo abaixo via desconto => FLAT.
+    - cents-only: todos os campos do CartTotals Int em todos os casos.
+    - audit-same-tx / reserved-le-stock NAO se aplicam (funcao PURA, zero escrita no DB) e corretamente fora da lista de invariantes da feature.
+  Gate4 produto intocado: git diff e0e83a1..HEAD -- app lib prisma == VAZIO (so arquivos de harness mudaram).
+  Asserts do ledger (3/3 provados ponta a ponta): A1 shippingCents==0 quando merch>=29900; A2 merch==subtotal-discount (desconto de produto antes do frete); A3 total==merch+0. Tree limpo (probe removido; next-env.d.ts restaurado).
