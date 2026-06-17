@@ -39,6 +39,7 @@ import {
   createCoupon,
   updateCoupon,
   setCouponActive,
+  deleteCoupon,
   redeemCoupon,
   type CouponInput,
 } from "../../../lib/data/coupons";
@@ -215,6 +216,19 @@ type UpdateCouponArgs = { actor: AuditActor; id: string; input: CouponInput };
 // request), por isso chamamos a funcao de lib/data direto. INFRA de teste: usa a
 // funcao de PRODUCAO sem mock; a spec assertaa o estado real via pg.
 type SetCouponActiveArgs = { actor: AuditActor; id: string; isActive: boolean };
+// Espelha o call site de PRODUCAO da EXCLUSAO DE CUPOM pelo admin
+// (deleteCouponAction -> deleteCoupon, lib/data/coupons.ts L257). Numa MESMA
+// prisma.$transaction a funcao: le o cupom (before); se inexistente -> 'not_found';
+// conta coupon_redemptions WHERE coupon_id=id e, se > 0, retorna 'in_use' SEM apagar
+// (guarda de integridade — historico financeiro protegido pela FK onDelete: Restrict);
+// senao faz tx.coupon.delete (hard-delete, o 'D' do CRUD) e grava audit_log
+// (action coupon.delete, before=snapshot, after=null) na MESMA tx. Corrida (redencao
+// inserida entre a contagem e o delete) dispara FK Restrict P2003, tratada como 'in_use'.
+// Devolve o CouponDeleteResult ({ ok:true, id } | { ok:false, error }). A server action
+// so DELEGA apos requireAdmin() (contexto de request), por isso chamamos a funcao de
+// lib/data direto. INFRA de teste: usa a funcao de PRODUCAO sem mock; a spec assertaa o
+// estado real via pg.
+type DeleteCouponArgs = { actor: AuditActor; id: string };
 // Espelha o call site de PRODUCAO da REDENCAO DE CUPOM no checkout
 // (placeOrder/confirmacao -> redeemCoupon, lib/data/coupons.ts L364). redeemCoupon
 // recebe um `tx` externo na PRODUCAO (corre DENTRO da transacao do checkout); aqui o
@@ -480,6 +494,15 @@ async function main(): Promise<void> {
         // { ok:false, error }); a spec assertaa o estado real via pg.
         const { actor, id, isActive } = payload as SetCouponActiveArgs;
         result = await setCouponActive(actor, id, isActive);
+        break;
+      }
+      case "deleteCoupon": {
+        // Exclusao de cupom pelo admin (hard-delete SO se nunca redimido + audit
+        // coupon.delete na MESMA tx; cupom usado -> { ok:false } pela guarda/FK Restrict),
+        // via a funcao de PRODUCAO. Devolve o CouponDeleteResult ({ ok:true, id } |
+        // { ok:false, error }); a spec assertaa o estado real via pg.
+        const { actor, id } = payload as DeleteCouponArgs;
+        result = await deleteCoupon(actor, id);
         break;
       }
       case "redeemCoupon": {
