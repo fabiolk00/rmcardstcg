@@ -3227,3 +3227,42 @@ SESSAO — TIME PEDIDO
   commit    : <preenchido no commit desta sessao>
   proximo   : pedido.note.update-audited (priority 12, state=todo) — updateOrderInternalNote
               grava nota, audit order.note_update na mesma tx, status inalterados.
+
+================================================================================
+[QA] pedido.shipping.cancel-reconciles-stock — VEREDITO: APROVADO (passes=true)
+  data      : 2026-06-17 (sessao QA)
+  repro     : `pnpm harness tests/harness/pedido/shipping-cancel-reconciles-stock.spec.ts`
+              rodado 2x do ZERO em PG efemero recem-seedado (28 produtos/8 pedidos):
+              run1 1 passed (4.4s), run2 1 passed (4.5s). VERDE reproduzivel.
+  seam real : _run-seam.ts case 'updateOrderShippingStatus' chama a funcao de PRODUCAO
+              updateOrderShippingStatus (lib/data/orders.ts L523) SEM mock. Conferido o
+              corpo: 1 prisma.$transaction { findUnique before (adminOrderSelect);
+              X->X no-op; valida SHIPPING_TRANSITIONS[pending]=['sent','cancelled'] =>
+              cancelled legal; CAS updateMany WHERE shippingStatus=from; SE to==='cancelled'
+              reconcileStockForPaymentStatus(tx,...,'cancelled') -> ramo released: CAS
+              WHERE stock_reserved=true AND stock_committed=false vira stockReserved=false,
+              SE released===1 releaseStock(tx,lines) (UPDATE products SET reserved=reserved-qty
+              WHERE reserved>=qty; stock INTOCADO); writeAuditLog(tx, order_shipping_status_update,
+              before/after) — TUDO na mesma tx }.
+  asserts   : TODOS provados ponta a ponta contra o DB real (sem mock/trivial):
+              1) orders.shipping_status=='cancelled' (e payment_status segue 'pending') — PROVADO.
+              2) releaseStock: products.reserved -= QTY (5->2, >0 anti-trivial), stock INTOCADO
+                 (20), Order.stockReserved=false, stockCommitted=false — PROVADO.
+              3) audit_log +1 total E +1 por entity_id; action coluna crua=='order.shipping_status_update'
+                 (@map dotted), entity_type='order', entity_id=String(orderId), before.shippingStatus
+                 ='pending', after.shippingStatus='cancelled', paymentStatus identico nos 2 snapshots
+                 (mesma tx) — PROVADO.
+              4) CHECK products_reserved_le_stock_chk existe + 0 violacoes de 0<=reserved<=stock — PROVADO.
+  invariantes: order-state-machine, reserve-lifecycle-idempotent, audit-same-tx, reserved-le-stock
+              — todas exercitadas. PROBE INDEPENDENTE proprio (valores DIFERENTES da spec:
+              multi-item Q1=7/Q2=4, stock 50/40, reserved 12/9) confirmou: estorno por item
+              (12->5, 9->5; stock intocado), audit +1 dotted na mesma tx, CHECK presente + 0
+              violacoes; ALEM disso: transicao ILEGAL (sent->pending) NAO grava audit nem mexe
+              estoque/flags (guarda/atomicidade), e segundo cancel = no-op (changed=false) SEM
+              re-decrementar reserved (idempotencia do estorno). Probe rodou 3 passed e foi
+              REMOVIDO (tree limpo).
+  produto   : git diff e0e83a1..HEAD -- app lib prisma = VAZIO. Nenhum codigo de produto tocado.
+              _run-seam.ts e INFRA de teste (case updateOrderShippingStatus delega p/ a funcao
+              de producao sem mock).
+  veredito  : passes=true, qa_note=null, state inalterado (ready_for_qa). Edit cirurgico no ledger
+              (1 linha: passes false->true).
