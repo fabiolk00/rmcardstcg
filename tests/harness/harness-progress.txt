@@ -3529,3 +3529,30 @@ SESSAO — TIME QA
     - audit-same-tx / reserved-le-stock NAO se aplicam (funcao PURA, zero escrita no DB) e corretamente fora da lista de invariantes da feature.
   Gate4 produto intocado: git diff e0e83a1..HEAD -- app lib prisma == VAZIO (so arquivos de harness mudaram).
   Asserts do ledger (3/3 provados ponta a ponta): A1 shippingCents==0 quando merch>=29900; A2 merch==subtotal-discount (desconto de produto antes do frete); A3 total==merch+0. Tree limpo (probe removido; next-env.d.ts restaurado).
+
+[2026-06-17] harness(pedido) - pedido.shipping.flat-below-threshold (priority 16) => READY_FOR_QA.
+  feature   : pedido.shipping.flat-below-threshold (state todo->building->ready_for_qa; passes NAO tocado).
+  seam      : case 'cartTotals' de _run-seam.ts (JA existente, infra de teste) chama a funcao
+              de PRODUCAO cartTotals (lib/cart/totals.ts) SEM mock e devolve, junto do CartTotals,
+              as CONSTANTES REAIS do mesmo modulo (FREE_SHIPPING_THRESHOLD_CENTS=29900,
+              FLAT_SHIPPING_CENTS=2500). Nada estendido no runner (cartTotals ja suportado).
+  o-que-fiz : criei tests/harness/pedido/shipping-flat-below-threshold.spec.ts provando os 3
+              asserts do ledger:
+                A1 shippingCents == FLAT_SHIPPING_CENTS (2500) quando 0 < merchandise < 29900.
+                A2 totalCents == merchandiseCents + 2500 (totals-formula: frete flat soma).
+                A3 carrinho VAZIO (merchandise==0) => shippingCents==0 (borda: merch 0 cai no
+                   ramo frete-gratis `merchandiseCents===0`, NAO cobra flat).
+                cents-only: Number.isInteger em TODOS os campos do CartTotals (principal + vazio).
+              ANTI-TRIVIAL: caso principal com desconto (price=15000 pct=20 => merch=12000 !=
+                subtotal=15000), prova que o frete e decidido sobre a MERCADORIA JA DESCONTADA.
+              BORDA limite-1: merch==29899 => FLAT. ANTI-FALSO-POSITIVO: merch==29900 (==limite)
+                => GRATIS (shipping 0), provando que a fronteira do flat e exatamente < threshold.
+  resultado : pnpm harness ...spec.ts -> 1 passed, reproduzivel (rodado 3x; ~5.6s; PG efemero
+              recem-seedado 28 prod/8 ped). Funcao PURA: zero escrita no DB (audit-same-tx /
+              reserved-le-stock corretamente FORA das invariantes da feature).
+  gates     : pnpm typecheck OK; eslint OK; prettier --write+--check OK no meu spec.
+  produto   : NAO toquei app/**, lib/**, prisma/** (git diff -- app lib prisma == VAZIO).
+              So spec novo + ledger + admin_features.json (state). _run-seam.ts NAO mudou.
+  obstaculos: nenhum. cartTotals ja era correto (sem bug de produto); seam ja suportava o case.
+  proximo   : QA valida pedido.shipping.flat-below-threshold; proximo todo de pedido =
+              cupom.create.percent (priority 17).

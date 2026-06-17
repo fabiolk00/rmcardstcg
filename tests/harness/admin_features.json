@@ -875,7 +875,7 @@
       "Carrinho vazio (merchandiseCents==0) tem shippingCents==0 (caso de borda)."
     ],
     "invariants": ["totals-formula", "cents-only"],
-    "state": "todo",
+    "state": "ready_for_qa",
     "passes": false,
     "qa_note": null,
     "fix_note": null,
