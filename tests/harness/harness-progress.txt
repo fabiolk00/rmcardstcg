@@ -898,3 +898,50 @@ SESSAO 0014 — TIME ESTOQUE
               commitStock(tx, lines) com stock-=qty E reserved-=qty, flags
               stock_committed=true/stock_reserved=false na mesma tx. O runner
               precisara de uma op nova (commitStockForOrder) p/ esse ciclo.
+
+--------------------------------------------------------------------------------
+SESSAO QA — estoque.reserve.blocks-oversell (PORTAO ADVERSARIAL)
+--------------------------------------------------------------------------------
+  alvo      : estoque.reserve.blocks-oversell (priority 9, state ready_for_qa).
+  repro     : `pnpm harness tests/harness/estoque/reserve-blocks-oversell.spec.ts`
+              rodado 2x do ZERO (PG efemero recem-seedado, 28 produtos / 8 pedidos):
+              1 passed em 4.6s e 4.4s. VERDE reproduzivel.
+  seam      : reserveStock(tx, items) de lib/data/inventory.ts — funcao de PRODUCAO
+              REAL (sem mock), invocada via _run-seam.ts op reserveStockForOrder, que
+              abre prisma.$transaction e — ao receber ok:false — lanca ReserveAbort
+              => rollback total, ESPELHANDO o checkout (orders.ts L193-240:
+              reserveStock -> OutOfStockError -> rollback). Confirmado que _run-seam
+              importa lib/data/inventory + lib/db (producao), nao stub.
+  asserts   : 4/4 PROVADOS ponta a ponta contra o DB real:
+              [1] reserveStock=={ok:false, productId} apontando o produto sem
+                  disponibilidade — spec L191-193 (ok===false E productId===input real).
+              [2] products.reserved permanece 4 (sem incremento parcial) e stock 5 —
+                  spec L204-208 (reserved=4>0 NAO trivial; delta===0). Leitura crua via
+                  pg FORA da tx abortada prova que o rollback valeu.
+              [3] chamador aborta a tx, NADA gravado — spec L213-225 (Order.stockReserved
+                  e stockCommitted permanecem false apos rollback).
+              [4] CHECK 0<=reserved<=stock jamais violado — spec L228-257 (constraint
+                  existe + 0 violacoes; UPDATE cru reserved=6 REJEITADO pelo CHECK).
+  probe     : sonda INDEPENDENTE propria (boot de PG efemero proprio + schema/CHECKs/
+              seed) exercitando reserveStock de PRODUCAO com valores DIFERENTES da spec,
+              p/ provar a LOGICA e nao a constante. 5 cenarios, todos VERDES:
+              S1 oversell stock=10/reserved=7/avail=3/ask=4 -> ok:false, reserved fica 7
+                 (delta 0) apos rollback;
+              S2 exact-fit stock=8/reserved=5/avail=3/ask=3 -> ok:TRUE, reserved vira 8
+                 (prova que o guard NAO e sempre-falso; sobe na borda avail==ask e
+                 reserved(8)<=stock(8) segura);
+              S3 BATCH (um cabe, outro estoura): ok:false aponta o produto ESTOURADO;
+                 apos rollback o produto que cabia volta a reserved=0 (prova "sem efeito
+                 parcial em lote" — logica real, nao constante);
+              S4 CHECK products_reserved_le_stock_chk existe; UPDATE cru reserved=99
+                 (>stock) REJEITADO; 0 violacoes na tabela inteira (invariante e do BANCO);
+              S5 cents-only: price_cents e integer.
+              Sonda REMOVIDA ao fim (tree limpo).
+  produto   : git diff e0e83a1..HEAD -- app lib prisma VAZIO (nenhum codigo de produto
+              tocado; nenhum fixer agiu). Commit da feature (70ed357) muda apenas a spec,
+              o ledger e o progress.
+  invariante: reserved-le-stock PROVADA (funcao barra + CHECK do banco rejeita reserved>
+              stock por SQL cru, com valores distintos da spec). reserve-lifecycle-
+              idempotent PROVADA na parte coberta (sem efeito parcial; flag do pedido
+              fica false apos rollback). cents-only confirmada (price_cents integer).
+  veredito  : APROVADO. passes=true, qa_note=null. state INALTERADO (ready_for_qa).
