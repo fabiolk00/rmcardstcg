@@ -115,3 +115,41 @@ SESSAO 0000 — INITIALIZER
     (c) um futuro spec injetar um cookie/sessao Clerk de teste (exige chaves de teste,
         sai do mock-first).
   ===========================================================================
+
+--------------------------------------------------------------------------------
+SESSAO 0001 — TIME ESTOQUE
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 06:08 -0300
+  time      : estoque
+  feature   : estoque.product.create (priority 1)
+  seam      : createProduct(actor, input) em lib/data/products.ts (funcao de menor
+              nivel que prova as invariantes: transacao Prisma + writeAuditLog na
+              MESMA tx). NAO usei a server action createProductAction porque ela
+              comeca com requireAdmin() (contexto de request: next/headers + Clerk),
+              que quebra fora do HTTP; a action so delega para createProduct.
+  arquivos  : tests/harness/estoque/product-create.spec.ts (spec DB-first, sem browser)
+              tests/harness/estoque/_run-seam.ts (runner de seam via tsx — INFRA)
+  o-que-fiz : Ritual de inicio OK (branch harness/admin; init.sh => smoke DB-first
+              VERDE, 3 testes de UI VERMELHOS de proposito = blocker proxy.ts aceito).
+              Escrevi spec DB-first que cria 1 produto e assertaa via `pg` sobre
+              DATABASE_URL: (1) products count==N+1, slug derivado (^produto-harness-),
+              isActive=true, reserved=0; (2) price_cents=12999/discount_pct=15/stock=7
+              persistidos como Int (cents-only, Number.isInteger); (3) audit_log
+              count==A+1, action='product.create' (valor DOTTED do @map), entity_type=
+              'product', before=null, after=snapshot coerente, na MESMA tx; (4) CHECK
+              products_reserved_le_stock_chk existe e zero linhas violam 0<=reserved<=stock.
+  INFRA     : caveat tecnico resolvido SO em infra de teste (nada de produto). O
+              cliente Prisma gerado (lib/generated/prisma/client.ts) e ESM puro
+              (import.meta); o runner do Playwright transpila specs p/ CJS, onde
+              import.meta e SyntaxError => importar lib/data DIRETO no spec quebra no
+              load. Solucao: a MUTACAO roda num processo `tsx` separado (_run-seam.ts,
+              mesmo tsx que o runner ja usa p/ seed), payload via env SEAM_PAYLOAD
+              (nao argv, p/ evitar mangling de quotes do shell Windows); o spec faz
+              TODAS as assercoes via `pg`.
+  estado    : ready_for_qa (state da feature no ledger). passes NAO tocado (campo do QA).
+  resultado : VERDE — `pnpm harness tests/harness/estoque/product-create.spec.ts`
+              => 1 passed (3.6s). Gates: typecheck OK, lint OK, prettier OK nos MEUS
+              arquivos (format:check global so acusa .claude/* pre-existente, fora do escopo).
+  commit    : 858ee3a
+  proximo   : estoque.product.create-duplicate-sku (priority 2, state=todo) — SKU
+              duplicado case-insensitive bloqueado, sem linha nova e sem audit (rollback).
