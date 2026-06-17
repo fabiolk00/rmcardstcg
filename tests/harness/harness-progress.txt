@@ -2012,3 +2012,64 @@ SESSAO 0023 — TIME ESTOQUE
   proximo   : NAO HA MAIS feature team=estoque com state=todo. Todas as 20 features de
               estoque foram cobertas (priority 1..20). Trabalho do time estoque concluido;
               restam apenas features team=pedido (27) p/ o outro time.
+
+================================================================================
+SESSAO QA — estoque.product.inactivate-idempotent (PORTAO ADVERSARIAL)
+================================================================================
+  papel     : QA (unico autorizado a escrever passes/qa_note). NAO corrige produto.
+  feature   : estoque.product.inactivate-idempotent (priority 20), state=ready_for_qa.
+  veredito  : APROVADO — passes=true, qa_note=null. state INALTERADO (ready_for_qa).
+  ritual    : pwd /c/rmcardstcg; branch harness/admin OK. Li harness-progress.txt +
+              git log + spec + ledger + seam de PRODUCAO (setProductActive L342-368,
+              writeAuditLog audit.ts L70-88, test-schema-supplement CHECK).
+  repro     : `pnpm harness tests/harness/estoque/product-inactivate-idempotent.spec.ts`
+              rodado 2x do ZERO em PG efemero recem-seedado (db push + apply-test-
+              constraints + seed = 28 produtos / 8 pedidos): run1=1 passed (5.6s),
+              run2=1 passed (5.3s). VERDE reproduzivel. Isolamento OK (banco novo;
+              SKU/nome unicos por randomUUID). EBUSY/rmdir no teardown = cosmetico.
+  anti-fake : seam = setProductActive REAL de lib/data/products.ts via _run-seam.ts
+              (case setProductActive, import direto da funcao de PRODUCAO, SEM mock).
+              Spec assertaa via `pg` cru sobre DATABASE_URL. Guard de idempotencia
+              confirmado em products.ts L352 — DENTRO da prisma.$transaction, ANTES de
+              tx.product.update E de writeAuditLog:
+                if (before.isActive === isActive) return before; // no-op idempotente
+              entao a 2a inativacao de produto JA INATIVO nem muda a linha nem grava
+              audit. writeAuditLog usa tx.auditLog.create (audit.ts L74) => mesma tx.
+  por-assert (cada assert do ledger PROVADO contra o DB real):
+    [1] products.isActive permanece false. -> PROVADO. Spec setup faz 1a inativacao
+        REAL (true->false, +1 product.inactivate) e SO ENTAO mede a base A; a 2a
+        chamada (acao-sob-teste) e o no-op. after.is_active==false (spec L202),
+        COUNT(products) inalterado (no-op nao cria/remove, L210-216), e a LINHA INTEIRA
+        intacta: price/discount/stock/reserved/slug/sku iguais ao pre (L203-208).
+        ANTI-TRIVIAL: reserved FORCADO=3>0 no setup (L123,L148) p/ "reserved inalterado"
+        nao ser trivial (DICA do QA respeitada). setProductActive nem tem campo de
+        estoque/preco no input — so vira o flag.
+    [2] audit_log NAO ganha linha (count == A). -> PROVADO. Spec L220-236: audit_log
+        TOTAL == A E por-entity inalterado E continua EXATAMENTE 1 product.inactivate
+        (sem duplicar) — provado em 3 granularidades (total, por entity_id, por
+        (entity,action)). 'product.inactivate' e o valor @map DOTTED lido CRU da coluna
+        via pg (nao a chave JS product_inactivate). audit-same-tx: o no-op nao deixa
+        audit porque o early-return ocorre ANTES de update/writeAuditLog (atomicidade
+        estrutural) + empirico (contagens inalteradas apos a seam retornar).
+  invariante: audit-same-tx PROVADA (no-op = 0 audit novo; rollback/early-return sem
+              orfao). reserved-le-stock como rede final: CHECK products_reserved_le_stock_chk
+              existe + 0 violacoes de 0<=reserved<=stock (spec L240-248). cents-only OK.
+  probe-ind : escrevi PROBE PROPRIA (_qa_probe_inactidem.tmp.ts, removida ao fim — tree
+              limpo) que subiu SEU PROPRIO PG efemero (push+constraints+seed), chamou o
+              SEAM REAL setProductActive com VALORES DIFERENTES da spec (P=88800,
+              DISC=12, STOCK=20, RESERVED=9) p/ provar a LOGICA e nao a constante, e
+              validou com MINHAS queries pg: 24 PASS / 0 FAIL. Incl. ANTI-FAKE EXTRA
+              (alem da spec): (a) 3a inativacao tambem no-op (audit total/inact inalterados)
+              => "count==A" e LOGICA, nao acaso; (b) transicao REAL reativar (false->true)
+              GRAVA +1 audit (product.reactivate) => a seam NAO e um stub no-op-sempre;
+              (c) o no-op retorna o produto (before) com id casando; (d) pg_constraint do
+              CHECK presente, 0 violacoes, colunas Int (cents-only).
+  nao-trapaca: nenhum assert trivial/tautologico; cobertura completa dos 2 asserts +
+              invariante. git diff e0e83a1..HEAD -- app lib prisma = VAZIO (nenhum codigo
+              de produto tocado pelo time estoque NEM por mim). Working tree limpo apos QA
+              (next-env.d.ts revertido — rewrite incidental do next dev; probe removida).
+              Time NAO tocou produto.
+  estado    : ready_for_qa (NAO alterei). passes=true escrito pelo QA. qa_note=null.
+  commit    : harness(qa): aprova estoque.product.inactivate-idempotent
+  proximo   : NAO HA MAIS feature team=estoque (todas as 20 ready_for_qa + passes=true).
+              Restam apenas features team=pedido (27, state=todo) para o outro time.
