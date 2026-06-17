@@ -3651,3 +3651,12 @@ SESSAO — TIME QA
     A3 toCouponData sempre casa tipo<->campo: o campo do tipo oposto fica NULL (percent=>value_cents NULL; fixed=>percent_off NULL) nos cupons criados via PRODUCAO.
   ESTADO: VERDE e reproduzivel (pnpm harness: 1 passed, 4.5s / 4.4s em PG efemero recem-seedado). Gates: typecheck OK, lint OK (eslint --max-warnings 0), prettier --check do spec OK. Produto INTOCADO (git diff -- lib app prisma == VAZIO; runner _run-seam.ts NAO alterado). admin_features.json: SO o campo state cupom.create.incoherent-blocked todo->building->ready_for_qa.
   COMMIT: <preenchido no commit>. PROXIMO: QA aprova cupom.create.incoherent-blocked; depois pedido pega cupom.code.ci-unique (priority 20, state todo).
+
+[QA] cupom.create.incoherent-blocked — APROVADO (passes=true, qa_note=null, state segue ready_for_qa).
+  Repro do zero: pnpm harness tests/harness/pedido/cupom-create-incoherent-blocked.spec.ts em PG efemero recem-seedado -> 1 passed (6.8s). VERDE.
+  Anti-fake-green (por assert):
+   A1 "CHECK rejeita ambos": frente (A) INSERT cru via pg em BEGIN/savepoint; (A1) percent_off=150/value_cents=NULL e (A2) fixed/value_cents=0 -> ambos com code=23514 e constraint=coupons_type_value_chk; sanity confirma o CHECK existe (nao vacuo). Log do PG no teardown confirma rejeicao real (failing rows: percent,150 e fixed,0).
+   A2 "nenhuma linha incoerente persiste": pos-COMMIT count inalterado (==N) E VIOLATION_PREDICATE==0; o predicado e identico ao CHECK (test-schema-supplement.sql L38-41). PROVADO.
+   A3 "toCouponData casa tipo<->campo": frente (B) via _run-seam.ts case createCoupon = funcao de PRODUCAO lib/data/coupons.ts (sem mock). (B1) percent + valueCents=9999 lixo -> persiste percent_off=25, value_cents=NULL; (B2) fixed + percentOff=55 lixo -> persiste value_cents=2500, percent_off=NULL. Anti-trivial (lixo no campo oposto). PROVADO via leitura pg do row persistido.
+  Invariante coupon-coherence: coberta pelas duas frentes + fechamento (tabela inteira 0 violacoes apos as duas criacoes de dominio). audit-same-tx NAO e invariante listada desta feature.
+  Produto intocado: git diff e0e83a1..HEAD -- app lib prisma VAZIO.
