@@ -942,7 +942,7 @@
       "toCouponData no dominio sempre casa tipo<->campo (o outro fica NULL)."
     ],
     "invariants": ["coupon-coherence"],
-    "state": "todo",
+    "state": "ready_for_qa",
     "passes": false,
     "qa_note": null,
     "fix_note": null,
