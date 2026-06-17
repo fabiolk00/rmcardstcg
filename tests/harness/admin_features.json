@@ -897,7 +897,7 @@
       "audit_log recebe 1 linha action=coupon.create na MESMA transacao, before=null."
     ],
     "invariants": ["coupon-coherence", "audit-same-tx", "cents-only"],
-    "state": "todo",
+    "state": "ready_for_qa",
     "passes": false,
     "qa_note": null,
     "fix_note": null,

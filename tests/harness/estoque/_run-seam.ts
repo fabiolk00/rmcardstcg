@@ -35,6 +35,7 @@ import {
   updateOrderShippingStatus,
   type PaymentRef,
 } from "../../../lib/data/orders";
+import { createCoupon, type CouponInput } from "../../../lib/data/coupons";
 import type { PaymentStatus, ShippingStatus } from "../../../lib/data/types";
 import type { AuditActor } from "../../../lib/data/audit";
 import { finalPriceCents } from "../../../lib/data/pricing";
@@ -177,6 +178,16 @@ type NoteArgs = {
   note: string | null;
   actor: AuditActor;
 };
+// Espelha o call site de PRODUCAO da CRIACAO DE CUPOM pelo admin
+// (createCouponAction -> createCoupon, lib/data/coupons.ts L150). Numa MESMA
+// prisma.$transaction a funcao: normaliza o CouponInput via toCouponData (zera o
+// campo do tipo oposto — percent zera valueCents, fixed zera percentOff; codigo em
+// UPPER), faz tx.coupon.create e grava audit_log (action coupon.create, before=null,
+// after=snapshot do cupom) — tudo na mesma tx. Codigo duplicado (P2002) vira
+// { ok:false, error }. A server action so DELEGA apos requireAdmin() (contexto de
+// request), por isso chamamos a funcao de lib/data direto. INFRA de teste: usa a
+// funcao de PRODUCAO sem mock; a spec assertaa o estado real via pg.
+type CreateCouponArgs = { actor: AuditActor; input: CouponInput };
 
 /**
  * Erro de aborto da reserva — carrega o resultado { ok:false, productId } do
@@ -376,6 +387,15 @@ async function main(): Promise<void> {
         // reason }); a spec assertaa o estado real via pg.
         const { orderId, note, actor } = payload as NoteArgs;
         result = await updateOrderInternalNote(orderId, note, actor);
+        break;
+      }
+      case "createCoupon": {
+        // Criacao de cupom pelo admin (coerencia tipo<->campo via toCouponData +
+        // audit coupon.create na MESMA tx), via a funcao de PRODUCAO. Devolve o
+        // CouponMutationResult ({ ok:true, coupon } | { ok:false, error }); a spec
+        // assertaa o estado real via pg.
+        const { actor, input } = payload as CreateCouponArgs;
+        result = await createCoupon(actor, input);
         break;
       }
       default:

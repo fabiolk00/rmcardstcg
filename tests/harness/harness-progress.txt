@@ -3568,3 +3568,34 @@ SESSAO — TIME QA
     - audit-same-tx / reserved-le-stock NAO se aplicam (funcao PURA, zero escrita no DB) e corretamente FORA da lista de invariantes da feature.
   Gate4 produto intocado: git diff e0e83a1..HEAD -- app lib prisma == VAZIO. Commit da feature (afa9a19) so mudou spec novo + ledger (1 campo state) + progress; _run-seam.ts nao mudou (case cartTotals pre-existente). next-env.d.ts (regen cosmetico do next dev) restaurado; tree limpo (probe removido).
   Asserts do ledger (3/3 provados ponta a ponta): A1 shippingCents==2500 quando 0<merch<29900; A2 totalCents==merchandiseCents+2500; A3 carrinho vazio (merch==0) => shippingCents==0. VEREDITO: APROVADA.
+
+[2026-06-17] harness(pedido) - cupom.create.percent (priority 17) => READY_FOR_QA.
+  feature   : cupom.create.percent (state todo->building->ready_for_qa; passes NAO tocado).
+  seam      : ESTENDI tests/harness/estoque/_run-seam.ts (INFRA de teste) com o case
+              'createCoupon' — chama a funcao de PRODUCAO createCoupon(actor, input)
+              (lib/data/coupons.ts L150) SEM mock e devolve o CouponMutationResult. Import
+              + type CreateCouponArgs adicionados. Nenhum codigo de produto tocado.
+  o-que-fiz : criei tests/harness/pedido/cupom-create-percent.spec.ts provando os 4 asserts
+              do ledger via pg sobre process.env.DATABASE_URL:
+                A1 coupons +1 linha: type='percent', percent_off=10, value_cents NULL
+                   (coerencia: toCouponData zera o campo do tipo oposto).
+                A2 CHECK coupons_type_value_chk existe (pg_constraint) E nenhuma linha o
+                   viola (predicado real reaplicado sobre a tabela inteira).
+                A3 redeemed_count=0; is_active=true.
+                A4 audit_log +1 linha action='coupon.create' (DOTTED), entity_type='coupon',
+                   before=null, after=snapshot coerente, na MESMA tx (delta total +1 casa
+                   com delta por entity_id +1 => sem orfao).
+              ANTI-TRIVIAL/coerencia: input carrega valueCents=1234 DE PROPOSITO junto de
+                type='percent'; o assert value_cents IS NULL prova que PRODUCAO zera o lixo
+                do tipo oposto. code minusculo => prova normalizeCouponCode (UPPER).
+              cents-only: Number.isInteger em percent_off/min_subtotal_cents/redeemed_count.
+  resultado : pnpm harness ...spec.ts -> 1 passed, reproduzivel (3x; ~3.5-5.0s; PG efemero
+              recem-seedado 28 prod/8 ped).
+  gates     : pnpm typecheck OK; eslint OK no spec + _run-seam.ts; prettier --write+--check OK.
+  produto   : NAO toquei app/**, lib/**, prisma/** (git diff -- app lib prisma == VAZIO).
+              So spec novo + _run-seam.ts (case INFRA novo) + admin_features.json (1 campo state).
+  obstaculos: nenhum bug de produto. createCoupon ja era correto (coerencia + audit na mesma
+              tx). Cuidado de ledger: editar admin_features.json so com Edit cirurgico (1 linha
+              state) — json.dump reformataria o arquivo inteiro.
+  proximo   : QA valida cupom.create.percent; proximo todo de pedido = cupom.create.fixed
+              (priority 18), que ja pode reusar o case 'createCoupon' do _run-seam.ts.
