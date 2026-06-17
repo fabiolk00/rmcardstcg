@@ -634,3 +634,32 @@ SESSAO 0011 — TIME ESTOQUE
   proximo   : estoque.product.available-derived (priority 7, state=todo) — stock=10,
               reserved=4 => disponivel=6 derivado; sem coluna available/disponivel
               persistida; CHECK 0<=reserved<=stock valido.
+
+================================================================================
+SESSAO QA — estoque.product.reduce-below-reserved-blocks (PORTAO ADVERSARIAL)
+================================================================================
+  papel     : QA (unico autorizado a escrever passes/qa_note). NAO corrige produto.
+  feature   : estoque.product.reduce-below-reserved-blocks (priority 6), state=ready_for_qa.
+  repro     : `pnpm harness tests/harness/estoque/product-reduce-below-reserved-blocks.spec.ts`
+              rodado 2x do ZERO em PG efemero recem-seedado (28 produtos/8 pedidos):
+              run1 = 1 passed (1.8s / 4.5s); run2 = 1 passed (2.0s / 4.5s). VERDE reproduzivel.
+  anti-fake : seam = updateProduct REAL de lib/data/products.ts via _run-seam.ts (import
+              direto da funcao de PRODUCAO, sem mock). Guard de producto confirmado em
+              products.ts L289-293 DENTRO de prisma.$transaction, ANTES de update/audit.
+              Cada assert do ledger exercitado contra o DB real via pg:
+              (1) ProductValidationError citando reservadas: name + /reservada/i + R(3) + target(2);
+              (2) stock=10/reserved=3 + linha inteira inalterada (price/discount/sku/slug/name);
+              (3) audit_log total e por-entity inalterado + 0 product.update orfao;
+              (4) CHECK products_reserved_le_stock_chk existe + 0 violacoes + reserved<=stock.
+  probe-ind : escrevi probe PROPRIA (valores DIFERENTES: reserved=7, stock=20, target=4)
+              e removi ao fim (tree limpo). Provou a LOGICA, nao a constante:
+              - msg citou (4) e 7 REAIS (nao 2/3 da spec) => guard le current.reserved/data.stock;
+              - BOUNDARY: stock==reserved(7) PERMITIDO => guard e `<`, nao `<=` (bate L289);
+              - audit-same-tx: bloqueio=0 audit; sucesso boundary=+1 product.update;
+              - DB CHECK rejeita `UPDATE stock=3 WHERE reserved=7` via SQL cru
+                (products_reserved_le_stock_chk) => invariante e do BANCO, defesa em profundidade;
+              - cents-only: price_cents Int.
+  produto   : git diff e0e83a1..HEAD -- app lib prisma => VAZIO (commit + working tree).
+              Time NAO tocou produto. Nenhum fixer agiu nesta feature.
+  VEREDITO  : APROVADO. Todos os 4 asserts provados ponta a ponta contra Postgres real.
+              passes=true, qa_note=null. state mantido em ready_for_qa (campo do QA so passes/qa_note).
