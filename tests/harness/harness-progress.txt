@@ -1722,3 +1722,66 @@ SESSAO — TIME ESTOQUE
               setProductActive(actor,id,false): isActive->false (soft-delete), audit
               product.inactivate (before.isActive=true/after=false) na mesma tx,
               stock/reserved/preco inalterados.
+
+================================================================================
+SESSAO QA — estoque.price.update-discount-audited (PORTAO ADVERSARIAL)
+================================================================================
+  papel     : QA (unico autorizado a escrever passes/qa_note). NAO corrige produto.
+  feature   : estoque.price.update-discount-audited (priority 17), state=ready_for_qa.
+  veredito  : APROVADO — passes=true, qa_note=null. state INALTERADO (ready_for_qa).
+  repro     : `pnpm harness tests/harness/estoque/price-update-discount-audited.spec.ts`
+              rodado 2x do ZERO em PG efemero recem-seedado (28 produtos/8 pedidos):
+              run1 = 1 passed (7.2s); run2 = 1 passed (7.5s). VERDE reproduzivel.
+  nao-fake  : seam = updateProduct/createProduct/finalPriceCents REAIS de PRODUCAO
+              (lib/data/products.ts, lib/data/pricing.ts) via _run-seam.ts (import
+              direto, SEM mock). Spec assertaa via `pg` cru sobre DATABASE_URL.
+              Estrutura confirmada: updateProduct valida discountPct 0..80 em
+              normalizeProductInput (products.ts L147) ANTES de prisma.$transaction
+              (L278); dentro da tx grava tx.product.update + writeAuditLog(tx,...)
+              (L320-327) com AuditAction.product_update (@map "product.update",
+              schema.prisma L49). finalPriceCents = Math.round(price*(1-disc/100)),
+              pura, nunca persistida.
+  por-assert (cada assert do ledger PROVADO contra DB real via pg):
+    [1] products.discountPct==20 & priceCents==P (base intocada) -> PROVADO.
+        Spec L193-203: discount_pct==20, price_cents==P, stock/sku/slug intactos
+        (input identico exceto desconto; uniqueSlug exclui o proprio id). Int.
+    [2] finalPriceCents -> round(P*0.80) SEM coluna persistida -> PROVADO.
+        Spec L207-236: funcao pura REAL finalPriceCents(P,20)=round(12345*0.80)=9876;
+        paridade com derivacao SQL sobre o produto gravado; sanidade (P,0)=P;
+        information_schema NAO tem coluna final_price*; price_cents/discount_pct
+        integer. NAO tautologico (compara funcao vs SQL vs constante esperada).
+    [3] audit_log +1 action=product.update before.discountPct=0 after=20 MESMA tx
+        -> PROVADO. Spec L240-283: +1 total E +1 por entity_id; action lido CRU =
+        'product.update' (valor @map dotted, nao a chave JS product_update);
+        entity_type=product; before.discountPct=0/after=20; base e stock estaveis
+        nos 2 snapshots (delta limpo). MESMA tx estrutural (writeAuditLog(tx,...)
+        dentro da $transaction de updateProduct).
+    [4] discountPct rejeita >80 (faixa 0..80) -> PROVADO. Spec L288-315: input
+        com discountPct=81 -> ProductValidationError /Desconto/; estado intacto
+        (desconto continua 20, base continua P) e NENHUM audit novo (validacao
+        ANTES de prisma.$transaction => tx nem abre, sem orfao). Fronteira 80
+        provada valida via funcao pura.
+  invariantes: final-price-derived (sem coluna persistida; derivacao pura == SQL),
+        cents-only (price_cents/discount_pct integer; Int.isInteger), audit-same-tx
+        (1 linha na mesma tx; rejeicao = 0 orfao). Todas PROVADAS.
+  prova-propria: PROBE INDEPENDENTE (c:\rmcardstcg\_qa_probe_discount.tmp.ts +
+        c:\tmp\qa_probe_discount.ts, REMOVIDOS ao fim — tree limpo) subiu SEU PROPRIO
+        PG efemero (push+constraints+seed), chamou o SEAM REAL com VALORES DIFERENTES
+        da spec (P=50000, desconto 0->35) e FORCOU reserved=4>0 antes do update.
+        32 PASS / 0 FAIL. Provou a LOGICA, nao a constante:
+        - discount 0->35 persistido; base 50000 intocada; reserved CONTINUA 4
+          (updateProduct de desconto nao toca reserved — gap que a spec nao cobre,
+          pois ela nao forca reserved>0);
+        - finalPriceCents(50000,35)=32500 (funcao pura real) == derivacao SQL;
+        - BOUNDARY real no DB: discountPct=80 ACEITO (mutou p/ 80); discountPct=81
+          REJEITADO (ProductValidationError /Desconto/) — prova faixa inclusiva em 80
+          via mutacao real, nao so via funcao pura;
+        - audit +1 exatamente (product.update, before=0/after=35); rejeicao=0 audit
+          novo (sem orfao no rollback);
+        - CHECK products_reserved_le_stock_chk existe + 0 violacoes; cents-only.
+  produto   : git diff e0e83a1..HEAD -- app lib prisma => VAZIO (nenhum codigo de
+              produto tocado). Commit do estoque (4401bea) so mexeu em spec + ledger
+              + progress. next-env.d.ts (rewrite incidental do next dev) revertido;
+              tree limpo (so .claude/agent-memory/ infra). Ruido EBUSY/rmdir no
+              teardown do PG (Windows, apos passar) = cosmetico, ignorado.
+  estado    : ready_for_qa (NAO alterei). passes=true escrito pelo QA. qa_note=null.
