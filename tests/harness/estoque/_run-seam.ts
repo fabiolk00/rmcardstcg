@@ -31,8 +31,10 @@ import {
 import {
   adjustOrderPaymentStatus,
   applyPaymentStatusTx,
+  createOrderWithReservation,
   updateOrderInternalNote,
   updateOrderShippingStatus,
+  type CreateOrderInput,
   type PaymentRef,
 } from "../../../lib/data/orders";
 import {
@@ -83,6 +85,18 @@ type SetActiveArgs = { actor: AuditActor; id: string; isActive: boolean };
 // throw aborta a transacao (rollback total), exatamente como o checkout faz com
 // OutOfStockError. INFRA de teste: usa as funcoes de PRODUCAO sem mock.
 type ReserveArgs = { orderId: number; items: StockItem[] };
+// Espelha o call site de PRODUCAO do CHECKOUT (createOrderWithReservation,
+// lib/data/orders.ts L171): cria o pedido (pending) + itens E reserva o estoque na
+// MESMA prisma.$transaction. A idempotencia de checkout vive no proprio produto:
+// (1) curto-circuito barato findOrderByCheckoutKey ANTES da tx (reused:true se ja
+// existe); (2) checkoutKey @unique no DB — em corrida (double-submit), quem perde o
+// INSERT viola a unique (P2002 em checkout_key) e o produto re-le o vencedor e
+// devolve { ok:true, reused:true } (NUNCA cria pedido/cobranca dupla). Chamamos a
+// funcao de PRODUCAO direto (a server action de checkout so monta o input apos
+// validar carrinho/preco). INFRA de teste: usa a funcao de PRODUCAO sem mock; a spec
+// assertaa o estado real via pg (1 unica linha em orders p/ o checkoutKey, reserva
+// 1x). Devolve o CreateOrderResult com order.id como STRING (dominio).
+type CreateOrderArgs = { input: CreateOrderInput };
 // Espelha o ramo 'paid' de reconcileStockForPaymentStatus (orders.ts L448-454):
 // numa MESMA transacao, faz o CAS da flag (stock_committed=true, stock_reserved=
 // false WHERE stock_reserved=true AND stock_committed=false) e — SE o CAS reivindicou
@@ -387,6 +401,16 @@ async function main(): Promise<void> {
           });
           return reserve;
         });
+        break;
+      }
+      case "createOrderWithReservation": {
+        // Checkout de PRODUCAO: cria pedido (pending) + itens + reserva atomica na
+        // MESMA tx, com a idempotencia de double-submit por checkoutKey @unique
+        // embutida na funcao (curto-circuito + P2002 -> reused:true). Sem mock.
+        // Devolve o CreateOrderResult; a spec assertaa via pg que ha 1 unica linha em
+        // orders p/ o checkoutKey e que a reserva ocorreu 1x so.
+        const { input } = payload as CreateOrderArgs;
+        result = await createOrderWithReservation(input);
         break;
       }
       case "commitStockForOrder": {
