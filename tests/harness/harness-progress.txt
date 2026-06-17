@@ -1847,3 +1847,58 @@ SESSAO QA — estoque.price.update-discount-audited (PORTAO ADVERSARIAL)
               next-env.d.ts (rewrite incidental do next dev) revertido; tree limpo (so
               .claude/agent-memory/ infra). Ruido EBUSY/rmdir no teardown (Windows) = cosmetico.
   veredito  : passes=true, qa_note=null. state mantido em ready_for_qa (NAO alterei).
+
+================================================================================
+[BUILD] estoque.product.reactivate-audited — VEREDITO: VERDE (state=ready_for_qa)
+================================================================================
+  timestamp : 2026-06-17 09:24 -0300
+  time      : estoque (build)
+  feature   : estoque.product.reactivate-audited (priority 19) — DB-first.
+  seam      : setProductActive(actor, id, true) de lib/data/products.ts (L342-368) —
+              a funcao de menor nivel que prova a invariante: prisma.$transaction
+              { le before; no-op idempotente se ja no estado pedido; senao UPDATE
+              is_active + writeAuditLog na MESMA tx, action product_reactivate (=@map
+              DOTTED 'product.reactivate', schema.prisma L51) quando isActive=true,
+              before/after snapshots }. NAO usei a server action setProductActiveAction
+              (requireAdmin = contexto de request); ela so delega p/ setProductActive.
+  arquivos  : tests/harness/estoque/product-reactivate-audited.spec.ts (NOVA, sem
+              browser). REUSA o runner _run-seam.ts (op setProductActive JA existente
+              da sessao 18) SEM alteralo — NENHUMA extensao de runner foi necessaria.
+              Nenhum codigo de PRODUTO tocado.
+  o-que-fiz : Ritual OK (branch harness/admin; harness-progress + git log conferidos).
+              Marquei SO o state da feature: todo -> building -> ready_for_qa. Escrevi
+              spec que: (1) cria produto PROPRIO via createProduct (SKU/nome unicos
+              HARNESS-REACT-<uuid>), ATIVO (1 audit product.create); (2) FORCA reserved=
+              3>0 via UPDATE direto em pg (anti-trivial: "estado de estoque inalterado"
+              nao vira reserved=0->0; respeita CHECK 0<=reserved<=stock); (3) INATIVA o
+              produto via setProductActive(false) p/ chegar ao pre-estado da feature
+              (isActive=false; +1 audit product.inactivate => total 2 deste produto);
+              (4) ACAO-SOB-TESTE: setProductActive(true); (5) assertaa products.isActive
+              ==true, COUNT(products) inalterado (reativar nao cria/remove linha),
+              price/disc/stock/reserved/slug/sku INALTERADOS (so o flag mudou);
+              (6) audit_log ganha EXATAMENTE 1 linha (total +1 E por entity_id +1),
+              a mais recente tem action=='product.reactivate' (valor @map DOTTED lido
+              CRU via pg, nao a chave JS 'product_reactivate'), entity_type=='product',
+              before.isActive==false / after.isActive==true, e price/disc/stock iguais
+              nos dois snapshots (delta limpo); (7) reforco anti-fake: exatamente 1
+              linha product.reactivate p/ este produto; (8) rede final: CHECK
+              products_reserved_le_stock_chk valido (0 violacoes de 0<=reserved<=stock).
+  INFRA     : nenhuma mudanca de infra/produto (runner _run-seam intocado). Banco
+              efemero novo por run => isolamento; SKU/nome unicos (randomUUID).
+              Categoria valida "Booster Box".
+  invariante: audit-same-tx PROVADA: estrutural na producao (writeAuditLog(tx,...)
+              dentro do prisma.$transaction de setProductActive) + empirica (exatamente
+              1 linha product.reactivate nova com before.isActive=false/after.isActive=
+              true; +1 total E +1 por entity_id). reserved-le-stock segue como rede
+              final (CHECK + 0 violacoes; reserved=3 preservado).
+  estado    : ready_for_qa (state da feature no ledger). passes NAO tocado (campo do QA).
+  resultado : VERDE — `pnpm harness tests/harness/estoque/product-reactivate-audited.spec.ts`
+              => 1 passed (rodado 2x: 5.4s e 6.7s), seed 28 produtos / 8 pedidos. Gates:
+              typecheck OK, lint OK (0 warnings), prettier OK nos MEUS arquivos (spec +
+              ledger). next-env.d.ts revertido (rewrite incidental do next dev, nao
+              comitado). Ruido EBUSY/rmdir no teardown (Windows, apos passar) = cosmetico.
+  commit    : <preenchido no commit desta sessao>
+  proximo   : estoque.product.inactivate-idempotent (priority 20, state=todo) — inativar
+              produto JA inativo e no-op: setProductActive(false) novamente NAO grava
+              audit (count == A; before.isActive===isActive => return before, sem UPDATE
+              nem writeAuditLog). O runner ja suporta setProductActive — sem extensao.

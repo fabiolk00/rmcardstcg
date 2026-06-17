@@ -446,7 +446,7 @@
       "audit_log recebe 1 linha action=product.reactivate, before.isActive=false, after.isActive=true, na mesma transacao."
     ],
     "invariants": ["audit-same-tx"],
-    "state": "todo",
+    "state": "ready_for_qa",
     "passes": false,
     "qa_note": null,
     "fix_note": null,
