@@ -1118,3 +1118,37 @@ SESSAO 0018 — TIME ESTOQUE
               pedido pendente estorna a reserva: releaseStock(tx, lines) com reserved-=qty,
               stock inalterado, stockReserved=false. O runner precisara de uma op nova
               (releaseStockForOrder) p/ o ramo 'cancelled' (pending) do reconcile.
+
+--------------------------------------------------------------------------------
+SESSAO QA — estoque.commit.idempotent  (2026-06-17)
+--------------------------------------------------------------------------------
+  papel     : TIME QA (portao adversarial). UNICO autorizado a escrever passes/qa_note.
+              NAO corrige produto.
+  alvo      : feature id=estoque.commit.idempotent (state ready_for_qa, priority 11).
+  ritual    : pwd=C:\rmcardstcg, branch harness/admin, git log + harness-progress lidos.
+  gate-1    : Reproduzido do ZERO em PG efemero recem-seedado (28 produtos/8 pedidos),
+              `pnpm harness tests/harness/estoque/commit-idempotent.spec.ts` rodado 2x =>
+              1 passed cada (5.3s / 5.2s). VERDE reproduzivel.
+  gate-2    : Anti-fake-green. Li spec + asserts do ledger. Seam commitStockForOrder
+              (_run-seam.ts) chama a funcao de PRODUCAO commitStock (lib/data/inventory.ts)
+              dentro de prisma.$transaction, com o MESMO CAS byte-a-byte do ramo 'paid' de
+              reconcileStockForPaymentStatus (orders.ts L449-453). lines saem dos PROPRIOS
+              order_items. SEM mock. Cada assert do ledger exercitado e provado via pg cru:
+              [A1] claimed===0 na 2a aplicacao (CAS=0, commitStock nao roda); [A2] stock/
+              reserved permanecem pos-1a (sem dupla baixa, jamais 14/-1); [A3] flags
+              committed=true/reserved=false apos 2x. Anti-trivial: reserved residual=2>0 e
+              !=stock (uma 2a baixa o tornaria -1, barrado pelo CHECK).
+  gate-3    : Probe INDEPENDENTE (descartavel, REMOVIDO ao fim — tree limpo) com VALORES
+              DIFERENTES da spec (stock=12, reserved=7, qty=4) provou a LOGICA, nao a
+              constante: 1a baixa 12->8 / 7->3 (claimed=1); 2a no-op (claimed=0), estado
+              mantido 8/3; price_cents intocado; tudo Int (cents-only). Invariantes:
+              reserve-lifecycle-idempotent PROVADA; reserved-le-stock — CHECK
+              products_reserved_le_stock_chk EXISTE, 0 violacoes; PROVA ADVERSARIAL extra:
+              forcei reserved=-1 e o DB DISPAROU (products_reserved_nonneg_chk) => a guarda
+              contra dupla baixa e REAL, nao decorativa. audit-same-tx: commit de estoque
+              NAO escreve audit_log (count inalterado, sem orfao) — coerente.
+  gate-4    : git diff e0e83a1..HEAD -- app lib prisma == VAZIO (0 linhas). Time NAO tocou
+              produto.
+  VEREDITO  : APROVADO. Todos os asserts provados ponta a ponta contra o DB real. passes=
+              true, qa_note=null, state INALTERADO (ready_for_qa). Edit cirurgico no ledger
+              (1 linha: passes false->true), nenhuma outra feature tocada.
