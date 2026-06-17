@@ -462,3 +462,63 @@ SESSAO 0008 — TIME QA (gate adversarial)
   commit    : harness(qa): aprova estoque.product.increase-stock
   proximo   : estoque.product.reduce-stock-above-reserved (priority 5, state=todo)
               — fora do escopo desta sessao (so 1 feature por gate).
+
+--------------------------------------------------------------------------------
+SESSAO 0009 — TIME ESTOQUE
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 06:56 -0300
+  time      : estoque
+  feature   : estoque.product.reduce-stock-above-reserved (priority 5)
+  seam      : updateProduct(actor, id, input) em lib/data/products.ts. Funcao de
+              menor nivel que prova as invariantes: abre prisma.$transaction, le o
+              produto atual (before), aplica o guard data.stock < current.reserved
+              (L289 — irrelevante p/ REDUCAO ACIMA de reserved: 5 >= 2), recalcula
+              slug via uniqueSlug(tx, name, id) e grava audit product.update
+              (before/after) na MESMA tx (L320-327). A server action
+              updateProductAction so delega e exige requireAdmin() (contexto de
+              request), por isso nao usada.
+  arquivos  : tests/harness/estoque/product-reduce-stock-above-reserved.spec.ts
+              (spec DB-first, sem browser). Reusa o runner _run-seam.ts (INFRA ja
+              existente, suporta createProduct E updateProduct) SEM alteralo.
+              Nenhum codigo de PRODUTO tocado.
+  o-que-fiz : Ritual de inicio OK (branch harness/admin; init.sh => smoke DB-first
+              VERDE (1 passed) + 3 UI VERMELHOS de proposito = blocker proxy.ts
+              aceito). Marquei SO o state da feature: todo -> building -> ready_for_qa.
+              Escrevi spec que: (1) cria um produto PROPRIO via createProduct (SKU/nome
+              unicos por run, HARNESS-REDUCE-<uuid>) p/ NAO tocar o seed; (2) FORCA
+              reserved=R(2)>0 e stock=10 via UPDATE direto em `pg` — reserved e gerido
+              pelo ciclo de reserva, nunca por updateProduct, entao o seed direto e a
+              forma honesta de obter reserved>0 (anti-trivialidade: a DICA do QA proibe
+              reserved=0 p/ provar "reserved inalterado"); (3) chama updateProduct com
+              o MESMO input porem stock=5 (5 >= 2, reducao ACIMA de reserved);
+              (4) assertaa products.stock==5 (Int) e reserved==R(2) inalterado, e que
+              price_cents/discount_pct/sku/slug ficaram intactos (delta limpo);
+              disponivel == stock-reserved == 3; (5) CHECK products_reserved_le_stock_chk
+              existe + 0 violacoes de 0<=reserved<=stock + reforco 5>=2; (6) audit_log
+              ganha EXATAMENTE 1 linha (total +1 E por entity_id +1; createProduct ja
+              deixou 1, a reducao soma a 2a), pega a mais recente, action=='product.update'
+              (valor DOTTED do @map), entity_type=='product', before/after nao-null,
+              before.stock==10 e after.stock==5, priceCents/discountPct iguais nos dois
+              snapshots, e reserved AUSENTE no snapshot (auditSnapshot nao inclui
+              reserved) — reforco de que a reducao nem tangenciou reserved.
+  INFRA     : nenhuma mudanca de infra/produto. created_at irrelevante aqui (produto
+              proprio por id). Banco efemero novo por run => isolamento; SKU/nome unicos
+              (randomUUID) sem colisao. Categoria valida usada: "Booster Box" (CATEGORIES
+              de lib/data/types.ts — "Lacrado" NAO existe; corrigido apos 1o run vermelho).
+  invariante: reserved-le-stock PROVADA (CHECK existe via pg_constraint + 0 violacoes +
+              reserved==2 inalterado apos reduzir stock 10->5 + 5>=2 + disponivel=3).
+              audit-same-tx PROVADA: estrutural na producao (writeAuditLog(tx,...) dentro
+              de prisma.$transaction de updateProduct) + empirica (exatamente 1 linha
+              product.update nova com before.stock=10/after.stock=5).
+  estado    : ready_for_qa (state da feature no ledger). passes NAO tocado (campo do QA).
+  resultado : VERDE — `pnpm harness tests/harness/estoque/product-reduce-stock-above-reserved.spec.ts`
+              => 1 passed (rodado 2x: 3.1s e 1.8s), seed 28 produtos / 8 pedidos. Gates:
+              typecheck OK, lint OK (0 warnings), prettier OK nos MEUS arquivos (spec +
+              ledger; _run-seam intocado). format:check global so acusa .claude/* pre-
+              existente, fora do escopo. next-env.d.ts revertido (rewrite incidental do
+              next dev, nao comitado). Nota: teardown do PG efemero solta EBUSY/rmdir no
+              Windows DEPOIS do teste passar — ruido de infra, nao afeta o resultado.
+  commit    : <preenchido no commit desta sessao>
+  proximo   : estoque.product.reduce-below-reserved-blocks (priority 6, state=todo) —
+              updateProduct com stock ABAIXO de reserved (R=3, stock->2) BLOQUEIA com
+              ProductValidationError, nada gravado, sem audit, CHECK como rede final.
