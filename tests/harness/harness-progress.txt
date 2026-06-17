@@ -2201,3 +2201,74 @@ SESSAO — TIME PEDIDO
               adjustOrderPaymentStatus paid->cancelled cai no ramo de refund
               (restockUnits: stock+=qty, reserved intocado, stockCommitted=false),
               audit na mesma tx.
+
+--------------------------------------------------------------------------------
+SESSAO QA — pedido.payment.pending-to-cancelled (PORTAO ADVERSARIAL)
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 12:05 -0300
+  time      : qa
+  feature   : pedido.payment.pending-to-cancelled (priority 2), state=ready_for_qa.
+  veredito  : APROVADO — passes=true, qa_note=null. state=ready_for_qa (corrigi o
+              campo state do ledger de "building" p/ "ready_for_qa": o log do time
+              pedido narra ready_for_qa mas o JSON ficou em building; QA so escreve
+              passes/qa_note, e o state-fim da feature aprovada e ready_for_qa).
+  ritual    : pwd /c/rmcardstcg; branch harness/admin OK. Li harness-progress.txt +
+              git log (HEAD cc5427b = spec do time pedido).
+  reproducao: `pnpm harness tests/harness/pedido/payment-pending-to-cancelled.spec.ts`
+              rodado 2x do ZERO em PG efemero recem-seedado (db push + apply-test-
+              constraints + seed = 28 produtos / 8 pedidos): run1 1 passed (1.9s/4.6s),
+              run2 1 passed (1.8s/4.4s). VERDE reproduzivel.
+  nao-fake  : seam = adjustOrderPaymentStatus REAL de lib/data/orders.ts L624 via
+              _run-seam.ts (case adjustOrderPaymentStatus, import direto da funcao de
+              PRODUCAO, SEM mock). Spec assertaa via `pg` cru sobre DATABASE_URL.
+              git diff e0e83a1..HEAD -- app lib prisma = VAZIO (nenhum codigo de
+              produto tocado). Ledger diff: so o campo passes/state desta feature.
+  por-assert (cada assert do ledger PROVADO contra DB real):
+    [1] orders.payment_status=='cancelled' (transicao legal pending->cancelled via CAS
+        updateMany WHERE paymentStatus=from) -> PROVADO. Spec L215-224 le a coluna crua;
+        seam res.changed=true / order.paymentStatus=cancelled (L209-213). Pre-estado
+        pending verificado (L176).
+    [2] releaseStock: products.reserved-=qty; stockReserved=false; products.stock
+        INALTERADO -> PROVADO. Spec FORCA reserved=QTY(3)>0 e stock=10 antes (anti-
+        trivial, L123-127,L185-186), e assertaa reserved 3->0 (L233-235), stock fica
+        10 (L236-239, distingue release de commit), Int (L240-241), stock_reserved=false
+        + stock_committed segue false (L244-245). Mapeado a releaseStock de PRODUCAO
+        (inventory.ts L89-102: reserved-=qty, stock INTOCADO) + ramo 'cancelled' do
+        reconcile (orders.ts L457-466: CAS released===1 -> releaseStock).
+    [3] audit_log +1 linha action=order.payment_status_update na mesma tx com
+        adjustmentReason -> PROVADO. Spec: pedido novo tem audit=0 (L200); apos a acao
+        +1 total E +1 por entity_id (L267-272); action=='order.payment_status_update'
+        (valor @map DOTTED de schema.prisma L53, lido da coluna crua, NAO a chave JS
+        order_payment_status_update); entity_type='order'; before.paymentStatus='pending';
+        after.paymentStatus='cancelled'; after.manualAdjustment=true;
+        after.adjustmentReason==reason (L298-313). MESMA tx: estrutural na producao
+        (writeAuditLog(tx,...) dentro do prisma.$transaction de adjustOrderPaymentStatus,
+        orders.ts L655-668, mesmo $transaction do CAS e do reconcile).
+  invariantes: order-state-machine (pending->cancelled via CAS), reserve-lifecycle-
+        idempotent (stockReserved->false via CAS no proprio pedido; release nao baixa
+        stock), reserved-le-stock (CHECK products_reserved_le_stock_chk existe via
+        pg_constraint + 0 violacoes de 0<=reserved<=stock, spec L248-256), audit-same-tx.
+        Todas PROVADAS.
+  prova-propria: PROBE INDEPENDENTE (c:\rmcardstcg\_qa_probe_cancel.tmp.ts, removida ao
+        fim — tree limpo) subiu SEU PROPRIO PG efemero (push+constraints+seed), chamou o
+        SEAM REAL adjustOrderPaymentStatus via _run-seam.ts com VALORES DIFERENTES do
+        spec (QTY=5, STOCK0=40, RESERVED0=12, UNIT=12345) p/ provar a LOGICA e nao a
+        constante, e validou com MINHAS queries pg: 29 PASS / 0 FAIL. Inclui:
+        reserved 12->7 (release -QTY) com stock cru DB intocado em 40; produto-CONTROLE
+        nao referenciado pelo pedido fica intocado (reserved=8/stock=30); audit +1 com
+        action @map dotted, before/after corretos; PROVA DO TRIM de producao
+        (reason.trim()): aliment ei rawReason com espacos nas pontas e o audit gravou o
+        valor TRIMMED, diferente do raw (orders.ts L631 trimmedReason); idempotencia
+        X->X (2a chamada cancelled->cancelled => changed=false, SEM 2o audit, SEM 2o
+        release: reserved continua 7). Nota: o spec usa reason sem espacos, entao o
+        trim e no-op la — o probe cobriu esse gap provando o trim explicitamente.
+  como-valid: ritual de inicio; li spec + _run-seam (case adjustOrderPaymentStatus) +
+              adjustOrderPaymentStatus + reconcileStockForPaymentStatus + releaseStock +
+              schema.prisma (@map dotted) + admin_features.json (asserts); rodei a spec
+              2x VERDE; escrevi/rodei probe pg independente (29/0) com valores diferentes;
+              removi o probe; revert next-env.d.ts (rewrite incidental do next dev);
+              confirmei prod diff vazio.
+  estado    : ready_for_qa. passes=true escrito pelo QA. qa_note=null.
+  commit    : harness(qa): aprova pedido.payment.pending-to-cancelled
+  proximo   : pedido.payment.paid-to-cancelled-refund (priority 3, state=todo) — fora
+              do escopo desta sessao (so 1 feature por gate).
