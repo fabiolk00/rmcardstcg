@@ -153,3 +153,41 @@ SESSAO 0001 — TIME ESTOQUE
   commit    : 858ee3a
   proximo   : estoque.product.create-duplicate-sku (priority 2, state=todo) — SKU
               duplicado case-insensitive bloqueado, sem linha nova e sem audit (rollback).
+
+--------------------------------------------------------------------------------
+SESSAO 0002 — TIME QA (gate adversarial)
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 06:14 -0300
+  time      : qa
+  feature   : estoque.product.create (priority 1)
+  veredito  : APROVADO — passes=true, qa_note=null. state INALTERADO (ready_for_qa).
+  ritual    : pwd /c/rmcardstcg; branch harness/admin OK. init.sh => smoke DB-first
+              VERDE (1 passed) + 3 UI VERMELHOS (blocker proxy.ts aceito). Confirmado.
+  reproducao: `pnpm harness tests/harness/estoque/product-create.spec.ts` rodado 2x
+              em Postgres efemero recem-seedado (db push + apply-test-constraints +
+              seed = 28 produtos/8 pedidos). VERDE as duas vezes (939ms, 1.0s).
+              Isolamento OK: cada run banco novo; SKU/nome unicos por run (randomUUID).
+  anti-fake-green (cada assert do ledger PROVADO contra DB real via `pg`):
+    [1] count==N+1, slug derivado (^produto-harness-, sem [^a-z0-9-], ==created.slug),
+        isActive=true, reserved=0 -> spec L78,L102-131. PROVADO.
+    [2] price_cents=12999/discount_pct=15/stock=7 como Int + Number.isInteger
+        (cents-only) -> spec L134-140, lido das colunas reais. PROVADO.
+    [3] audit_log count==A+1; 1 linha p/ entity_id; action='product.create' (valor
+        DOTTED do @map em schema.prisma L48), entity_type='product', before=null,
+        after.{id,slug,priceCents,discountPct,stock} coerentes -> spec L144-175.
+        MESMA tx: estrutural na producao (writeAuditLog(tx,...) dentro de
+        prisma.$transaction em lib/data/products.ts createProduct L230-266) +
+        empirico (audit presente apos createProduct retornar). PROVADO.
+    [4] CHECK products_reserved_le_stock_chk existe (pg_constraint) e zero linhas
+        violam 0<=reserved<=stock -> spec L179-187. CHECK definido em
+        prisma/test-schema-supplement.sql L27-28 (reserved<=stock) + L21-22
+        (reserved>=0). PROVADO.
+  invariantes: cents-only (colunas Int no schema L95,96,99,102; sem float),
+        audit-same-tx (1 linha, mesma tx), reserved-le-stock (CHECK + 0 violacoes).
+        Todas PROVADAS.
+  nao-trapaca: seam chama a funcao de PRODUCAO createProduct (via _run-seam.ts/tsx),
+        SEM mock; spec assertaa via `pg` cru sobre DATABASE_URL. Nenhum assert
+        trivial/tautologico. tsc --noEmit limpo (seam binda assinatura real).
+        git diff e0e83a1..HEAD em app/lib/prisma = VAZIO (nenhum codigo de produto
+        tocado pelo time estoque).
+  proximo   : estoque.product.create-duplicate-sku (priority 2, state=todo).
