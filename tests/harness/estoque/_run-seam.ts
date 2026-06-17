@@ -54,6 +54,8 @@ import {
   FLAT_SHIPPING_CENTS,
   type CartLine,
 } from "../../../lib/cart/totals";
+import { couponDiscountCents } from "../../../lib/cart/coupon";
+import type { Coupon } from "../../../lib/data/coupons";
 import { prisma } from "../../../lib/db";
 import {
   commitStock,
@@ -142,6 +144,25 @@ type FinalPriceArgs = { priceCents: number; discountPct: number };
 // asserir contra os limites REAIS de producao, nao contra numeros magicos copiados.
 // INFRA de teste: usa a funcao de PRODUCAO sem mock.
 type CartTotalsArgs = { lines: CartLine[] };
+// Seam PURA de PROPERTY TEST de dinheiro (op moneyPropertyBatch) — chama as MESMAS
+// funcoes puras de PRODUCAO usadas no checkout, por caso, dentro de UM unico processo
+// tsx (em vez de 100+ spawns): finalPriceCents (lib/data/pricing.ts) por produto;
+// cartTotals (lib/cart/totals.ts) p/ subtotal/discount/merchandise/frete/total; e
+// couponDiscountCents (lib/cart/coupon.ts) p/ o abatimento de cupom sobre a mercadoria.
+// O total do PEDIDO com cupom e derivado pela MESMA aritmetica inteira do checkout de
+// PRODUCAO: merchandise - couponDiscount + shipping (couponDiscount nunca excede a
+// mercadoria, ver coupon.ts). Este case NAO toca prisma nem o banco — exatamente por
+// isso prova cents-only / final-price-derived / totals-formula sobre as funcoes puras.
+// A spec gera >=100 casos pseudo-aleatorios (seed fixa, reproduzivel) e assertaa cada
+// montante contra uma referencia inteira independente. INFRA de teste: usa as funcoes
+// de PRODUCAO sem mock; nenhuma logica de calculo e reimplementada aqui.
+type MoneyCase = {
+  // 1+ produtos no carrinho, cada um com preco base (centavos Int) e desconto 0..80.
+  products: { priceCents: number; discountPct: number; quantity: number }[];
+  // Cupom opcional aplicado sobre a mercadoria (percent 1..100 ou fixed em centavos).
+  coupon: { type: "percent"; percentOff: number } | { type: "fixed"; valueCents: number } | null;
+};
+type MoneyBatchArgs = { cases: MoneyCase[] };
 // Espelha o call site de PRODUCAO do AJUSTE MANUAL DE PAGAMENTO pelo admin
 // (adjustOrderPaymentStatusAction -> adjustOrderPaymentStatus, lib/data/orders.ts
 // L624). Numa MESMA transacao a funcao: le o pedido (before), valida X->X no-op,
@@ -514,6 +535,75 @@ async function main(): Promise<void> {
           FREE_SHIPPING_THRESHOLD_CENTS,
           FLAT_SHIPPING_CENTS,
         };
+        break;
+      }
+      case "moneyPropertyBatch": {
+        // Property test de dinheiro: roda as funcoes puras de PRODUCAO por caso, em UM
+        // unico processo. Para cada caso: monta CartLine[] (com finalPriceCents embutido
+        // via cartTotals), computa cartTotals(lines) e — se houver cupom — o abatimento
+        // via couponDiscountCents(coupon, merchandise) de PRODUCAO. O total do PEDIDO e
+        // derivado pela MESMA aritmetica inteira do checkout: merchandise - couponDiscount
+        // + shipping. Devolve, por caso, finalPriceCents por produto + os montantes do
+        // pedido, p/ a spec asserir contra uma referencia inteira independente. PURO: nao
+        // toca prisma. As constantes de frete vao junto p/ a spec nao usar numero magico.
+        const { cases } = payload as MoneyBatchArgs;
+        const results = cases.map((c) => {
+          const finals = c.products.map((p) =>
+            finalPriceCents({ priceCents: p.priceCents, discountPct: p.discountPct }),
+          );
+          const lines: CartLine[] = c.products.map((p, i) => ({
+            quantity: p.quantity,
+            product: {
+              id: "00000000-0000-0000-0000-000000000000",
+              slug: `prop-${i}`,
+              name: `prop-${i}`,
+              imageUrl: "/products/placeholder.svg",
+              priceCents: p.priceCents,
+              discountPct: p.discountPct,
+              stock: 999999,
+            },
+          }));
+          const totals = cartTotals(lines);
+          // Cupom (se houver) abate sobre a mercadoria JA descontada (merchandiseCents),
+          // exatamente como o checkout de PRODUCAO (lib/cart/coupon.ts).
+          let coupon = 0;
+          if (c.coupon) {
+            // Coupon completo p/ tipar a funcao de PRODUCAO; so type/percentOff/valueCents
+            // pesam em couponDiscountCents (os demais campos sao irrelevantes p/ o calculo).
+            const couponDomain: Coupon = {
+              id: "00000000-0000-0000-0000-000000000000",
+              code: "PROP",
+              type: c.coupon.type,
+              percentOff: c.coupon.type === "percent" ? c.coupon.percentOff : null,
+              valueCents: c.coupon.type === "fixed" ? c.coupon.valueCents : null,
+              minSubtotalCents: 0,
+              maxRedemptions: null,
+              perUserLimit: null,
+              redeemedCount: 0,
+              isActive: true,
+              startsAt: null,
+              expiresAt: null,
+              createdAt: "1970-01-01T00:00:00.000Z",
+              updatedAt: "1970-01-01T00:00:00.000Z",
+            };
+            coupon = couponDiscountCents(couponDomain, totals.merchandiseCents);
+          }
+          // Total do PEDIDO com cupom: merchandise - coupon + shipping (aritmetica inteira
+          // de checkout; couponDiscountCents ja garante 0 <= coupon <= merchandise).
+          const orderTotalCents = totals.merchandiseCents - coupon + totals.shippingCents;
+          return {
+            finalPriceCents: finals,
+            subtotalCents: totals.subtotalCents,
+            discountCents: totals.discountCents,
+            merchandiseCents: totals.merchandiseCents,
+            couponDiscountCents: coupon,
+            shippingCents: totals.shippingCents,
+            // total do CARRINHO (sem cupom, como cartTotals devolve) e do PEDIDO (com cupom).
+            cartTotalCents: totals.totalCents,
+            orderTotalCents,
+          };
+        });
+        result = { results, FREE_SHIPPING_THRESHOLD_CENTS, FLAT_SHIPPING_CENTS };
         break;
       }
       case "adjustOrderPaymentStatus": {
