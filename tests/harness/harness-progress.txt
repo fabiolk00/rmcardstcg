@@ -1061,3 +1061,60 @@ SESSAO 0017 — TIME QA
               producao, invariantes ligadas validadas com probe independente de valores
               distintos. passes=true, qa_note=null. state INALTERADO (ready_for_qa).
   commit    : <preenchido no commit desta sessao> (harness(qa): aprova ...)
+
+--------------------------------------------------------------------------------
+SESSAO 0018 — TIME ESTOQUE
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 08:02 -0300
+  time      : estoque
+  feature   : estoque.commit.idempotent (priority 11)
+  seam      : commitStock(tx, items) de lib/data/inventory.ts (L109-119), orquestrada
+              no MESMO compare-and-swap idempotente do ramo 'paid' de
+              reconcileStockForPaymentStatus (orders.ts L448-454). Reusei a op JA
+              EXISTENTE commitStockForOrder do _run-seam.ts (sessao 0016) — NENHUMA
+              extensao de runner foi necessaria: ela ja abre prisma.$transaction, le os
+              PROPRIOS itens do pedido, faz o CAS
+                UPDATE "orders" SET stock_committed=true, stock_reserved=false
+                WHERE id=? AND stock_reserved=true AND stock_committed=false
+              e SO chama commitStock se claimed===1; devolve { claimed }. NAO usei
+              adjustOrderPaymentStatus/applyPaymentStatusTx (arrastam Asaas/requireAdmin,
+              contexto de request); o efeito de ESTOQUE + idempotencia vive inteiramente
+              em commitStock + o CAS das flags (o MESMO CAS do reconcile de producao).
+  arquivos  : tests/harness/estoque/commit-idempotent.spec.ts (spec DB-first, sem
+              browser). _run-seam.ts INTOCADO. Nenhum codigo de PRODUTO tocado.
+  o-que-fiz : Ritual OK (branch harness/admin; harness-progress + git log conferidos).
+              Marquei SO o state da feature: todo -> building -> ready_for_qa. Escrevi
+              spec que: (1) cria produto PROPRIO via createProduct (SKU/nome unicos
+              HARNESS-COMMITIDEM-<uuid>) sem tocar o seed; (2) FORCA stock=20, reserved=
+              R(5) via UPDATE direto em pg (anti-trivial: reserved>0 e reserved-QTY=2>0,
+              entao uma 2a baixa levaria reserved a -1 e violaria o CHECK — provamos que
+              NAO acontece); (3) cria pedido PROPRIO via INSERT pg com stock_reserved=
+              true/stock_committed=false + UM order_item (qty=QTY=3); (4) APLICA o commit
+              DUAS vezes no MESMO pedido. 1a: claimed===1, stock 20->17 E reserved 5->2
+              (baixa real em ambas as colunas, delta==QTY cada), flags viradas
+              (committed=true, reserved=false); (5) 2a aplicacao: claimed===0 (CAS WHERE
+              stock_reserved=true AND stock_committed=false casa 0 linhas, pois a 1a ja
+              virou as flags) => commitStock NAO roda; (6) assertaa products.stock/
+              reserved permanecem 17/2 (== pos-1a, sem dupla baixa; jamais 14/-1),
+              Order.stockCommitted continua true e stockReserved continua false; (7)
+              reserved-le-stock: CHECK existe + 0 violacoes + reserved>=0 e <=stock;
+              cents-only: price_cents intocado.
+  INFRA     : nenhuma mudanca de infra/produto (runner _run-seam intocado; reuso da op
+              commitStockForOrder). Banco efemero novo por run => isolamento; SKU/nome/
+              pedido/item unicos (randomUUID). Categoria valida "Booster Box". Coluna do
+              pedido e clerk_user_id (nao user_id).
+  invariante: reserve-lifecycle-idempotent PROVADA (a 2a aplicacao e no-op via CAS=0:
+              commitStock so roda quando o CAS reivindica a transicao; sem dupla baixa).
+              reserved-le-stock PROVADA (CHECK existe + 0 violacoes + reserved residual
+              2>=0 e <=stock — uma dupla baixa teria deixado reserved=-1, barrado).
+  estado    : ready_for_qa (state da feature no ledger). passes NAO tocado (campo do QA).
+  resultado : VERDE — `pnpm harness tests/harness/estoque/commit-idempotent.spec.ts`
+              => 1 passed (rodado 2x: 2.7s/5.4s e 2.7s/5.2s), seed 28 produtos / 8 pedidos.
+              Gates: typecheck OK, lint OK (0 warnings), prettier OK nos MEUS arquivos
+              (spec + ledger; _run-seam intocado). Ruido EBUSY/rmdir no teardown
+              (Windows, apos passar) = cosmetico.
+  commit    : <preenchido no commit desta sessao>
+  proximo   : estoque.release.reserved-on-cancel (priority 12, state=todo) — cancelar
+              pedido pendente estorna a reserva: releaseStock(tx, lines) com reserved-=qty,
+              stock inalterado, stockReserved=false. O runner precisara de uma op nova
+              (releaseStockForOrder) p/ o ramo 'cancelled' (pending) do reconcile.
