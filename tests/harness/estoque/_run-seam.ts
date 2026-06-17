@@ -184,6 +184,21 @@ type WebhookReplayArgs = {
   payment: PaymentRef;
   payload?: unknown;
 };
+// Espelha O MESMO CORACAO DO HANDLER de webhook do Asaas (route.ts L136-156) PORÉM
+// com uma FALHA TRANSITORIA injetada DENTRO da prisma.$transaction, APOS o efeito de
+// estoque (applyPaymentStatusTx) mas ANTES de markWebhookEventProcessed. Isto modela
+// EXATAMENTE o caminho de 500 transitorio do route: qualquer throw dentro do
+// prisma.$transaction (timeout de DB, queda de conexao, erro de e-mail antes do
+// commit, etc.) faz a transacao inteira ROLLBACK e o route responde 500 p/ o Asaas
+// reenfileirar (catch -> NextResponse 500). Como ledger + efeito + mark-processed sao
+// a MESMA tx, o rollback DESFAZ tambem o recordWebhookEvent: nao sobra linha em
+// webhook_events com efeito aplicado (processed_at IS NULL -> reprocessar e seguro).
+// A unica diferenca p/ processAsaasWebhook e o `throw` apos o efeito (a falha de
+// infra simulada); a sequencia de chamadas de PRODUCAO e identica (sem mock). Devolve
+// { failed:true } apos o rollback p/ a spec correlacionar a entrega que deu 500.
+// INFRA de teste: o ponto de injecao espelha "qualquer erro dentro do $transaction
+// antes do mark-processed", que o route ja trata como 500 transitorio.
+type WebhookTransientFailArgs = WebhookReplayArgs;
 // Espelha o call site de PRODUCAO da MAQUINA DE ENVIO pelo admin
 // (updateOrderShippingStatusAction -> updateOrderShippingStatus, lib/data/orders.ts
 // L523). Numa MESMA transacao a funcao: le o pedido (before), trata X->X no-op,
@@ -310,6 +325,24 @@ class RedeemAbort extends Error {
     super("redeem_abort");
     this.name = "RedeemAbort";
     this.result = result;
+  }
+}
+
+/**
+ * Falha transitoria do webhook (op processAsaasWebhookFailing) — lancada DENTRO do
+ * prisma.$transaction APOS o efeito de estoque e ANTES do mark-processed, p/ FORCAR
+ * o rollback da transacao inteira (espelha o caminho de 500 transitorio do route:
+ * qualquer erro dentro do $transaction => rollback => NextResponse 500). Carrega o
+ * desfecho { failed:true } p/ a spec correlacionar a entrega que deu 500, re-emitido
+ * como __SEAM_RESULT__ apos o rollback (nada parcial persiste: o ledger e o efeito
+ * sumiram com a transacao).
+ */
+class TransientWebhookFailure extends Error {
+  readonly result: { failed: true };
+  constructor() {
+    super("transient_webhook_500");
+    this.name = "TransientWebhookFailure";
+    this.result = { failed: true };
   }
 }
 
@@ -506,6 +539,36 @@ async function main(): Promise<void> {
         );
         break;
       }
+      case "processAsaasWebhookFailing": {
+        // MESMO miolo de processAsaasWebhook (route.ts L136-156) — record + guard +
+        // applyPaymentStatusTx — porem com uma FALHA TRANSITORIA injetada APOS o efeito
+        // e ANTES de markWebhookEventProcessed: lanca TransientWebhookFailure DENTRO da
+        // $transaction p/ forcar ROLLBACK (modela o 500 transitorio do route, cujo catch
+        // responde 500). Como ledger + efeito + mark-processed sao a MESMA tx, o rollback
+        // DESFAZ o recordWebhookEvent E o efeito de estoque: nada parcial persiste e o
+        // processed_at fica/segue NULL — exatamente a pre-condicao do retry seguro. As
+        // chamadas de PRODUCAO sao identicas a processAsaasWebhook (sem mock); so o throw
+        // (falha de infra simulada) e adicional.
+        const wh = payload as WebhookTransientFailArgs;
+        result = await prisma.$transaction(
+          async (tx) => {
+            const { firstTime } = await recordWebhookEvent(tx, {
+              provider: ASAAS_PROVIDER,
+              eventId: wh.eventId,
+              type: wh.type,
+              payload: (wh.payload ?? null) as never,
+            });
+            if (!firstTime && (await isWebhookEventProcessed(tx, ASAAS_PROVIDER, wh.eventId))) {
+              return { duplicate: true as const };
+            }
+            await applyPaymentStatusTx(tx, wh.orderId, wh.status, wh.payment);
+            // Falha transitoria ANTES do mark-processed -> rollback de TUDO (500 do route).
+            throw new TransientWebhookFailure();
+          },
+          { timeout: 15000, maxWait: 5000 },
+        );
+        break;
+      }
       case "updateOrderShippingStatus": {
         // Maquina de envio do admin (transicao validada + audit na MESMA tx; estoque
         // so e conciliado em to==='cancelled'), via a funcao de PRODUCAO. Devolve o
@@ -592,6 +655,14 @@ async function main(): Promise<void> {
     // Aborto intencional da redencao (ok:false): a transacao ja sofreu rollback;
     // re-emitimos o resultado como SUCESSO de protocolo p/ a spec assertaa.
     if (err instanceof RedeemAbort) {
+      process.stdout.write(`__SEAM_RESULT__${JSON.stringify(err.result)}\n`);
+      return;
+    }
+    // Falha transitoria do webhook (500 modelado): a transacao ja sofreu rollback
+    // (ledger + efeito desfeitos). Re-emitimos { failed:true } como SUCESSO de
+    // protocolo p/ a spec correlacionar a entrega que deu 500 e provar que nada
+    // parcial persistiu (processed_at segue NULL, efeito nao aplicado).
+    if (err instanceof TransientWebhookFailure) {
       process.stdout.write(`__SEAM_RESULT__${JSON.stringify(err.result)}\n`);
       return;
     }
