@@ -1039,7 +1039,7 @@
       "Recontagem sob advisory lock por (cupom,usuario) garante o limite."
     ],
     "invariants": ["coupon-redeem-limits"],
-    "state": "todo",
+    "state": "ready_for_qa",
     "passes": false,
     "qa_note": null,
     "fix_note": null,

@@ -3709,3 +3709,12 @@ SESSAO — TIME QA
     A3 coupon_redemptions 1 linha + CHECK >=0/<=max: L127-131 sanity coupons_redeemed_count_chk existe (guarda nao-vacua; confirmado test-schema-supplement.sql L44); L221-226 exatamente 1 linha p/ o cupom = a do orderA; L229-233 orderB nao deixou linha (rollback total); L236-244 0 violacoes de redeemed_count>=0 nem do teto redeemed_count<=max.
   Invariante coupon-redeem-limits (unica listada): exercitada no DB (CAS global atomico, nenhuma redencao alem do teto, contador e tabela coerentes). audit-same-tx NAO esta listada e redeemCoupon nao grava audit_log -> correto a spec nao asserir.
   Produto intocado: git diff e0e83a1..HEAD -- app lib prisma VAZIO.
+
+[PEDIDO] 2026-06-17 cupom.redeem.per-user-limit (priority 23) -> ready_for_qa (state SOMENTE; passes intocado=false p/ o QA).
+  Spec nova: tests/harness/pedido/cupom-redeem-per-user-limit.spec.ts. Seam=redeemCoupon de PRODUCAO (lib/data/coupons.ts:364) via _run-seam.ts (case ja existente, usado verde pela irma global-limit); createCoupon (L150) semeia o cupom. DB-first, sem browser, assercoes via pg sobre DATABASE_URL. SEM mock, produto intocado.
+  Dados proprios anti-trivial: cupom percent perUserLimit=1 E maxRedemptions=null (global ILIMITADO p/ isolar a causa); DOIS pedidos distintos orderA!=orderB do MESMO usuario (order_id UNIQUE exige outro pedido p/ provar perUserLimit, nao idempotencia por pedido); pre-estado redeemed_count=0/max_redemptions NULL.
+    A1 1a redencao do usuario ok: retorno ok:true/alreadyRedeemed=false + 1 linha em coupon_redemptions p/ (couponId,userId).
+    A2 2a do MESMO usuario ok:false reason='per_user_limit': retorno ok:false/reason='per_user_limit'; recontagem sob advisory lock (cupom,usuario) viu used>=limit e abortou (RedeemAbort -> rollback total); orderB nao deixou linha.
+    A3 coupon_redemptions 1 linha p/ (coupon_id,clerk_user_id) = a do orderA; sanity redeemed_count==1 (so a 1a incrementou) prova que foi o perUserLimit -- nao o global -- que barrou; 0 violacoes de redeemed_count>=0/<=max.
+  Invariante coupon-redeem-limits (unica listada): ramo per-user exercitado no DB (recontagem sob advisory lock, nenhuma redencao alem do teto por usuario). audit-same-tx nao listada e redeemCoupon nao grava audit_log -> correto nao asserir.
+  Gates: pnpm typecheck OK; pnpm lint OK; prettier --check no spec OK. Harness: 1 passed reproduzivel (2x). needs_product_fix=false. Proximo: cupom.redeem.idempotent-per-order (priority 24, todo).
