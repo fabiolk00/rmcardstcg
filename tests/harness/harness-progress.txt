@@ -2984,3 +2984,56 @@ SESSAO QA — pedido.shipping.sent-to-delivered (PORTAO ADVERSARIAL)
   estado    : ready_for_qa (NAO alterei). passes=true escrito pelo QA. qa_note=null.
   commit    : harness(qa): aprova pedido.shipping.sent-to-delivered
   proximo   : pedido.shipping.skip-blocked (priority 9, state=todo) — fora do escopo (1 feature/gate).
+
+--------------------------------------------------------------------------------
+SESSAO — TIME PEDIDO
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 13:08 -0300
+  time      : pedido
+  feature   : pedido.shipping.skip-blocked (priority 9)
+  seam      : updateOrderShippingStatus(orderId, 'delivered', actor) de lib/data/orders.ts
+              (L523), via _run-seam.ts (case ja suportado, _run-seam INTOCADO). Para o pulo
+              ILEGAL pending->delivered a funcao: abre prisma.$transaction, le o pedido
+              (existing), trata X->X no-op (from!==to aqui) e valida
+              SHIPPING_TRANSITIONS[from].includes(to) (orders.ts L541). Como
+              SHIPPING_TRANSITIONS.pending===['sent','cancelled'] (orderTransitions.ts L13)
+              NAO inclui 'delivered', retorna { ok:false, reason:'invalid_transition',
+              from:'pending', to:'delivered' } (L542) ANTES do updateMany (L545), de qualquer
+              conciliacao de estoque (so to==='cancelled', L554) e de writeAuditLog (L558).
+              A server action so DELEGA apos requireAdmin() (contexto de request), por isso
+              chamada a funcao de lib/data direto.
+  arquivos  : tests/harness/pedido/shipping-skip-blocked.spec.ts (spec DB-first, sem browser).
+              Reusa o runner tests/harness/estoque/_run-seam.ts (INFRA ja existente, suporta
+              updateOrderShippingStatus) SEM alteralo. Nenhum codigo de PRODUTO tocado.
+  o-que-fiz : Ritual OK (branch harness/admin; harness-progress + git log lidos). Marquei SO
+              o state da feature: todo -> building -> ready_for_qa. Escrevi spec que:
+              (1) cria PRODUTO proprio (createProduct, SKU/nome HARNESS-SKIP-<uuid>) sem tocar
+              o seed; FORCA stock=10 / reserved=3(>0) via UPDATE direto (reserva ativa,
+              anti-trivialidade do "nada gravado"); (2) INSERE pedido proprio com
+              shipping_status='pending', payment_status='pending', stockReserved=true + 1 item
+              (qty=3); sanidade do pre-estado; (3) chama updateOrderShippingStatus(.., 'delivered')
+              PULANDO 'sent'; (4) ASSERT 1: ok:false, reason='invalid_transition', from='pending',
+              to='delivered'; (5) ASSERT 2: orders.shipping_status permanece 'pending' (nada
+              gravado), payment_status inalterado (pending), flags do pedido intactas
+              (stockReserved=true/stockCommitted=false), estoque do produto intacto
+              (stock=10/reserved=3); CHECK products_reserved_le_stock_chk existe + 0 violacoes;
+              (6) ASSERT 3: audit_log total E por entity_id INALTERADOS (transicao ilegal retorna
+              ANTES de writeAuditLog) + 0 linhas order.shipping_status_update p/ o pedido (sem
+              orfao); (7) CONTRA-PROVA: do MESMO 'pending', a transicao LEGAL pending->sent
+              APLICA (ok:true, changed:true, shipping_status->'sent') e SIM deixa exatamente 1
+              audit order.shipping_status_update — prova que o ok:false do pulo veio da maquina
+              de estados, nao de um erro generico que barraria tudo.
+  invariante: order-state-machine PROVADA (pulo pending->delivered barrado por
+              SHIPPING_TRANSITIONS; contra-prova pending->sent legal aplica). audit-same-tx
+              PROVADA: a transicao ilegal retorna ANTES de writeAuditLog => audit total/por-entity
+              inalterado e 0 order.shipping_status_update orfao; a contra-prova legal deixa 1
+              (delta limpo).
+  estado    : ready_for_qa (state da feature no ledger). passes NAO tocado (campo do QA).
+  resultado : VERDE — `pnpm harness tests/harness/pedido/shipping-skip-blocked.spec.ts`
+              => 1 passed (rodado 2x: 5.6s e 5.5s; teste 2.7-2.8s), seed 28 produtos / 8 pedidos.
+              Gates: typecheck OK, lint OK (0 warnings), prettier OK nos MEUS arquivos (spec +
+              ledger; _run-seam intocado). Ruido "could not receive data from client" no
+              teardown do PG efemero (Windows, apos passar) = cosmetico.
+  commit    : <preenchido no commit desta sessao>
+  proximo   : pedido.shipping.regression-blocked (priority 10, state=todo) — regressao
+              delivered->sent barrada (invalid_transition), nada gravado, sem audit.
