@@ -522,3 +522,58 @@ SESSAO 0009 — TIME ESTOQUE
   proximo   : estoque.product.reduce-below-reserved-blocks (priority 6, state=todo) —
               updateProduct com stock ABAIXO de reserved (R=3, stock->2) BLOQUEIA com
               ProductValidationError, nada gravado, sem audit, CHECK como rede final.
+
+--------------------------------------------------------------------------------
+SESSAO 0010 — TIME QA (gate adversarial)
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 07:02 -0300
+  time      : qa
+  feature   : estoque.product.reduce-stock-above-reserved (priority 5)
+  veredito  : APROVADO (passes=true, state inalterado=ready_for_qa, qa_note=null).
+  ritual    : pwd /c/rmcardstcg; branch harness/admin OK. init.sh => smoke DB-first
+              VERDE (1 passed) + 3 UI VERMELHOS (blocker proxy.ts aceito). Confirmado.
+  reproduzi : `pnpm harness tests/harness/estoque/product-reduce-stock-above-reserved.spec.ts`
+              => 1 passed DUAS vezes (2.8s e 1.8s) em PG efemero recem-seedado
+              (db push + apply-test-constraints + seed). Ruido EBUSY/rmdir no teardown
+              (Windows, DEPOIS do teste passar) = cosmetico, ignorado.
+  nao-fake  : seam runner tests/harness/estoque/_run-seam.ts importa e chama
+              updateProduct/createProduct de PRODUCAO (lib/data/products.ts) SEM mock.
+              Spec assertaa via `pg` cru sobre DATABASE_URL. git diff e0e83a1..HEAD
+              -- app lib prisma = VAZIO (nenhum codigo de produto tocado).
+  por-assert (cada assert do ledger PROVADO contra DB real):
+    [1] products.stock==5 & reserved==R(2) inalterado -> PROVADO. ANTI-TRIVIAL: a spec
+        FORCA reserved=2>0 via UPDATE direto (L130-134) e exige p0.reserved==2 + R>0
+        (L146-147); reserved nem e campo do input de updateProduct. A reducao e REAL
+        (10->5, L197 stock<STOCK_BEFORE) e ACIMA de reserved (5>=2, guard L289
+        data.stock<current.reserved = falso, permite). disponivel=stock-reserved=3
+        (L208). price/discount/sku/slug intactos (delta limpo, L201-205). stock Int.
+    [2] CHECK 0<=reserved<=stock valido -> PROVADO. products_reserved_le_stock_chk
+        existe (pg_constraint, L211-214); 0 violacoes (L215-219); 5>=2 (L221). Nota
+        de fidelidade: o CHECK real do test-supplement e (reserved<=stock) + um
+        separado (reserved>=0); a query de violacao da spec (reserved>=0 AND
+        reserved<=stock) e MAIS ESTRITA que cada CHECK isolado, entao o pass continua
+        provando a condicao. Nao enfraquece.
+    [3] audit_log +1, action=product.update, MESMA tx, before.stock=10/after.stock=5
+        -> PROVADO. Estrutural: writeAuditLog(tx, ...) com tx.auditLog.create DENTRO
+        do prisma.$transaction de updateProduct (audit.ts L74; products.ts L320-327).
+        action gravado e o valor @map DOTTED 'product.update' (schema.prisma L49) — a
+        spec le a coluna crua via pg e compara com a string on-disk, nao a chave JS do
+        enum (que e 'product_update'). +1 total E +1 por entity_id (L231-236). Delta
+        limpo: priceCents/discountPct iguais nos 2 snapshots; auditSnapshot NEM inclui
+        reserved (L272-275, reforco de que a reducao nao tocou reserved).
+  prova-propria: PROBE INDEPENDENTE (c:\rmcardstcg\_qa_probe_reduce.tmp.ts, removido ao
+        fim) subiu SEU PROPRIO PG efemero, push+constraints+seed, chamou o SEAM REAL
+        updateProduct via _run-seam.ts com VALORES DIFERENTES do spec (R=4, stock
+        20->12, priceCents 30000, discountPct 5) p/ provar a LOGICA e nao a constante,
+        e validou com MINHAS queries pg: 26 PASS / 0 FAIL. Incl. reserved cru no DB
+        ==4 apos a reducao, exatamente 1 product.update p/ o produto (sem audit orfao),
+        before.stock=20/after.stock=12, snapshot sem reserved, pg_constraint do CHECK.
+  como-valid: ritual de inicio (branch, init.sh smoke VERDE); li spec + _run-seam +
+              updateProduct + normalizeProductInput + writeAuditLog + auditSnapshot +
+              test-schema-supplement (CHECKs) + schema.prisma (@map dotted); rodei a
+              spec 2x VERDE; escrevi/rodei probe pg independente (26/0); removi o probe
+              (tree limpo); confirmei prod diff vazio.
+  estado    : ready_for_qa (NAO alterei). passes=true escrito pelo QA. qa_note=null.
+  commit    : harness(qa): aprova estoque.product.reduce-stock-above-reserved
+  proximo   : estoque.product.reduce-below-reserved-blocks (priority 6, state=todo)
+              — fora do escopo desta sessao (so 1 feature por gate).
