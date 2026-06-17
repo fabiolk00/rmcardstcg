@@ -2146,3 +2146,58 @@ GATE executado de verdade (nao confiei em relatorio):
    Probe removido ao fim (tree limpo).
 4) Produto intocado: `git diff e0e83a1..HEAD -- app lib prisma` VAZIO. HEAD (3b03e2e) so adiciona infra de teste (_run-seam.ts), a spec, o flip de state no ledger e progress.
 VEREDITO: todos os asserts provados ponta a ponta => passes=true, qa_note=null, state inalterado (ready_for_qa).
+
+--------------------------------------------------------------------------------
+SESSAO — TIME PEDIDO
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 11:36 -0300
+  time      : pedido
+  feature   : pedido.payment.pending-to-cancelled (priority 2)
+  seam      : adjustOrderPaymentStatus(orderId, 'cancelled', reason, actor) de
+              lib/data/orders.ts (L624) — funcao de menor nivel que prova as
+              invariantes: abre prisma.$transaction, le o pedido (before), no-op
+              X->X, CAS de payment_status (updateMany WHERE paymentStatus=from),
+              concilia estoque via reconcileStockForPaymentStatus ramo 'cancelled'
+              (orders.ts L457-466: CAS UPDATE orders SET stock_reserved=false WHERE
+              id=? AND stock_reserved=true AND stock_committed=false; SE released===1
+              => releaseStock(tx, lines): reserved-=qty, stock INTOCADO) e grava
+              audit_log (order.payment_status_update, after.manualAdjustment=true/
+              adjustmentReason) — TUDO na MESMA tx. A server action so DELEGA apos
+              requireAdmin() (contexto de request), por isso nao usada.
+  arquivos  : tests/harness/pedido/payment-pending-to-cancelled.spec.ts (spec
+              DB-first, sem browser). Reusa o runner _run-seam.ts (INFRA ja existente,
+              suporta adjustOrderPaymentStatus c/ qualquer PaymentStatus) SEM altera-lo.
+              Nenhum codigo de PRODUTO tocado.
+  o-que-fiz : Ritual OK (branch harness/admin; harness-progress + git log lidos).
+              Marquei SO o state da feature: todo -> building -> ready_for_qa. Espelhei
+              a spec irma verde (payment-pending-to-paid). Spec que: (1) cria PRODUTO
+              proprio via createProduct (SKU/nome unicos HARNESS-CANCEL-<uuid>) sem
+              tocar o seed; (2) FORCA reserved=QTY(3)>0 e stock=10 via UPDATE direto
+              (reserved e gerido pelo ciclo de reserva, nunca por admin avulso); (3)
+              INSERT direto de PEDIDO proprio pending/stockReserved=true/stockCommitted=
+              false + 1 item QTY; sanidade do pre-estado (reserved>0, flags, audit=0);
+              (4) chama adjustOrderPaymentStatus(orderId,'cancelled',reason,actor) e
+              exige ok/changed/order.paymentStatus=cancelled; (5) ASSERTS via pg:
+              payment_status=='cancelled'; reserved baixa QTY (3->0) MAS stock FISICO
+              fica 10 (release nao baixa estoque — distingue de commit); stockReserved
+              vira false, stockCommitted segue false; CHECK products_reserved_le_stock_chk
+              existe + 0 violacoes 0<=reserved<=stock; audit_log +1 total E +1 por
+              entity_id, action=='order.payment_status_update' (valor @map DOTTED lido
+              da coluna crua), entity_type='order', before.paymentStatus='pending',
+              after.paymentStatus='cancelled', after.manualAdjustment=true,
+              after.adjustmentReason==reason.
+  invariante: order-state-machine (pending->cancelled legal via CAS),
+              reserve-lifecycle-idempotent (stockReserved->false via CAS no proprio
+              pedido; release nao baixa stock fisico), reserved-le-stock (CHECK + 0
+              violacoes + reserved 3->0), audit-same-tx (exatamente 1 linha na mesma
+              tx, action/before/after corretos). Todas PROVADAS.
+  estado    : ready_for_qa (state da feature no ledger). passes NAO tocado (campo do QA).
+  resultado : VERDE — `pnpm harness tests/harness/pedido/payment-pending-to-cancelled.spec.ts`
+              => 1 passed (rodado 2x: 1.8s/4.5s e 1.8s/4.4s), seed 28 produtos / 8 pedidos.
+              Gates: typecheck OK, lint OK (0 warnings), prettier OK nos MEUS arquivos
+              (spec + ledger). Ruido EBUSY/rmdir no teardown (Windows, apos passar) = cosmetico.
+  commit    : <preenchido no commit desta sessao>
+  proximo   : pedido.payment.paid-to-cancelled-refund (priority 3, state=todo) —
+              adjustOrderPaymentStatus paid->cancelled cai no ramo de refund
+              (restockUnits: stock+=qty, reserved intocado, stockCommitted=false),
+              audit na mesma tx.

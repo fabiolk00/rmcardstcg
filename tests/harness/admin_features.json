@@ -527,7 +527,7 @@
       "reserve-lifecycle-idempotent",
       "reserved-le-stock"
     ],
-    "state": "todo",
+    "state": "building",
     "passes": false,
     "qa_note": null,
     "fix_note": null,
