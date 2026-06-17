@@ -3740,3 +3740,14 @@ SESSAO — TIME QA
   Invariante coupon-redeem-limits (unica listada): exercitada no DB no ramo idempotencia-por-pedido. audit-same-tx NAO listada e redeemCoupon nao grava audit_log -> correto nao asserir.
   Produto INTOCADO (so escrevi teste; _run-seam.ts ja suportava redeemCoupon). Gates verdes: pnpm typecheck OK, pnpm lint OK (--max-warnings 0), prettier --check no spec OK.
   PROXIMO: cupom.deactivate.audited (priority 25, state=todo).
+
+[2026-06-17 16:46] time:pedido feature:cupom.deactivate.audited (priority 25) estado:ready_for_qa
+  O-QUE-FIZ: escrevi tests/harness/pedido/cupom-deactivate-audited.spec.ts (DB-first, sem browser), provando "Admin inativa cupom (coupon.deactivate auditado)" contra o Postgres efemero real via pg sobre process.env.DATABASE_URL. SEAM: setCouponActive de PRODUCAO (lib/data/coupons.ts:213). ESTENDI o runner _run-seam.ts com o case 'setCouponActive' (INFRA de teste; createCoupon/updateCoupon ja existiam, setCouponActive nao). Setup do cupom ativo via createCoupon de PRODUCAO. Verde e reproduzivel (2x antes do prettier + 1x apos o prettier reformatar o spec: sempre 1 passed, ~5.4s).
+  CAUSA-RAIZ exercitada: setCouponActive roda prisma.$transaction { le before; tx.coupon.update({data:{isActive}}); writeAuditLog(tx, action = isActive ? coupon_update : coupon_deactivate) }. action condicionada ao destino (coupons.ts:226). @map DOTTED confirmado no schema.prisma:56-59 (coupon.deactivate / coupon.update).
+  Dados PROPRIOS anti-trivial: cupom percent code unico por run, criado ATIVO; pre-assert is_active=true no DB (senao inativar seria vacuo). redeemed_count forcado =4 DIRETO no DB p/ provar que setCouponActive so toca is_active (contador preservado pos-inativacao). Delta GLOBAL de audit_log medido +1 exato em CADA passo (nem 0 nem 2). entity_id unico isola do seed.
+    A1 "is_active==false sem apagar": apos setCouponActive(false) -> is_active=false E COUNT(*)==1 (soft, nao delete); redeemed_count==4 intacto.
+    A2 "1 linha coupon.deactivate na MESMA tx": delta global +1; exatamente 1 audit action='coupon.deactivate' p/ entity_id; before.isActive=true, after.isActive=false; 0 linhas coupon.update ainda.
+    A3 "religar audita coupon.update": setCouponActive(true) -> is_active=true; delta global +1; exatamente 1 audit action='coupon.update' (NAO deactivate); before.isActive=false, after.isActive=true; coupon.deactivate permanece a unica (1) — religar nao duplicou.
+  Invariante audit-same-tx (unica listada): exercitada em ambas as mutacoes (writeAuditLog dentro do prisma.$transaction; 1 linha por mutacao, action/before/after corretos).
+  Produto INTOCADO: git diff -- app lib prisma VAZIO. So escrevi teste + INFRA de teste (case do runner). Gates verdes nos meus arquivos: pnpm typecheck OK, eslint OK (--max-warnings 0) no spec + _run-seam.ts, prettier --check OK (spec reformatado por prettier --write, re-rodado verde).
+  PROXIMO: cupom.delete.unused-ok (priority 26, state=todo).

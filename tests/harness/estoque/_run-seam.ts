@@ -38,6 +38,7 @@ import {
 import {
   createCoupon,
   updateCoupon,
+  setCouponActive,
   redeemCoupon,
   type CouponInput,
 } from "../../../lib/data/coupons";
@@ -204,6 +205,16 @@ type CreateCouponArgs = { actor: AuditActor; input: CouponInput };
 // request), por isso chamamos a funcao de lib/data direto. INFRA de teste: usa a
 // funcao de PRODUCAO sem mock; a spec assertaa o estado real via pg.
 type UpdateCouponArgs = { actor: AuditActor; id: string; input: CouponInput };
+// Espelha o call site de PRODUCAO de ATIVAR/INATIVAR CUPOM pelo admin
+// (setCouponActiveAction -> setCouponActive, lib/data/coupons.ts L213). Numa MESMA
+// prisma.$transaction a funcao: le o cupom (before), faz tx.coupon.update apenas do
+// campo isActive e grava audit_log na mesma tx — com action coupon.deactivate quando
+// isActive=false (cupom sai de circulacao sem ser apagado) e coupon.update quando
+// isActive=true (religar). before/after = snapshots do dominio. Cupom inexistente ->
+// { ok:false, error }. A server action so DELEGA apos requireAdmin() (contexto de
+// request), por isso chamamos a funcao de lib/data direto. INFRA de teste: usa a
+// funcao de PRODUCAO sem mock; a spec assertaa o estado real via pg.
+type SetCouponActiveArgs = { actor: AuditActor; id: string; isActive: boolean };
 // Espelha o call site de PRODUCAO da REDENCAO DE CUPOM no checkout
 // (placeOrder/confirmacao -> redeemCoupon, lib/data/coupons.ts L364). redeemCoupon
 // recebe um `tx` externo na PRODUCAO (corre DENTRO da transacao do checkout); aqui o
@@ -460,6 +471,15 @@ async function main(): Promise<void> {
         // { ok:false, error }); a spec assertaa o estado real via pg.
         const { actor, id, input } = payload as UpdateCouponArgs;
         result = await updateCoupon(actor, id, input);
+        break;
+      }
+      case "setCouponActive": {
+        // Ativa/inativa cupom pelo admin (UPDATE is_active + audit na MESMA tx:
+        // coupon.deactivate ao desligar, coupon.update ao religar), via a funcao de
+        // PRODUCAO. Devolve o CouponMutationResult ({ ok:true, coupon } |
+        // { ok:false, error }); a spec assertaa o estado real via pg.
+        const { actor, id, isActive } = payload as SetCouponActiveArgs;
+        result = await setCouponActive(actor, id, isActive);
         break;
       }
       case "redeemCoupon": {
