@@ -2073,3 +2073,60 @@ SESSAO QA — estoque.product.inactivate-idempotent (PORTAO ADVERSARIAL)
   commit    : harness(qa): aprova estoque.product.inactivate-idempotent
   proximo   : NAO HA MAIS feature team=estoque (todas as 20 ready_for_qa + passes=true).
               Restam apenas features team=pedido (27, state=todo) para o outro time.
+
+--------------------------------------------------------------------------------
+SESSAO PEDIDO — pedido.payment.pending-to-paid (priority 1)
+--------------------------------------------------------------------------------
+  timestamp : 2026-06-17 11:26 -0300
+  time      : pedido (build)
+  feature   : pedido.payment.pending-to-paid (priority 1) — 1a feature do time pedido.
+  seam      : adjustOrderPaymentStatus(orderId, 'paid', reason, actor) em
+              lib/data/orders.ts (L624). Funcao de menor nivel que prova as invariantes:
+              abre prisma.$transaction, le o pedido (before via adminOrderSelect), trata
+              X->X no-op, faz CAS de payment_status (updateMany WHERE payment_status=from),
+              concilia estoque via reconcileStockForPaymentStatus (ramo 'paid' L448-454:
+              CAS stock_committed=true/stock_reserved=false WHERE reservado-e-nao-committed
+              + commitStock(tx, lines) => stock-=qty, reserved-=qty) e grava writeAuditLog
+              (action order.payment_status_update, after.manualAdjustment=true,
+              after.adjustmentReason=reason.trim()) — TUDO na MESMA tx. A server action
+              adjustOrderPaymentStatusAction so DELEGA apos requireAdmin() (contexto de
+              request), por isso chamei a funcao de lib/data direto.
+  arquivos  : tests/harness/pedido/payment-pending-to-paid.spec.ts (spec DB-first, sem
+              browser; novo dir tests/harness/pedido/). ESTENDI o runner compartilhado
+              tests/harness/estoque/_run-seam.ts (INFRA de teste) p/ suportar o case
+              adjustOrderPaymentStatus (import de adjustOrderPaymentStatus de lib/data/orders
+              + PaymentStatus de lib/data/types). Nenhum codigo de PRODUTO tocado.
+  o-que-fiz : Ritual OK (branch harness/admin; li progress + ledger). Marquei SO o state
+              da feature: todo -> building -> ready_for_qa. Escrevi spec que:
+              (1) cria PRODUTO proprio via createProduct (SKU/nome unicos HARNESS-PAY-<uuid>);
+              (2) FORCA stock=10 e reserved=3 via UPDATE direto em pg p/ refletir a reserva
+              do pedido (reserved e gerido pelo ciclo de reserva, nunca por escrita avulsa —
+              seed direto e a forma honesta; anti-trivial: reserved>0);
+              (3) INSERT direto de um PEDIDO proprio (pending, stock_reserved=true,
+              stock_committed=false) + 1 order_item QTY=3 do produto; sanidade do pre-estado;
+              (4) chama adjustOrderPaymentStatus(orderId,'paid',reason,actor) -> espera
+              ok:true, changed:true, order.paymentStatus='paid';
+              (5) ASSERTA via pg: [a1] orders.payment_status='paid'; [a2] commitStock
+              aplicado: stock 10->7 e reserved 3->0 (Int), stock_committed=true,
+              stock_reserved=false; rede reserved-le-stock: CHECK products_reserved_le_stock_chk
+              existe + 0 violacoes de 0<=reserved<=stock; [a3] audit_log +1 (total E por
+              entity_id='<orderId>' entity_type='order'), action='order.payment_status_update'
+              (valor DOTTED do @map, lido da coluna crua), entity_type='order', before nao-null
+              com paymentStatus='pending', after.paymentStatus='paid' +
+              after.manualAdjustment=true + after.adjustmentReason=reason.
+  invariante: order-state-machine (pending->paid legal via CAS; changed=true), audit-same-tx
+              (1 linha order.payment_status_update na MESMA tx: estrutural — writeAuditLog(tx,..)
+              dentro de prisma.$transaction de adjustOrderPaymentStatus + empirica por +1),
+              reserve-lifecycle-idempotent (flags stockReserved/stockCommitted viradas pelo CAS
+              de reconcileStockForPaymentStatus), reserved-le-stock (CHECK + 0 violacoes).
+  estado    : ready_for_qa (state da feature no ledger). passes NAO tocado (campo do QA).
+  resultado : VERDE — `pnpm harness tests/harness/pedido/payment-pending-to-paid.spec.ts`
+              => 1 passed (rodado 2x: 1.9s/4.6s e 1.9s/4.5s), seed 28 produtos / 8 pedidos.
+              Gates: typecheck OK, lint OK (0 warnings), prettier OK nos MEUS arquivos
+              (spec + _run-seam + ledger). next-env.d.ts revertido (rewrite incidental do
+              next dev, NAO comitado). git diff -- app lib prisma = VAZIO (produto intocado).
+              Ruido EBUSY/rmdir no teardown (Windows, apos passar) = cosmetico.
+  commit    : <preenchido no commit desta sessao>
+  proximo   : pedido.payment.pending-to-cancelled (priority 2, state=todo) — estorna a
+              reserva (releaseStock: reserved-=qty, stock INTOCADO), stockReserved=false,
+              audit order.payment_status_update na mesma tx.

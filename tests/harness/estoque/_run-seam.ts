@@ -28,6 +28,8 @@ import {
   updateProduct,
   type ProductInput,
 } from "../../../lib/data/products";
+import { adjustOrderPaymentStatus } from "../../../lib/data/orders";
+import type { PaymentStatus } from "../../../lib/data/types";
 import type { AuditActor } from "../../../lib/data/audit";
 import { finalPriceCents } from "../../../lib/data/pricing";
 import { prisma } from "../../../lib/db";
@@ -91,6 +93,21 @@ type RestockArgs = { orderId: number };
 // a funcao computa o preco final isolada de qualquer dependencia server-only.
 // INFRA de teste: usa a funcao de PRODUCAO sem mock.
 type FinalPriceArgs = { priceCents: number; discountPct: number };
+// Espelha o call site de PRODUCAO do AJUSTE MANUAL DE PAGAMENTO pelo admin
+// (adjustOrderPaymentStatusAction -> adjustOrderPaymentStatus, lib/data/orders.ts
+// L624). Numa MESMA transacao a funcao: le o pedido (before), valida X->X no-op,
+// faz o CAS de payment_status, concilia o estoque via reconcileStockForPaymentStatus
+// (ramo 'paid' = commitStock; 'cancelled' = release/refund) e grava audit_log
+// (action order.payment_status_update, after.manualAdjustment=true/adjustmentReason)
+// — tudo na mesma tx. A server action so DELEGA apos requireAdmin() (contexto de
+// request), por isso chamamos a funcao de lib/data direto. INFRA de teste: usa a
+// funcao de PRODUCAO sem mock; a spec assertaa o estado real via pg.
+type AdjustPaymentArgs = {
+  orderId: number;
+  to: PaymentStatus;
+  reason: string;
+  actor: AuditActor;
+};
 
 /**
  * Erro de aborto da reserva — carrega o resultado { ok:false, productId } do
@@ -238,6 +255,14 @@ async function main(): Promise<void> {
         // em centavos (Int). Prova final-price-derived + pure-client-safe.
         const { priceCents, discountPct } = payload as FinalPriceArgs;
         result = finalPriceCents({ priceCents, discountPct });
+        break;
+      }
+      case "adjustOrderPaymentStatus": {
+        // Ajuste manual de pagamento pelo admin (transicao + conciliacao de estoque +
+        // audit na MESMA tx), via a funcao de PRODUCAO. Devolve o AdminOrderUpdate
+        // ({ ok, changed, order } | { ok:false, reason }); a spec assertaa via pg.
+        const { orderId, to, reason, actor } = payload as AdjustPaymentArgs;
+        result = await adjustOrderPaymentStatus(orderId, to, reason, actor);
         break;
       }
       default:
