@@ -89,11 +89,14 @@ describe("INV-7 (forma) — auditoria imutavel", () => {
     // O defeito e passar auditSnapshot(product) tanto em before quanto em after,
     // onde `product` e o resultado do UPDATE (pos-mutacao).
 
-    // Verifica que ha uma variavel `before` sendo criada antes do update
-    const hasBeforeVar = /const before\s*=\s*toProduct\s*\(current\)/.test(body);
+    // Verifica que ha uma variavel `before` criada a partir do snapshot PRE-mutacao
+    // (toProduct da linha lida antes do UPDATE). O nome da linha-base e indiferente
+    // (ex.: `current`, `baseline` apos o hardening de lost-update) — o que importa e
+    // que `before` venha de toProduct(<linha pre-update>), nao do row pos-UPDATE.
+    const hasBeforeVar = /const before\s*=\s*toProduct\s*\(\s*\w+\s*\)/.test(body);
     expect(
       hasBeforeVar,
-      "updateProduct nao cria a variavel `before` a partir do estado pre-mutacao (current) — necessario para before != after (INV-7)",
+      "updateProduct nao cria a variavel `before` a partir do estado pre-mutacao — necessario para before != after (INV-7)",
     ).toBe(true);
 
     // Extrai o bloco writeAuditLog dentro de updateProduct
