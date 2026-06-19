@@ -242,6 +242,41 @@ const COUPON_IN_USE =
   "Cupom já foi utilizado e não pode ser excluído. Inative-o para tirá-lo de circulação." as const;
 
 /**
+ * Detecta violacao de FK por RESTRICT no delete de cupom (uma redencao referencia o
+ * cupom), reconhecendo os DOIS shapes do Prisma 7. Espelha isUniqueViolation
+ * (lib/data/orders.ts), que ja teve de lidar com a mesma migracao de shape no P2002:
+ *  - compat (Prisma <=6): PrismaClientKnownRequestError com code "P2003".
+ *  - Prisma 7 + @prisma/adapter-pg: a violacao chega como `DriverAdapterError` CRU,
+ *    cujo `.cause` carrega o erro do driver pg ({ code/originalCode }) — 23001
+ *    (restrict_violation, o caso da FK onDelete:Restrict) ou 23503
+ *    (foreign_key_violation). NESSE shape NAO ha `.code` no topo nem `instanceof
+ *    PrismaClientKnownRequestError` — por isso o catch antigo (so P2003) NUNCA casava
+ *    e o erro vazava ao chamador. Opcionalmente casa o nome da constraint para so
+ *    tratar a FK esperada (coupon_redemptions -> coupons) como "em uso".
+ */
+function isForeignKeyViolation(err: unknown, constraint?: string): boolean {
+  const hit = (value: unknown): boolean =>
+    constraint === undefined || String(value ?? "").includes(constraint);
+
+  // Compat: PrismaClientKnownRequestError P2003 (Prisma <=6 / engine que mapeia).
+  if (err instanceof Prisma.PrismaClientKnownRequestError) {
+    if (err.code !== "P2003") return false;
+    if (constraint === undefined) return true;
+    return hit((err.meta as { target?: unknown } | undefined)?.target) || hit(err.message);
+  }
+
+  // Prisma 7 (driver adapter): DriverAdapterError cru com .cause do pg (23001/23503).
+  const e = err as {
+    message?: string;
+    cause?: { code?: string; originalCode?: string; message?: string; detail?: string };
+  };
+  const pgCode = e?.cause?.code ?? e?.cause?.originalCode;
+  if (pgCode !== "23001" && pgCode !== "23503") return false;
+  if (constraint === undefined) return true;
+  return hit(e.cause?.message) || hit(e.cause?.detail) || hit(e.message);
+}
+
+/**
  * Exclui um cupom PERMANENTEMENTE (o "D" do CRUD). Diferente de setCouponActive
  * (inativacao reversivel), o registro deixa de existir.
  *
@@ -252,7 +287,8 @@ const COUPON_IN_USE =
  *
  * Grava audit_log (coupon_delete, before=snapshot, after=null) na MESMA transacao
  * (invariante 3). A contagem de redencoes e o delete correm na mesma transacao; uma
- * redencao inserida nesse meio dispara a FK Restrict (P2003), tratada como "em uso".
+ * redencao inserida nesse meio dispara a FK Restrict (pg 23001 / P2003), tratada como
+ * "em uso" via isForeignKeyViolation (reconhece o shape cru do adapter-pg do Prisma 7).
  */
 export async function deleteCoupon(actor: AuditActor, id: string): Promise<CouponDeleteResult> {
   try {
@@ -280,8 +316,11 @@ export async function deleteCoupon(actor: AuditActor, id: string): Promise<Coupo
     if (outcome === "in_use") return { ok: false, error: COUPON_IN_USE };
     return { ok: true, id };
   } catch (err) {
-    // Corrida: redencao gravada entre a contagem e o delete -> FK Restrict.
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2003") {
+    // Corrida: redencao gravada entre a contagem e o delete -> FK Restrict. Sob
+    // Prisma 7 + adapter-pg isso chega como DriverAdapterError cru (pg 23001
+    // restrict_violation), NAO como PrismaClientKnownRequestError P2003 — por isso
+    // reconhecemos ambos os shapes (ver isForeignKeyViolation), casando a FK esperada.
+    if (isForeignKeyViolation(err, "coupon_redemptions_coupon_id_fkey")) {
       return { ok: false, error: COUPON_IN_USE };
     }
     throw err;
