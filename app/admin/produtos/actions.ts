@@ -11,6 +11,13 @@ import {
   type ProductInput,
 } from "@/lib/data/products";
 import type { Product } from "@/lib/data/types";
+import { isSupabaseStorageConfigured } from "@/lib/services/supabase/config";
+import {
+  MAX_IMAGE_BYTES,
+  SupabaseStorageError,
+  isAcceptedImageType,
+  uploadProductImage,
+} from "@/lib/services/supabase/storage";
 
 /**
  * Server actions de CRUD de produto (consumidas por AdminProductsView).
@@ -71,5 +78,40 @@ export async function setProductActiveAction(
     return { ok: true, data: product };
   } catch (err) {
     return { ok: false, error: toErrorMessage(err) };
+  }
+}
+
+/**
+ * Upload de imagem de produto para o Supabase Storage. Endpoint invocavel: re-checa
+ * admin (invariante 4). Valida formato e tamanho no SERVIDOR (a checagem no client
+ * e so UX); o nome do arquivo e gerado no Storage (uuid). Devolve a URL publica, que
+ * o formulario grava em imageUrl no save normal (create/updateProductAction).
+ */
+export async function uploadProductImageAction(formData: FormData): Promise<ActionResult<string>> {
+  const guard = await requireAdmin();
+  if (!guard.ok) return { ok: false, error: guard.error };
+
+  if (!isSupabaseStorageConfigured()) {
+    return { ok: false, error: "Upload de imagem não configurado no servidor." };
+  }
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) {
+    return { ok: false, error: "Selecione um arquivo de imagem." };
+  }
+  if (!isAcceptedImageType(file.type)) {
+    return { ok: false, error: "Formato inválido. Use PNG, JPG, WEBP ou GIF." };
+  }
+  if (file.size > MAX_IMAGE_BYTES) {
+    return { ok: false, error: "Imagem muito grande (máx. 4 MB)." };
+  }
+
+  try {
+    const url = await uploadProductImage(await file.arrayBuffer(), file.type);
+    return { ok: true, data: url };
+  } catch (err) {
+    const detail = err instanceof SupabaseStorageError ? `${err.status} ${err.message}` : err;
+    console.error("[admin/produtos] upload de imagem falhou:", detail);
+    return { ok: false, error: "Não foi possível enviar a imagem. Tente novamente." };
   }
 }

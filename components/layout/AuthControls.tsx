@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { UserButton, useAuth } from "@clerk/nextjs";
+import { Icon } from "@/components/ui/Icon";
 import styles from "./Topbar.module.css";
 
 // Controles de auth da topbar quando o Clerk esta configurado.
@@ -16,7 +17,18 @@ export function AuthControls() {
   return (
     <div className={styles.auth}>
       {isSignedIn ? (
-        <UserButton />
+        // Atalho persistente para "Minhas Compras" no menu da conta — sem ele o
+        // cliente logado so tem o UserButton padrao e nenhum caminho de nav ate os
+        // pedidos.
+        <UserButton>
+          <UserButton.MenuItems>
+            <UserButton.Link
+              label="Minhas Compras"
+              labelIcon={<Icon name="receipt" size={14} />}
+              href="/minhas-compras"
+            />
+          </UserButton.MenuItems>
+        </UserButton>
       ) : (
         <>
           <Link href="/entrar" className={styles.btnGhost}>

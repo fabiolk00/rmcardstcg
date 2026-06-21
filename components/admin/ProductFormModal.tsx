@@ -1,14 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import Image from "next/image";
 import type { Product, Category } from "@/lib/data/types";
 import { CATEGORIES } from "@/lib/data/types";
 import { finalPriceCents } from "@/lib/data/pricing";
 import { formatBRL } from "@/lib/utils/currency";
 import { Modal } from "@/components/ui/Modal";
+import { Icon } from "@/components/ui/Icon";
+import { uploadProductImageAction } from "@/app/admin/produtos/actions";
 import styles from "./ProductFormModal.module.css";
 
 const DESC_MAX = 300;
+const PLACEHOLDER_IMAGE = "/products/placeholder.svg";
+// Dica de UX no client; a validacao autoritativa de formato/tamanho e no servidor.
+const ACCEPTED_IMAGE = "image/png,image/jpeg,image/webp,image/gif";
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 
 /** Payload cru enviado ao servidor (a validacao/slug definitivos sao no server). */
 export type ProductFormPayload = {
@@ -40,14 +47,47 @@ export function ProductFormModal({ product, onSave, onClose }: Props) {
   const [discountPct, setDiscountPct] = useState(product.discountPct);
   const [stock, setStock] = useState(String(product.stock));
   const [imageUrl, setImageUrl] = useState(product.imageUrl);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const priceCents = Math.round((parseFloat(priceReais.replace(",", ".")) || 0) * 100);
   const stockNum = Math.max(0, Math.trunc(Number(stock) || 0));
   const final = finalPriceCents({ priceCents, discountPct });
   const descOver = description.length > DESC_MAX;
-  const canSave = !saving && name.trim() !== "" && sku.trim() !== "" && priceCents > 0 && !descOver;
+  const hasCustomImage = imageUrl.trim() !== "" && imageUrl !== PLACEHOLDER_IMAGE;
+  const canSave =
+    !saving && !uploading && name.trim() !== "" && sku.trim() !== "" && priceCents > 0 && !descOver;
+
+  // Seleciona um arquivo -> valida no client (UX) -> sobe pro Supabase via server
+  // action -> grava a URL publica em imageUrl. O save normal persiste imageUrl.
+  const onPickImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // permite re-selecionar o mesmo arquivo
+    if (!file) return;
+
+    if (!ACCEPTED_IMAGE.split(",").includes(file.type)) {
+      setError("Formato inválido. Use PNG, JPG, WEBP ou GIF.");
+      return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      setError("Imagem muito grande (máx. 4 MB).");
+      return;
+    }
+
+    setError(null);
+    setUploading(true);
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await uploadProductImageAction(fd);
+    setUploading(false);
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    setImageUrl(res.data);
+  };
 
   const submit = async () => {
     if (!canSave) return;
@@ -132,16 +172,38 @@ export function ProductFormModal({ product, onSave, onClose }: Props) {
         </div>
 
         <div className={`${styles.field} ${styles.full}`}>
-          <label className={styles.label} htmlFor="pf-img">
-            Imagem (URL)
-          </label>
-          <input
-            id="pf-img"
-            className={styles.input}
-            value={imageUrl}
-            onChange={(e) => setImageUrl(e.target.value)}
-            placeholder="/products/placeholder.svg"
-          />
+          <span className={styles.label}>Imagem</span>
+          <div className={styles.imageRow}>
+            <span className={styles.imagePreview}>
+              <Image
+                src={imageUrl.trim() || PLACEHOLDER_IMAGE}
+                alt=""
+                width={72}
+                height={72}
+                className={styles.imageThumb}
+              />
+            </span>
+            <div className={styles.imageActions}>
+              <input
+                ref={fileRef}
+                type="file"
+                accept={ACCEPTED_IMAGE}
+                className={styles.fileInput}
+                onChange={onPickImage}
+                aria-label="Enviar imagem do produto"
+              />
+              <button
+                type="button"
+                className={styles.uploadBtn}
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading || saving}
+              >
+                <Icon name="box" size={14} />
+                {uploading ? "Enviando…" : hasCustomImage ? "Trocar imagem" : "Enviar imagem"}
+              </button>
+              <span className={styles.imageHint}>PNG, JPG, WEBP ou GIF até 4 MB.</span>
+            </div>
+          </div>
         </div>
 
         <div className={`${styles.field} ${styles.full}`}>
