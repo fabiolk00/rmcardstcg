@@ -28,6 +28,7 @@ function toProduct(row: ProductModel): Product {
     reviewCount: row.reviewCount,
     stock: row.stock,
     isActive: row.isActive,
+    isCarousel: row.isCarousel,
     badge: row.badge,
     imageUrl: row.imageUrl,
     description: row.description,
@@ -109,6 +110,8 @@ export type ProductInput = {
   badge: string | null;
   imageUrl: string;
   description: string;
+  /** Exibir no carrossel "Em destaque" da landing. */
+  isCarousel: boolean;
 };
 
 type NormalizedProductInput = {
@@ -121,6 +124,7 @@ type NormalizedProductInput = {
   badge: string | null;
   imageUrl: string;
   description: string;
+  isCarousel: boolean;
 };
 
 const DESC_MAX = 300;
@@ -158,6 +162,8 @@ function normalizeProductInput(input: ProductInput): NormalizedProductInput {
 
   const badge = input.badge?.trim() ? input.badge.trim() : null;
   const imageUrl = input.imageUrl?.trim() ? input.imageUrl.trim() : "/products/placeholder.svg";
+  // Checkbox: forca booleano (undefined/null/"" do client viram false).
+  const isCarousel = input.isCarousel === true;
 
   return {
     name,
@@ -169,6 +175,7 @@ function normalizeProductInput(input: ProductInput): NormalizedProductInput {
     badge,
     imageUrl,
     description,
+    isCarousel,
   };
 }
 
@@ -184,6 +191,7 @@ function auditSnapshot(p: Product): Prisma.InputJsonValue {
     discountPct: p.discountPct,
     stock: p.stock,
     isActive: p.isActive,
+    isCarousel: p.isCarousel,
     badge: p.badge,
     imageUrl: p.imageUrl,
     description: p.description,
@@ -246,6 +254,7 @@ export async function createProduct(actor: AuditActor, input: ProductInput): Pro
         discountPct: data.discountPct,
         stock: data.stock,
         isActive: true,
+        isCarousel: data.isCarousel,
         badge: data.badge,
         imageUrl: data.imageUrl,
         description: data.description,
@@ -305,6 +314,7 @@ export async function updateProduct(
     if (data.priceCents !== baseline.priceCents) updateData.priceCents = data.priceCents;
     if (data.discountPct !== baseline.discountPct) updateData.discountPct = data.discountPct;
     if (data.stock !== baseline.stock) updateData.stock = data.stock;
+    if (data.isCarousel !== baseline.isCarousel) updateData.isCarousel = data.isCarousel;
     if (data.badge !== baseline.badge) updateData.badge = data.badge;
     if (data.imageUrl !== baseline.imageUrl) updateData.imageUrl = data.imageUrl;
     if (data.description !== baseline.description) updateData.description = data.description;

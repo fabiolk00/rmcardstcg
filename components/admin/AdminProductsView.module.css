@@ -317,6 +317,17 @@
   color: var(--ink-2);
 }
 
+.pillCarousel {
+  background: var(--ink);
+  color: var(--on-ink);
+}
+
+.statusCell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
 .emptyCell {
   padding: var(--space-9) var(--space-6);
   text-align: center;

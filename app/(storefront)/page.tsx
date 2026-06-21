@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getActiveProducts } from "@/lib/data/products";
+import { selectCarouselProducts } from "@/lib/data/carousel";
 import { CATEGORIES, type Category } from "@/lib/data/types";
 import { ProductGrid } from "@/components/product/ProductGrid";
 import { Icon, type IconName } from "@/components/ui/Icon";
@@ -25,7 +26,9 @@ export default async function LandingPage() {
     category,
     count: products.filter((p) => p.category === category).length,
   }));
-  const featured = products.filter((p) => p.stock > 0).slice(0, 8);
+  // Carrossel "Em destaque": produtos marcados (isCarousel) e com estoque; cai para
+  // os ativos com estoque quando ninguem esta marcado (ver selectCarouselProducts).
+  const featured = selectCarouselProducts(products);
 
   return (
     <>

@@ -27,6 +27,7 @@ async function main() {
       reviewCount: p.reviewCount,
       stock: p.stock,
       isActive: p.isActive,
+      isCarousel: p.isCarousel,
       badge: p.badge,
       imageUrl: p.imageUrl,
       description: p.description,

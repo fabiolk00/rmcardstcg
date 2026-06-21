@@ -1422,5 +1422,31 @@
       "Zero drift/float: nenhum NaN, nenhum fracionario, nenhum erro de ponto flutuante (ex.: 0.1+0.2); aritmetica 100% inteira."
     ],
     "invariants": ["cents-only", "totals-formula", "final-price-derived"]
+  },
+  {
+    "id": "estoque.product.carousel-toggle-audited",
+    "team": "estoque",
+    "category": "functional",
+    "title": "Admin marca/desmarca produto no carrossel da landing (flag isCarousel + auditoria)",
+    "route": "/admin/produtos",
+    "priority": 36,
+    "steps": [
+      "Cria um produto proprio via createProduct com isCarousel=false (1 audit product.create).",
+      "Chama updateProduct com o MESMO input e isCarousel=true (marca); depois de novo com isCarousel=false (desmarca).",
+      "Assertaa o estado real via pg (products.is_carousel e audit_log)."
+    ],
+    "asserts": [
+      "products.is_carousel persiste true ao marcar e false ao desmarcar; preco/estoque intocados pelo toggle (delta limpo).",
+      "Cada updateProduct grava 1 audit_log action=product.update na MESMA transacao (before/after = snapshots completos com isCarousel).",
+      "before.isCarousel/after.isCarousel refletem a transicao (false->true e true->false).",
+      "Landing: selectCarouselProducts mostra so os marcados ativos com estoque (fallback aos ativos quando nenhum marcado) — coberto por teste de unidade puro e pelo e2e (home conta 8)."
+    ],
+    "invariants": ["audit-same-tx"],
+    "state": "ready_for_qa",
+    "passes": true,
+    "qa_note": null,
+    "fix_note": null,
+    "review": null,
+    "review_note": null
   }
 ]

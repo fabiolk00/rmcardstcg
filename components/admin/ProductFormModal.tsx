@@ -28,6 +28,7 @@ export type ProductFormPayload = {
   badge: string | null;
   imageUrl: string;
   description: string;
+  isCarousel: boolean;
 };
 
 type Props = {
@@ -47,6 +48,7 @@ export function ProductFormModal({ product, onSave, onClose }: Props) {
   const [discountPct, setDiscountPct] = useState(product.discountPct);
   const [stock, setStock] = useState(String(product.stock));
   const [imageUrl, setImageUrl] = useState(product.imageUrl);
+  const [isCarousel, setIsCarousel] = useState(product.isCarousel);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -103,6 +105,7 @@ export function ProductFormModal({ product, onSave, onClose }: Props) {
       badge: product.badge,
       imageUrl: imageUrl.trim() || "/products/placeholder.svg",
       description: description.trim(),
+      isCarousel,
     });
     setSaving(false);
     if (err) setError(err);
@@ -276,6 +279,22 @@ export function ProductFormModal({ product, onSave, onClose }: Props) {
             aria-valuetext={`${discountPct}% de desconto`}
           />
         </div>
+
+        <label className={`${styles.carouselField} ${styles.full}`} htmlFor="pf-carousel">
+          <span className={styles.carouselText}>
+            <span className={styles.label}>Carrossel?</span>
+            <span className={styles.carouselHint}>
+              Exibir este produto na vitrine “Em destaque” da home.
+            </span>
+          </span>
+          <input
+            id="pf-carousel"
+            type="checkbox"
+            className={styles.carouselCheck}
+            checked={isCarousel}
+            onChange={(e) => setIsCarousel(e.target.checked)}
+          />
+        </label>
 
         <div className={`${styles.finalCard} ${styles.full}`}>
           <span className={styles.finalLabel}>Preço final</span>

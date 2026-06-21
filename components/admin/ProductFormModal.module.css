@@ -137,6 +137,37 @@
   accent-color: var(--ink);
 }
 
+.carouselField {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  cursor: pointer;
+}
+
+.carouselText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.carouselHint {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.carouselCheck {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--ink);
+  cursor: pointer;
+}
+
 .finalCard {
   display: flex;
   align-items: center;

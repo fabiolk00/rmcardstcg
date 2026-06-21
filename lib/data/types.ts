@@ -47,6 +47,8 @@ export interface Product {
   /** Estoque atual em unidades. */
   stock: number;
   isActive: boolean;
+  /** Exibir no carrossel "Em destaque" da landing (controle do admin). */
+  isCarousel: boolean;
   /** Selo opcional (ex.: "Mais vendido", "-20%", "Raro"). */
   badge: string | null;
   /** Caminho da imagem (placeholder no mock). */

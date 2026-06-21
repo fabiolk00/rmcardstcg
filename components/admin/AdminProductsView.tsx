@@ -33,6 +33,7 @@ function blankProduct(): Product {
     reviewCount: 0,
     stock: 0,
     isActive: true,
+    isCarousel: false,
     badge: null,
     imageUrl: "/products/placeholder.svg",
     description: "",
@@ -300,11 +301,21 @@ export function AdminProductsView({ products: initialProducts }: { products: Pro
                   {p.stock > 0 && p.stock < 5 && <span className={styles.stockLow}>baixo</span>}
                 </td>
                 <td className={styles.left}>
-                  <span
-                    className={`${styles.pill} ${p.isActive ? styles.pillActive : styles.pillInactive}`}
-                  >
-                    {p.isActive ? "Ativo" : "Inativo"}
-                  </span>
+                  <div className={styles.statusCell}>
+                    <span
+                      className={`${styles.pill} ${p.isActive ? styles.pillActive : styles.pillInactive}`}
+                    >
+                      {p.isActive ? "Ativo" : "Inativo"}
+                    </span>
+                    {p.isCarousel && (
+                      <span
+                        className={`${styles.pill} ${styles.pillCarousel}`}
+                        title="No carrossel"
+                      >
+                        Carrossel
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className={styles.right}>
                   <div className={styles.actions}>
