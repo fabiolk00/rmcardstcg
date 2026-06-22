@@ -39,6 +39,54 @@ export function isAcceptedImageType(contentType: string): boolean {
 }
 
 /**
+ * Detecta o tipo da imagem pelos BYTES reais (magic numbers), ignorando o
+ * content-type declarado. Defesa em profundidade: o `file.type` vem do cliente e
+ * pode mentir — sem conferir a assinatura, um arquivo arbitrario (HTML/polyglot/
+ * zip) poderia ser gravado no bucket PUBLICO se passar como "image/png". Retorna o
+ * MIME detectado ou null se nao casar com nenhum formato aceito.
+ */
+export function sniffImageType(bytes: Uint8Array): string | null {
+  const b = bytes;
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    b.length >= 8 &&
+    b[0] === 0x89 &&
+    b[1] === 0x50 &&
+    b[2] === 0x4e &&
+    b[3] === 0x47 &&
+    b[4] === 0x0d &&
+    b[5] === 0x0a &&
+    b[6] === 0x1a &&
+    b[7] === 0x0a
+  ) {
+    return "image/png";
+  }
+  // JPEG: FF D8 FF
+  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) {
+    return "image/jpeg";
+  }
+  // GIF: "GIF8" (cobre GIF87a e GIF89a)
+  if (b.length >= 4 && b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38) {
+    return "image/gif";
+  }
+  // WEBP: "RIFF" ........ "WEBP"
+  if (
+    b.length >= 12 &&
+    b[0] === 0x52 &&
+    b[1] === 0x49 &&
+    b[2] === 0x46 &&
+    b[3] === 0x46 &&
+    b[8] === 0x57 &&
+    b[9] === 0x45 &&
+    b[10] === 0x42 &&
+    b[11] === 0x50
+  ) {
+    return "image/webp";
+  }
+  return null;
+}
+
+/**
  * Sobe os bytes de uma imagem para o bucket e devolve a URL publica.
  *
  * O nome do arquivo e GERADO no servidor (uuid) — nunca confia no nome do cliente
@@ -52,6 +100,14 @@ export async function uploadProductImage(
   const ext = CONTENT_TYPE_EXT[contentType];
   if (!ext) {
     throw new SupabaseStorageError("Tipo de imagem nao suportado.", 415);
+  }
+
+  // Defesa em profundidade: os BYTES reais precisam casar com o tipo declarado.
+  // Sem isso, um content-type forjado gravaria conteudo arbitrario no bucket
+  // publico (o gate de admin e o teto de tamanho ja correm na action).
+  const sniffed = sniffImageType(new Uint8Array(fileBytes));
+  if (sniffed !== contentType) {
+    throw new SupabaseStorageError("Conteudo do arquivo nao corresponde a uma imagem valida.", 415);
   }
 
   const { url, serviceRoleKey, bucket } = getSupabaseStorageConfig();
