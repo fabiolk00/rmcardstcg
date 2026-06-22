@@ -56,6 +56,63 @@ Postgres real). Funcionalidade nova relacionada: exclusão permanente de cupom
 > `7023503` generalizou a guarda para a máquina de estados completa. É o loop
 > fix→QA→review→fix funcionando: o QA derrubou o estado anterior, o fix novo passou.
 
+### Rodada de segurança web (OWASP — SQLi/XSS/headers/CORS)
+
+Loop de hardening web (vetores do template SQLi/XSS/CSRF/CORS/headers). A maior
+parte da matriz já estava coberta pelas rodadas anteriores; varredura confirmou:
+SQLi **N/A** (Prisma + `Prisma.sql` parametrizado; sem `*Unsafe` em código de
+app), XSS **N/A** (zero `dangerouslySetInnerHTML`/`innerHTML`; auto-escape do
+React), CORS **OK** (nenhum `Access-Control-Allow-Origin` curinga → same-origin),
+rate-limit **OK** (`lib/security/rateLimit`). Único gap real: **sem cabeçalhos de
+segurança HTTP**.
+
+| Achado                                                                  | Sev. | Domínio | Commit    | Prova                                                                                                                          |
+| ----------------------------------------------------------------------- | ---- | ------- | --------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Sem cabeçalhos de segurança HTTP (clickjacking, sem HSTS, MIME-sniffing) | 🟠   | web     | _pendente_ | `next.config.ts` `async headers()`: X-Frame-Options + CSP `frame-ancestors`/`base-uri`/`object-src`/`form-action`, nosniff, HSTS, Referrer-Policy, Permissions-Policy; `typecheck` verde |
+| Upload de imagem confiava no content-type DECLARADO (`file.type`) — conteúdo arbitrário no bucket público | 🟡 | web | _pendente_ | `sniffImageType` (magic bytes PNG/JPEG/GIF/WEBP) em `uploadProductImage`: bytes reais têm de casar com o tipo declarado, senão 415 antes de gravar; `tests/security/image-upload-sniff` (5 casos, inclui HTML mascarado de `image/png`) |
+| `pnpm audit`: 2 advisories moderate transitivas (postcss `<8.5.10` XSS via `</style>`; `@hono/node-server <1.19.13` bypass) | 🟡 | deps | _pendente_ | `pnpm.overrides` range-scoped (`postcss@<8.5.10`→`>=8.5.10`, `@hono/node-server@<1.19.13`→`>=1.19.13`); `pnpm audit --prod` → **0 vulnerabilities**, `typecheck` verde. Ambas fora do caminho de runtime (postcss = build-time CSS; hono = tooling dev do Prisma) — exploitabilidade real ~nula, bump preventivo. Gate final de `build` fica no `scripts/qa-gate.sh` |
+| CSP sem `script-src`/`connect-src` (clickjacking já coberto; faltava restringir origem de scripts/conexões) | 🟡 | web | _pendente_ | `Content-Security-Policy-Report-Only` candidato em `next.config.ts` (default/script/style/img/connect/frame-src com Clerk `*.clerk.accounts.dev`/`*.clerk.com`/`img.clerk.com` + Turnstile + Supabase `*.supabase.co`; Clerk proxy mode ⇒ Frontend API = `'self'`). **Report-Only não bloqueia** — só reporta. `typecheck` verde. **Promover a enforce SÓ após** um passo manual por login+checkout+upload-admin com DevTools aberto sem violações legítimas |
+
+**Verificados seguros nesta rodada (sem ação):**
+
+- **Exposição de env vars**: `SUPABASE_SERVICE_ROLE_KEY` referenciado só em
+  `lib/services/supabase/{config,storage}.ts` (server-only; importados apenas pela
+  action `"use server"` de admin), nunca com prefixo `NEXT_PUBLIC_` nem em client
+  component. Todos os `NEXT_PUBLIC_*` são públicos por design (Clerk *publishable*,
+  Supabase *anon* + URL, app URL, WhatsApp). Nenhum segredo no bundle do cliente.
+- **CSRF / rotas legadas**: sem `pages/api` (só App Router). Os POST handlers
+  (webhooks Asaas/Clerk, reconcile) são endpoints de máquina autenticados por
+  token/segredo (CSRF de browser não forja o header secreto); Server Actions do
+  Next 16 têm proteção CSRF nativa por Origin/Host.
+
+- **Webhook Asaas** (`app/api/webhooks/asaas/route.ts`): autenticado por header
+  `asaas-access-token` comparado em **tempo constante** (`timingSafeEqual`),
+  fail-closed (sem token no server → 500; token errado → 401), + ledger de
+  idempotência, teto de payload (413) e checagem de valor (`valueCents`). Asaas usa
+  **token estático**, não HMAC — o mecanismo correto está implementado. (O `svix` é
+  só do webhook do Clerk.)
+- **Rota interna de reconcile** (`app/api/internal/reconcile-orders/route.ts`):
+  mesmo padrão — `x-cron-secret` constant-time, fail-closed, mock-first no-op.
+- **Upload é admin-only**: `uploadProductImageAction` chama `requireAdmin()` antes de
+  validar formato/tamanho; nome do objeto é UUID gerado no servidor (sem path
+  traversal/overwrite).
+
+> **Backlog esgotado — loop em modo steady-state.** Itens fechados: cabeçalhos HTTP
+> (it.1), sniff de upload + webhook/reconcile auth (it.2), CSRF/pages-api + env vars +
+> deps (it.3), CSP candidato Report-Only (it.4). A única ação humana pendente é
+> **promover o CSP Report-Only a enforce** após o walkthrough manual (login/checkout/
+> upload com DevTools) — não automatizável daqui.
+>
+> **Re-varredura (it.4), nada novo:** os 3 route handlers POST estão autenticados
+> (`asaas`: token estático constant-time · `clerk`: assinatura svix · `reconcile`:
+> `x-cron-secret` constant-time, todos fail-closed); as server actions de `/admin`
+> (`pedidos`/`cupons`/`usuarios`/`produtos`) re-checam `requireAdmin`; as públicas
+> (`carrinho`: checkout/cupom/frete) têm rate limit. Nenhuma nova superfície de input.
+>
+> **Steady-state:** próximas iterações só agem se algo NOVO aparecer (commits novos,
+> `pnpm audit` sujo, novo route handler / ponto de input); senão, re-confirmam e
+> mantêm cadência lenta.
+
 ## 🔓 Abertos / adiados
 
 Os 5 itens antes listados aqui (reconcile N+1, inventory batch, role via
