@@ -191,7 +191,11 @@
   background: var(--bg-soft);
 }
 
-.inactive td {
+/* Linha de produto inativo: esmaece os DADOS, mas NAO a coluna de Acoes (ultima
+   celula). Por que excluir: opacity no <td> compoe o grupo inteiro, e a opacity de
+   um filho NAO pode exceder a do pai — entao dimar o <td> rebaixaria o contraste do
+   botao de reativar (a acao principal numa linha inativa) sem como restaurar. */
+.inactive td:not(:last-child) {
   opacity: 0.6;
 }
 
@@ -205,12 +209,6 @@
 
 .center {
   text-align: center;
-}
-
-.mono {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--ink-2);
 }
 
 .product {
@@ -356,6 +354,19 @@
   border-color: var(--border);
   background: var(--bg-soft);
   color: var(--ink);
+}
+
+/* Acao que nao se aplica ao estado atual (inativar num inativo / reativar num
+   ativo): visivel mas sem affordance de clique. */
+.act:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.act:disabled:hover {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ink-2);
 }
 
 .toast {

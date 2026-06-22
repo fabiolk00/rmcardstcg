@@ -21,7 +21,8 @@ export type IconName =
   | "receipt"
   | "x"
   | "edit"
-  | "power";
+  | "power"
+  | "rotate";
 
 const PATHS: Record<IconName, ReactNode> = {
   arrow: (
@@ -125,6 +126,13 @@ const PATHS: Record<IconName, ReactNode> = {
     <>
       <path d="M18.36 6.64a9 9 0 1 1-12.73 0" />
       <line x1="12" y1="2" x2="12" y2="12" />
+    </>
+  ),
+  // Seta de restauracao (rotate-ccw): "reativar" um produto inativo.
+  rotate: (
+    <>
+      <polyline points="1 4 1 10 7 10" />
+      <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
     </>
   ),
 };

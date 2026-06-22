@@ -312,45 +312,74 @@ export async function updateProduct(
   actor: AuditActor,
   id: string,
   input: ProductInput,
+  // Snapshot dos campos editaveis que o EDITOR carregou no formulario (client
+  // baseline). Quando fornecido, o diff de intencao compara o input contra ESTE
+  // snapshot — nao contra um read fresco do servidor —, garantindo que um campo que o
+  // editor NAO tocou (input == original) fique fora do UPDATE mesmo que outro admin o
+  // tenha mudado nesse meio tempo. Ausente -> diff contra o baseline do servidor (legado).
+  original?: ProductInput,
 ): Promise<Product> {
   const data = normalizeProductInput(input);
+  // Normaliza o original como o input, p/ o diff comparar like-for-like (mesmos
+  // trims/coercoes). Ausente -> null (cai no baseline do servidor abaixo).
+  const orig = original ? normalizeProductInput(original) : null;
 
   return prisma.$transaction(async (tx) => {
-    // (1) BASELINE: le a linha que o editor TINHA ao montar o formulario (o snapshot
-    // de onde ele partiu). Sob READ COMMITTED, duas edicoes concorrentes que abrem o
-    // form ao mesmo tempo leem o MESMO baseline. E contra ESTE baseline — nao contra o
-    // estado mais recente — que decidimos quais campos o editor de fato pretendeu
-    // mudar (diff de intencao). Um campo cujo valor enviado == baseline e um campo que
-    // o editor NAO tocou (so carregou o valor do form), e nao deve ser reescrito.
+    // (1) BASELINE DO SERVIDOR: a linha atual. Serve p/ o `before` da auditoria e a
+    // checagem de existencia. NAO e (mais) a referencia do diff de intencao: sob READ
+    // COMMITTED, duas edicoes que NAO se sobrepoem no tempo leriam baselines diferentes
+    // (a 2a ja enxerga o commit da 1a), e o campo intocado da 2a seria reescrito com o
+    // valor stale do seu form (lost update). Por isso o diff compara contra o que o
+    // EDITOR carregou (orig, client baseline) quando disponivel.
     const baseline = await tx.product.findUnique({ where: { id } });
     if (!baseline) throw new ProductValidationError("Produto não encontrado.");
     const before = toProduct(baseline);
 
-    // (2) DIFF DE INTENCAO contra o baseline: monta o conjunto de campos que ESTE
-    // editor realmente alterou. Campos iguais ao baseline ficam de fora do UPDATE.
+    // Referencia do DIFF DE INTENCAO: o snapshot que o editor carregou (orig), quando
+    // fornecido; senao a linha do servidor (legado). Tipada como NormalizedProductInput
+    // p/ comparar like-for-like com `data` sem atrito de tipos (ProductModel vs input).
+    const cmp: NormalizedProductInput = orig ?? {
+      name: baseline.name,
+      category: baseline.category as Category,
+      sku: baseline.sku,
+      priceCents: baseline.priceCents,
+      discountPct: baseline.discountPct,
+      stock: baseline.stock,
+      badge: baseline.badge,
+      imageUrl: baseline.imageUrl,
+      description: baseline.description,
+      isCarousel: baseline.isCarousel,
+      weightGrams: baseline.weightGrams,
+      lengthCm: baseline.lengthCm,
+      widthCm: baseline.widthCm,
+      heightCm: baseline.heightCm,
+    };
+
+    // (2) DIFF DE INTENCAO contra `cmp`: o conjunto de campos que ESTE editor realmente
+    // alterou (input != o que ele carregou). Campos iguais ficam de fora do UPDATE.
     // Editores concorrentes que mudam campos DISJUNTOS (ex.: um so stock, outro so
-    // discountPct) gravam colunas disjuntas e nao se sobrescrevem — fim do lost
-    // update por write da linha inteira com snapshot stale. O slug e derivado do
-    // nome: so muda quando o nome mudou.
+    // discountPct) gravam colunas disjuntas e nao se sobrescrevem — fim do lost update,
+    // agora DETERMINISTICO (independe de as 2 transacoes se sobreporem no tempo). O slug
+    // e derivado do nome e comparado contra o baseline do servidor (so muda com o nome).
     const slug = await uniqueSlug(tx, data.name, id);
     const updateData: Prisma.ProductUpdateInput = {};
-    if (data.name !== baseline.name) {
+    if (data.name !== cmp.name) {
       updateData.name = data.name;
       if (slug !== baseline.slug) updateData.slug = slug;
     }
-    if (data.category !== baseline.category) updateData.category = data.category;
-    if (data.sku !== baseline.sku) updateData.sku = data.sku;
-    if (data.priceCents !== baseline.priceCents) updateData.priceCents = data.priceCents;
-    if (data.discountPct !== baseline.discountPct) updateData.discountPct = data.discountPct;
-    if (data.stock !== baseline.stock) updateData.stock = data.stock;
-    if (data.isCarousel !== baseline.isCarousel) updateData.isCarousel = data.isCarousel;
-    if (data.badge !== baseline.badge) updateData.badge = data.badge;
-    if (data.imageUrl !== baseline.imageUrl) updateData.imageUrl = data.imageUrl;
-    if (data.description !== baseline.description) updateData.description = data.description;
-    if (data.weightGrams !== baseline.weightGrams) updateData.weightGrams = data.weightGrams;
-    if (data.lengthCm !== baseline.lengthCm) updateData.lengthCm = data.lengthCm;
-    if (data.widthCm !== baseline.widthCm) updateData.widthCm = data.widthCm;
-    if (data.heightCm !== baseline.heightCm) updateData.heightCm = data.heightCm;
+    if (data.category !== cmp.category) updateData.category = data.category;
+    if (data.sku !== cmp.sku) updateData.sku = data.sku;
+    if (data.priceCents !== cmp.priceCents) updateData.priceCents = data.priceCents;
+    if (data.discountPct !== cmp.discountPct) updateData.discountPct = data.discountPct;
+    if (data.stock !== cmp.stock) updateData.stock = data.stock;
+    if (data.isCarousel !== cmp.isCarousel) updateData.isCarousel = data.isCarousel;
+    if (data.badge !== cmp.badge) updateData.badge = data.badge;
+    if (data.imageUrl !== cmp.imageUrl) updateData.imageUrl = data.imageUrl;
+    if (data.description !== cmp.description) updateData.description = data.description;
+    if (data.weightGrams !== cmp.weightGrams) updateData.weightGrams = data.weightGrams;
+    if (data.lengthCm !== cmp.lengthCm) updateData.lengthCm = data.lengthCm;
+    if (data.widthCm !== cmp.widthCm) updateData.widthCm = data.widthCm;
+    if (data.heightCm !== cmp.heightCm) updateData.heightCm = data.heightCm;
 
     // (3) SERIALIZA a aplicacao: trava a LINHA com SELECT ... FOR UPDATE. Edicoes
     // concorrentes do MESMO produto serializam aqui — a 2a transacao BLOQUEIA ate a

@@ -84,7 +84,16 @@ SESSAO 0000 — INITIALIZER
       para /entrar?redirect_url=... ANTES de a pagina renderizar.
 
   ===========================================================================
-  BLOCKER (honesto, NAO consertado — exige decisao fora do escopo do harness):
+  [RESOLVIDO 2026-06-22] — via opcao (b) abaixo. proxy.ts agora gateia auth.protect()
+  por isClerkConfigured() DENTRO do callback do clerkMiddleware (que segue na forma
+  canonica no export default, Edge-safe — `next build` compila o bundle Edge sem erro).
+  O que quebrava o Edge era o TERNARIO no export default, nao um `if` no callback. Em
+  producao (chaves reais) protect() roda normal e /admin fica protegido; mock-first
+  (chaves em branco) /admin abre e o gate de role fica no app/admin/layout (fail-closed
+  em producao), espelhando requireAdmin. Os 3 smoke de UI agora PASSAM: harness 63/63
+  verde. Registro original do blocker preservado abaixo (historico).
+  ===========================================================================
+  BLOCKER (original, honesto — RESOLVIDO; ver nota acima):
   ===========================================================================
   /admin NAO abre mock-first via HTTP. A causa NAO e o layout nem requireAdmin
   (esses liberam mock-first em dev) — e o MIDDLEWARE em proxy.ts (Next 16 renomeou

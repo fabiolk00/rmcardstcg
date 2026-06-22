@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import type { Product } from "@/lib/data/types";
 import { CATEGORIES } from "@/lib/data/types";
+import { productStatusActions, type ProductStatusKind } from "@/lib/data/product-status";
 import { finalPriceCents } from "@/lib/data/pricing";
 import { formatBRL } from "@/lib/utils/currency";
 import { Icon } from "@/components/ui/Icon";
@@ -55,6 +56,14 @@ export function AdminProductsView({ products: initialProducts }: { products: Pro
   const [editing, setEditing] = useState<Product | null>(null);
   const [confirmInactivate, setConfirmInactivate] = useState<Product | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // Reativacoes em voo. O ref e a fonte de verdade SINCRONA do guard anti
+  // double-click: `busyId` (useState) so muda no proximo render, entao dois cliques
+  // sincronos leriam o mesmo snapshot stale e ambos passariam — o ref e lido/escrito
+  // na hora, fechando a janela. O `busyId` existe so p/ refletir o `disabled` visual
+  // do botao enquanto salva. (O servidor tambem e idempotente; isto evita o round-trip
+  // e o toast duplicado.) O modal de inativar ja tem o seu proprio estado de busy.
+  const inFlightRef = useRef<Set<string>>(new Set());
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!toast) return;
@@ -74,14 +83,7 @@ export function AdminProductsView({ products: initialProducts }: { products: Pro
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return products.filter((p) => {
-      if (
-        q &&
-        !(
-          p.name.toLowerCase().includes(q) ||
-          p.sku.toLowerCase().includes(q) ||
-          p.id.toLowerCase().includes(q)
-        )
-      ) {
+      if (q && !(p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q))) {
         return false;
       }
       if (status === "active" && !p.isActive) return false;
@@ -116,8 +118,11 @@ export function AdminProductsView({ products: initialProducts }: { products: Pro
   const handleSave = async (
     id: string | null,
     payload: ProductFormPayload,
+    original: ProductFormPayload | null,
   ): Promise<string | null> => {
-    const res = id ? await updateProductAction(id, payload) : await createProductAction(payload);
+    const res = id
+      ? await updateProductAction(id, payload, original ?? undefined)
+      : await createProductAction(payload);
     if (!res.ok) return res.error;
     const saved = res.data;
     setProducts((prev) => {
@@ -134,19 +139,30 @@ export function AdminProductsView({ products: initialProducts }: { products: Pro
     return null;
   };
 
-  const handlePower = async (p: Product) => {
-    if (p.isActive) {
+  // Inativar abre o modal de confirmacao (acao destrutiva: tira o produto da loja);
+  // reativar e direto, sem friccao (so traz o produto de volta). O servidor
+  // (setProductActive) e a fonte de verdade e audita a transicao na mesma transacao.
+  const handleStatusAction = async (p: Product, kind: ProductStatusKind) => {
+    if (kind === "inactivate") {
       setConfirmInactivate(p);
       return;
     }
-    const res = await setProductActiveAction(p.id, true);
-    if (!res.ok) {
-      setToast(res.error);
-      return;
+    if (inFlightRef.current.has(p.id)) return; // reativacao ja em voo p/ este produto
+    inFlightRef.current.add(p.id);
+    setBusyId(p.id);
+    try {
+      const res = await setProductActiveAction(p.id, true);
+      if (!res.ok) {
+        setToast(res.error);
+        return;
+      }
+      const saved = res.data;
+      setProducts((prev) => prev.map((x) => (x.id === saved.id ? saved : x)));
+      setToast("Produto reativado.");
+    } finally {
+      inFlightRef.current.delete(p.id);
+      setBusyId(null);
     }
-    const saved = res.data;
-    setProducts((prev) => prev.map((x) => (x.id === saved.id ? saved : x)));
-    setToast("Produto reativado.");
   };
 
   const handleInactivate = async (): Promise<string | null> => {
@@ -183,7 +199,7 @@ export function AdminProductsView({ products: initialProducts }: { products: Pro
               setQuery(e.target.value);
               setPage(1);
             }}
-            placeholder="Buscar por nome, SKU ou ID…"
+            placeholder="Buscar por nome ou SKU…"
             aria-label="Buscar produtos"
           />
         </div>
@@ -229,9 +245,6 @@ export function AdminProductsView({ products: initialProducts }: { products: Pro
           <thead>
             <tr>
               <th scope="col" className={styles.left}>
-                ID
-              </th>
-              <th scope="col" className={styles.left}>
                 Produto
               </th>
               <th scope="col" className={styles.left}>
@@ -260,7 +273,6 @@ export function AdminProductsView({ products: initialProducts }: { products: Pro
           <tbody>
             {paged.map((p) => (
               <tr key={p.id} className={p.isActive ? undefined : styles.inactive}>
-                <td className={`${styles.left} ${styles.mono}`}>{p.id}</td>
                 <td className={styles.left}>
                   <div className={styles.product}>
                     <span className={styles.thumb}>
@@ -332,22 +344,31 @@ export function AdminProductsView({ products: initialProducts }: { products: Pro
                     >
                       <Icon name="edit" size={15} />
                     </button>
-                    <button
-                      type="button"
-                      className={styles.act}
-                      onClick={() => handlePower(p)}
-                      aria-label={`${p.isActive ? "Inativar" : "Ativar"} ${p.name}`}
-                      title={p.isActive ? "Inativar" : "Ativar"}
-                    >
-                      <Icon name="power" size={15} />
-                    </button>
+                    {productStatusActions(p.isActive).map((a) => {
+                      const disabled = !a.enabled || busyId === p.id;
+                      return (
+                        <button
+                          key={a.kind}
+                          type="button"
+                          className={styles.act}
+                          onClick={() => handleStatusAction(p, a.kind)}
+                          disabled={disabled}
+                          aria-label={`${a.verb} ${p.name}`}
+                          // title nao aparece em <button disabled> (browser nao dispara
+                          // hover); so o exibimos quando o botao esta acionavel.
+                          title={disabled ? undefined : a.verb}
+                        >
+                          <Icon name={a.icon} size={15} />
+                        </button>
+                      );
+                    })}
                   </div>
                 </td>
               </tr>
             ))}
             {paged.length === 0 && (
               <tr>
-                <td colSpan={9} className={styles.emptyCell}>
+                <td colSpan={8} className={styles.emptyCell}>
                   Nenhum produto encontrado com esses filtros.
                 </td>
               </tr>

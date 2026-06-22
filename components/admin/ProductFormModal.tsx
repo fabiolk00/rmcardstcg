@@ -39,13 +39,41 @@ export type ProductFormPayload = {
 
 type Props = {
   product: Product;
-  /** Persistencia delegada ao pai (server action). Retorna erro p/ exibir, ou null em sucesso. */
-  onSave: (id: string | null, payload: ProductFormPayload) => Promise<string | null>;
+  /**
+   * Persistencia delegada ao pai (server action). Retorna erro p/ exibir, ou null em
+   * sucesso. `original` carrega os valores editaveis que o form CARREGOU (client
+   * baseline) p/ o diff de intencao do servidor; null em produto novo (nao ha original).
+   */
+  onSave: (
+    id: string | null,
+    payload: ProductFormPayload,
+    original: ProductFormPayload | null,
+  ) => Promise<string | null>;
   onClose: () => void;
 };
 
 export function ProductFormModal({ product, onSave, onClose }: Props) {
   const isNew = product.id === "";
+  // Snapshot dos campos editaveis no momento em que o form abriu (o modal remonta por
+  // edicao, entao este lazy-init captura exatamente o produto sendo editado). Enviado
+  // como `original` no save p/ o servidor diffar contra o que ESTE editor carregou —
+  // evitando reescrever um campo intocado com valor stale (lost update concorrente).
+  const [original] = useState<ProductFormPayload>(() => ({
+    name: product.name,
+    category: product.category,
+    sku: product.sku,
+    priceCents: product.priceCents,
+    discountPct: product.discountPct,
+    stock: product.stock,
+    badge: product.badge,
+    imageUrl: product.imageUrl,
+    description: product.description,
+    isCarousel: product.isCarousel,
+    weightGrams: product.weightGrams,
+    lengthCm: product.lengthCm,
+    widthCm: product.widthCm,
+    heightCm: product.heightCm,
+  }));
   const [name, setName] = useState(product.name);
   const [category, setCategory] = useState<Category>(product.category);
   const [sku, setSku] = useState(product.sku);
@@ -109,22 +137,26 @@ export function ProductFormModal({ product, onSave, onClose }: Props) {
     if (!canSave) return;
     setSaving(true);
     setError(null);
-    const err = await onSave(isNew ? null : product.id, {
-      name: name.trim(),
-      category,
-      sku: sku.trim(),
-      priceCents,
-      discountPct,
-      stock: stockNum,
-      badge: product.badge,
-      imageUrl: imageUrl.trim() || "/products/placeholder.svg",
-      description: description.trim(),
-      isCarousel,
-      weightGrams: toInt(weightGrams),
-      lengthCm: toInt(lengthCm),
-      widthCm: toInt(widthCm),
-      heightCm: toInt(heightCm),
-    });
+    const err = await onSave(
+      isNew ? null : product.id,
+      {
+        name: name.trim(),
+        category,
+        sku: sku.trim(),
+        priceCents,
+        discountPct,
+        stock: stockNum,
+        badge: product.badge,
+        imageUrl: imageUrl.trim() || "/products/placeholder.svg",
+        description: description.trim(),
+        isCarousel,
+        weightGrams: toInt(weightGrams),
+        lengthCm: toInt(lengthCm),
+        widthCm: toInt(widthCm),
+        heightCm: toInt(heightCm),
+      },
+      isNew ? null : original,
+    );
     setSaving(false);
     if (err) setError(err);
   };

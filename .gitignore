@@ -40,6 +40,9 @@ yarn-error.log*
 # editor
 .idea/
 
+# claude code (estado/memoria local do agente, nao versionar)
+/.claude/
+
 /lib/generated/prisma
 
 .vercel

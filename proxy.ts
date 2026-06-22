@@ -1,15 +1,21 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
+import { isClerkConfigured } from "@/lib/services/clerk/config";
+
 // Rotas que exigem login. O guard por ROLE de admin (F9) fica no app/admin/layout.
 const isProtectedRoute = createRouteMatcher(["/admin(.*)", "/minhas-compras(.*)", "/checkout(.*)"]);
 
-// Middleware Clerk PADRAO (Edge runtime). Antes era condicional
-// (`isClerkConfigured() ? clerkMiddleware(...) : noop`, mock-first sem Clerk), mas
-// o ternario no `export default` quebrava o bundle Edge na Vercel ("Edge Function
-// referencing unsupported modules" @clerk #safe-node-apis). Como producao sempre tem
-// as chaves Clerk, usamos a forma canonica direta — que e Edge-safe.
+// Middleware Clerk PADRAO (Edge runtime), SEMPRE como `export default` na forma
+// canonica — Edge-safe. O que quebrava o bundle Edge na Vercel ("Edge Function
+// referencing unsupported modules") era o TERNARIO no export default
+// (`isClerkConfigured() ? clerkMiddleware(...) : noop`), NAO um `if` dentro do
+// callback. Por isso o protect e gated por isClerkConfigured() AQUI, no fluxo por
+// request: em producao as chaves Clerk existem (true) e auth.protect() roda normal;
+// mock-first (sem Clerk, dev/harness) o protect e pulado e a rota abre — espelhando o
+// fail-closed de app/admin/layout.tsx e lib/auth/requireAdmin.ts (liberam dev, fecham
+// producao). isClerkConfigured so le process.env + atob, sem nada Edge-unsafe.
 export default clerkMiddleware(async (auth, req) => {
-  if (isProtectedRoute(req)) await auth.protect();
+  if (isClerkConfigured() && isProtectedRoute(req)) await auth.protect();
 });
 
 export const config = {

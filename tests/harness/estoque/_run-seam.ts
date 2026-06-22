@@ -72,7 +72,9 @@ import {
 } from "../../../lib/data/webhookEvents";
 
 type CreateArgs = { actor: AuditActor; input: ProductInput };
-type UpdateArgs = { actor: AuditActor; id: string; input: ProductInput };
+// `original`: snapshot que o editor carregou (client baseline) p/ o diff de intencao.
+// Opcional: ausente -> updateProduct cai no baseline do servidor (legado).
+type UpdateArgs = { actor: AuditActor; id: string; input: ProductInput; original?: ProductInput };
 // Soft-delete / reativacao de produto: chama setProductActive(actor, id, isActive)
 // de PRODUCAO (lib/data/products.ts). A funcao roda prisma.$transaction { le before,
 // no-op idempotente se ja no estado pedido, senao UPDATE is_active + writeAuditLog
@@ -394,8 +396,8 @@ async function main(): Promise<void> {
         break;
       }
       case "updateProduct": {
-        const { actor, id, input } = payload as UpdateArgs;
-        result = await updateProduct(actor, id, input);
+        const { actor, id, input, original } = payload as UpdateArgs;
+        result = await updateProduct(actor, id, input, original);
         break;
       }
       case "setProductActive": {

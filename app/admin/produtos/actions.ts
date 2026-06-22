@@ -54,11 +54,14 @@ export async function createProductAction(input: ProductInput): Promise<ActionRe
 export async function updateProductAction(
   id: string,
   input: ProductInput,
+  // Snapshot que o form carregou (client baseline) p/ o diff de intencao do servidor.
+  // Opcional: ausente -> updateProduct cai no baseline do servidor (legado).
+  original?: ProductInput,
 ): Promise<ActionResult<Product>> {
   const guard = await requireAdmin();
   if (!guard.ok) return { ok: false, error: guard.error };
   try {
-    const product = await updateProduct(guard.actor, id, input);
+    const product = await updateProduct(guard.actor, id, input, original);
     revalidatePath(ADMIN_PATH);
     return { ok: true, data: product };
   } catch (err) {

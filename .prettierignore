@@ -8,3 +8,4 @@ tsconfig.json
 .design-handoff
 public
 lib/generated
+.claude

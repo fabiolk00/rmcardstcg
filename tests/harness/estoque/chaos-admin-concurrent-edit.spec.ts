@@ -12,36 +12,33 @@ import { Client } from "pg";
  * produto nao causam lost update" contra o Postgres efemero REAL exposto em
  * process.env.DATABASE_URL pelo runner (scripts/harness-with-ephemeral-pg.ts).
  *
- * SEAM escolhida: updateProduct(actor, id, input) de lib/data/products.ts — a
- * MESMA funcao de PRODUCAO que a server action updateProductAction delega apos
+ * SEAM escolhida: updateProduct(actor, id, input, original) de lib/data/products.ts —
+ * a MESMA funcao de PRODUCAO que a server action updateProductAction delega apos
  * requireAdmin(). O seam runner (_run-seam.ts, op "updateProduct") chama a funcao
- * direto: ela abre prisma.$transaction, LE o `before` (findUnique), valida, e faz
- * tx.product.update gravando TODOS os campos editaveis (name, category, sku,
- * priceCents, discountPct, stock, badge, imageUrl, description) + writeAuditLog na
- * MESMA tx. Sem mock.
+ * direto: ela abre prisma.$transaction, LE o `before` (findUnique, p/ a auditoria),
+ * valida, e faz tx.product.update gravando APENAS os campos que o editor mudou em
+ * relacao ao que ELE CARREGOU (diff de intencao contra o client baseline `original`)
+ * + writeAuditLog na MESMA tx. Sem mock.
  *
  * CONCORRENCIA HONESTA (anti-fake-green): disparamos 2 processos `tsx` SIMULTANEOS
  * via `spawn` assincrono + Promise.all — NAO `spawnSync` (que serializaria as
- * chamadas e tornaria o teste trivial). Cada processo abre sua PROPRIA transacao no
- * MESMO Postgres e edita o MESMO produto:
- *   - editor A: muda SO o stock (S -> S+5), carregando os DEMAIS campos no valor
- *     que A leu (discountPct = D original).
- *   - editor B: muda SO o discountPct (D -> 20), carregando os DEMAIS campos no
- *     valor que B leu (stock = S original).
- * Cada updateProduct le o `before` no inicio da SUA transacao e depois sobrescreve
- * a linha INTEIRA com o snapshot que montou. Se as duas transacoes leem o MESMO
- * before (S, D) e cada uma grava a linha completa, a que COMMITAR POR ULTIMO
- * sobrescreve cegamente o campo que a outra mudou (lost update classico): ou
- * stock volta a S (perdendo A) ou discountPct volta a D (perdendo B).
+ * chamadas). Cada processo abre sua PROPRIA transacao no MESMO Postgres e edita o
+ * MESMO produto, AMBOS partindo do MESMO snapshot que carregaram (original = S, D):
+ *   - editor A: muda SO o stock (S -> S+5); discount carregado no original (D).
+ *   - editor B: muda SO o discountPct (D -> 20); stock carregado no original (S).
+ * updateProduct grava SO os campos que cada editor mudou EM RELACAO AO QUE ELE
+ * CARREGOU (client baseline `original`, passado pelo seam): A escreve so a coluna
+ * stock, B so a coluna discount_pct — colunas DISJUNTAS. Por isso ambas as mutacoes
+ * persistem INDEPENDENTE de qual transacao commita primeiro (merge deterministico).
  *
  * POR QUE ESTE TESTE FALHARIA SE O PRODUTO NAO FOSSE SEGURO: o assert central exige
- * que AMBAS as mutacoes (stock=S+5 E discountPct=20) estejam refletidas ao final.
- * Isso so e possivel se updateProduct serializar com seguranca (ex.: SELECT ... FOR
- * UPDATE / optimistic version / read-modify-write sob lock de linha que RE-LE apos
- * adquirir o lock). Um read-modify-write ingenuo sob READ COMMITTED (ler before sem
- * lock, depois UPDATE da linha inteira com o snapshot stale) perde uma das duas
- * edicoes — e o teste reprova honestamente. NAO serializamos as chamadas
- * artificialmente: spawn() + Promise.all dispara as duas de fato em paralelo.
+ * que AMBAS as mutacoes (stock=S+5 E discountPct=20) estejam refletidas ao final. Se
+ * updateProduct computasse o diff de intencao contra um read FRESCO do servidor (e nao
+ * contra o que o editor carregou), a interleaving em que B le o baseline DEPOIS do
+ * commit de A faria B enxergar stock=S+5 e reescrever a coluna stock com o seu valor
+ * carregado stale (S) — perdendo a edicao de A (lost update). Era exatamente essa
+ * janela que tornava este teste FLAKY; o diff contra o CLIENT baseline a fecha de forma
+ * deterministica. NAO serializamos as chamadas: spawn() + Promise.all roda as 2 em paralelo.
  *
  * CAVEAT TECNICO (resolvido como INFRA do harness, sem tocar produto): o cliente
  * Prisma gerado e ESM puro (import.meta). O runner do Playwright transpila os specs
@@ -120,6 +117,7 @@ function runUpdateAsync(
   label: EditOutcome["label"],
   id: string,
   input: ProductInput,
+  original: ProductInput,
 ): Promise<EditOutcome> {
   return new Promise<EditOutcome>((resolve) => {
     const child = spawn("pnpm", ["exec", "tsx", SEAM_RUNNER, "updateProduct"], {
@@ -129,6 +127,7 @@ function runUpdateAsync(
           actor: { clerkUserId: null, email: null, role: null },
           id,
           input,
+          original, // client baseline: o snapshot que ESTE editor carregou no form
         }),
       },
       shell: process.platform === "win32",
@@ -264,14 +263,26 @@ test("chaos.admin.concurrent-edit: 2 updateProduct simultaneos no MESMO produto 
     const inputA: ProductInput = {
       ...commonFields,
       priceCents: p0.price_cents,
-      discountPct: D, // A carrega o discount ORIGINAL (stale se B commitar antes)
+      discountPct: D, // A carrega o discount ORIGINAL (== original -> fora do diff de A)
       stock: S + STOCK_DELTA, // A muda o stock
     };
     const inputB: ProductInput = {
       ...commonFields,
       priceCents: p0.price_cents,
       discountPct: NEW_DISCOUNT, // B muda o discount
-      stock: S, // B carrega o stock ORIGINAL (stale se A commitar antes)
+      stock: S, // B carrega o stock ORIGINAL (== original -> fora do diff de B)
+    };
+    // O snapshot que AMBOS os editores carregaram no form (client baseline): a linha
+    // original (stock=S, discount=D). Enviado como `original` p/ o diff de intencao do
+    // servidor comparar contra o que CADA editor carregou — nao contra um read fresco.
+    // Assim A escreve SO stock (15!=10; disc 0==0 fica fora) e B escreve SO discount
+    // (disc 20!=0; stock 10==10 fica fora): colunas DISJUNTAS, INDEPENDENTE de qual
+    // transacao commita primeiro (merge deterministico, sem depender de overlap).
+    const originalLoaded: ProductInput = {
+      ...commonFields,
+      priceCents: p0.price_cents,
+      discountPct: D,
+      stock: S,
     };
 
     // --- ACAO: dispara as 2 edicoes SIMULTANEAS. Promise.all sobre processos spawn()
@@ -279,8 +290,8 @@ test("chaos.admin.concurrent-edit: 2 updateProduct simultaneos no MESMO produto 
     //     numa transacao independente, editando o MESMO produto. NAO ha serializacao
     //     artificial (spawnSync seria serial e trivial).
     const outcomes = await Promise.all([
-      runUpdateAsync("A_stock", productId, inputA),
-      runUpdateAsync("B_discount", productId, inputB),
+      runUpdateAsync("A_stock", productId, inputA, originalLoaded),
+      runUpdateAsync("B_discount", productId, inputB, originalLoaded),
     ]);
 
     // Nenhum processo deve ter morrido de forma inesperada: cada desfecho e um produto
