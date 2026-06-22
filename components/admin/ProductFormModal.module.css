@@ -168,6 +168,35 @@
   cursor: pointer;
 }
 
+.pkgHint {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.pkgGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-2);
+}
+
+.pkgItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pkgLabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+@media (max-width: 540px) {
+  .pkgGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 .finalCard {
   display: flex;
   align-items: center;

@@ -12,6 +12,8 @@ export type Category =
   | "Booster Box"
   | "Elite Trainer Box"
   | "Booster Pack"
+  | "Blister Triplo"
+  | "Blister Quadruplo"
   | "Coleção Especial"
   | "Tin"
   | "Acessórios"
@@ -21,6 +23,8 @@ export const CATEGORIES: readonly Category[] = [
   "Booster Box",
   "Elite Trainer Box",
   "Booster Pack",
+  "Blister Triplo",
+  "Blister Quadruplo",
   "Coleção Especial",
   "Tin",
   "Acessórios",
@@ -54,6 +58,14 @@ export interface Product {
   /** Caminho da imagem (placeholder no mock). */
   imageUrl: string;
   description: string;
+  /** Peso do pacote para frete, em GRAMAS (Int). 0 = usa o default da categoria. */
+  weightGrams: number;
+  /** Comprimento do pacote para frete, em CM (Int). 0 = default da categoria. */
+  lengthCm: number;
+  /** Largura do pacote para frete, em CM (Int). 0 = default da categoria. */
+  widthCm: number;
+  /** Altura do pacote para frete, em CM (Int). 0 = default da categoria. */
+  heightCm: number;
   /** ISO 8601. */
   createdAt: string;
 }

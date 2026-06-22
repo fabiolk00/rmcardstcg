@@ -3,9 +3,15 @@
 import Link from "next/link";
 import { useState } from "react";
 
-import { checkout, previewCoupon, type CheckoutResult } from "@/app/(storefront)/carrinho/actions";
+import {
+  checkout,
+  previewCoupon,
+  quoteShippingAction,
+  type CheckoutResult,
+} from "@/app/(storefront)/carrinho/actions";
 import { useCart } from "@/lib/cart/CartContext";
 import { cartTotals } from "@/lib/cart/totals";
+import type { ShippingOption } from "@/lib/services/superfrete/quote";
 import { finalPriceCents } from "@/lib/data/pricing";
 import { formatBRL } from "@/lib/utils/currency";
 import styles from "./CheckoutView.module.css";
@@ -82,6 +88,14 @@ export function CheckoutView() {
   } | null>(null);
   const [couponMsg, setCouponMsg] = useState<string | null>(null);
   const [couponBusy, setCouponBusy] = useState(false);
+  // Frete (cotacao server-side). shipQuoted: ja cotou para o CEP atual; shipFree:
+  // mercadoria atinge o limiar (gratis); shipCode: servico escolhido.
+  const [shipQuoted, setShipQuoted] = useState(false);
+  const [shipFree, setShipFree] = useState(false);
+  const [shipOptions, setShipOptions] = useState<ShippingOption[]>([]);
+  const [shipCode, setShipCode] = useState<number | null>(null);
+  const [shipLoading, setShipLoading] = useState(false);
+  const [shipMsg, setShipMsg] = useState<string | null>(null);
 
   if (!hydrated) {
     return <p className={styles.loading}>Carregando…</p>;
@@ -105,10 +119,26 @@ export function CheckoutView() {
   }
 
   const totals = cartTotals(lines);
-  // Total exibido = total com cupom (previa do server) quando aplicado; senao o base.
-  const displayTotalCents = couponPreview ? couponPreview.finalTotalCents : totals.totalCents;
+  const cepDigits = form.cep.replace(/\D/g, "");
+  const chosenOption = shipOptions.find((o) => o.serviceCode === shipCode) ?? null;
+  const shippingForDisplay = shipFree ? 0 : (chosenOption?.priceCents ?? null);
+  const shippingReady = shipQuoted && (shipFree || chosenOption != null);
+  const couponDiscount = couponPreview?.discountCents ?? 0;
+  // Total = mercadoria + frete escolhido - cupom (piso no frete), espelhando o server.
+  // null enquanto o frete nao foi calculado (botao de pagar fica desabilitado).
+  const displayTotalCents =
+    shippingForDisplay == null
+      ? null
+      : Math.max(shippingForDisplay, totals.merchandiseCents + shippingForDisplay - couponDiscount);
   const set = (key: keyof Form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm((f) => ({ ...f, [key]: e.target.value }));
+
+  // CEP muda -> invalida a cotacao anterior (forca recalcular; evita frete stale).
+  const onCepChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setForm((f) => ({ ...f, cep: e.target.value }));
+    setShipQuoted(false);
+    setShipMsg(null);
+  };
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -131,12 +161,18 @@ export function CheckoutView() {
       }
     }
 
+    if (!shippingReady) {
+      setError("Calcule o frete para finalizar.");
+      return;
+    }
+
     setSubmitting(true);
     const res = await checkout({
       checkoutKey,
       customer: { ...form },
       items: lines.map((l) => ({ productId: l.product.id, quantity: l.quantity })),
       couponCode: coupon.trim() || undefined,
+      shippingServiceCode: shipFree ? undefined : (chosenOption?.serviceCode ?? undefined),
     });
     setSubmitting(false);
 
@@ -168,6 +204,29 @@ export function CheckoutView() {
       setCouponPreview(null);
       setCouponMsg(res.error);
     }
+  }
+
+  async function calcShipping() {
+    if (cepDigits.length !== 8) {
+      setShipMsg("Informe um CEP válido (8 dígitos) no endereço.");
+      return;
+    }
+    setShipLoading(true);
+    setShipMsg(null);
+    const res = await quoteShippingAction({
+      cep: form.cep,
+      items: lines.map((l) => ({ productId: l.product.id, quantity: l.quantity })),
+    });
+    setShipLoading(false);
+    if (!res.ok) {
+      setShipQuoted(false);
+      setShipMsg(res.error);
+      return;
+    }
+    setShipFree(res.free);
+    setShipOptions(res.options);
+    setShipCode(res.free ? null : (res.options[0]?.serviceCode ?? null));
+    setShipQuoted(true);
   }
 
   return (
@@ -217,7 +276,7 @@ export function CheckoutView() {
             <input
               className={styles.input}
               value={form.cep}
-              onChange={set("cep")}
+              onChange={onCepChange}
               placeholder="80000-000"
               autoComplete="postal-code"
             />
@@ -261,8 +320,12 @@ export function CheckoutView() {
           </p>
         )}
 
-        <button type="submit" className={styles.submit} disabled={submitting}>
-          {submitting ? "Gerando PIX…" : `Pagar ${formatBRL(displayTotalCents)} via PIX`}
+        <button type="submit" className={styles.submit} disabled={submitting || !shippingReady}>
+          {submitting
+            ? "Gerando PIX…"
+            : shippingReady && displayTotalCents != null
+              ? `Pagar ${formatBRL(displayTotalCents)} via PIX`
+              : "Calcule o frete para continuar"}
         </button>
         <Link href="/carrinho" className={styles.back}>
           Voltar ao carrinho
@@ -334,13 +397,63 @@ export function CheckoutView() {
           <div className={styles.row}>
             <dt>Frete</dt>
             <dd className="tnum">
-              {totals.shippingCents === 0 ? "Grátis" : formatBRL(totals.shippingCents)}
+              {shipFree
+                ? "Grátis"
+                : shippingForDisplay != null
+                  ? formatBRL(shippingForDisplay)
+                  : "—"}
             </dd>
           </div>
         </dl>
+
+        <div className={styles.shipBox}>
+          <button
+            type="button"
+            className={styles.shipBtn}
+            onClick={calcShipping}
+            disabled={shipLoading || cepDigits.length !== 8}
+          >
+            {shipLoading ? "Calculando…" : shipQuoted ? "Recalcular frete" : "Calcular frete"}
+          </button>
+          {cepDigits.length !== 8 && (
+            <p className={styles.shipHint}>Preencha o CEP no endereço para calcular o frete.</p>
+          )}
+          {shipMsg && (
+            <p className={styles.error} role="alert">
+              {shipMsg}
+            </p>
+          )}
+          {shipQuoted && shipFree && (
+            <p className={styles.shipFree}>Frete grátis nesta compra 🎉</p>
+          )}
+          {shipQuoted && !shipFree && (
+            <div className={styles.shipOpts} role="radiogroup" aria-label="Opções de frete">
+              {shipOptions.map((o) => (
+                <label key={o.serviceCode} className={styles.shipOpt}>
+                  <input
+                    type="radio"
+                    name="ship"
+                    checked={shipCode === o.serviceCode}
+                    onChange={() => setShipCode(o.serviceCode)}
+                  />
+                  <span className={styles.shipOptName}>
+                    {o.name}
+                    {o.days != null && (
+                      <span className={styles.shipDays}> · {o.days} dias úteis</span>
+                    )}
+                  </span>
+                  <span className="tnum">{formatBRL(o.priceCents)}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div className={styles.total}>
           <span>Total</span>
-          <span className="tnum">{formatBRL(displayTotalCents)}</span>
+          <span className="tnum">
+            {displayTotalCents != null ? formatBRL(displayTotalCents) : "—"}
+          </span>
         </div>
       </aside>
     </div>

@@ -32,6 +32,10 @@ function toProduct(row: ProductModel): Product {
     badge: row.badge,
     imageUrl: row.imageUrl,
     description: row.description,
+    weightGrams: row.weightGrams,
+    lengthCm: row.lengthCm,
+    widthCm: row.widthCm,
+    heightCm: row.heightCm,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -112,6 +116,11 @@ export type ProductInput = {
   description: string;
   /** Exibir no carrossel "Em destaque" da landing. */
   isCarousel: boolean;
+  /** Medidas do pacote para frete (Int; 0 = usa o default da categoria). */
+  weightGrams: number;
+  lengthCm: number;
+  widthCm: number;
+  heightCm: number;
 };
 
 type NormalizedProductInput = {
@@ -125,6 +134,10 @@ type NormalizedProductInput = {
   imageUrl: string;
   description: string;
   isCarousel: boolean;
+  weightGrams: number;
+  lengthCm: number;
+  widthCm: number;
+  heightCm: number;
 };
 
 const DESC_MAX = 300;
@@ -164,6 +177,10 @@ function normalizeProductInput(input: ProductInput): NormalizedProductInput {
   const imageUrl = input.imageUrl?.trim() ? input.imageUrl.trim() : "/products/placeholder.svg";
   // Checkbox: forca booleano (undefined/null/"" do client viram false).
   const isCarousel = input.isCarousel === true;
+  // Medidas para frete (grama/cm, Int >= 0). Invalido/ausente -> 0, que faz a cotacao
+  // usar o default da categoria. Sem teto rigido (variam por produto).
+  const dim = (v: unknown): number =>
+    Number.isInteger(v) && (v as number) >= 0 ? (v as number) : 0;
 
   return {
     name,
@@ -176,6 +193,10 @@ function normalizeProductInput(input: ProductInput): NormalizedProductInput {
     imageUrl,
     description,
     isCarousel,
+    weightGrams: dim(input.weightGrams),
+    lengthCm: dim(input.lengthCm),
+    widthCm: dim(input.widthCm),
+    heightCm: dim(input.heightCm),
   };
 }
 
@@ -195,6 +216,10 @@ function auditSnapshot(p: Product): Prisma.InputJsonValue {
     badge: p.badge,
     imageUrl: p.imageUrl,
     description: p.description,
+    weightGrams: p.weightGrams,
+    lengthCm: p.lengthCm,
+    widthCm: p.widthCm,
+    heightCm: p.heightCm,
   };
 }
 
@@ -258,6 +283,10 @@ export async function createProduct(actor: AuditActor, input: ProductInput): Pro
         badge: data.badge,
         imageUrl: data.imageUrl,
         description: data.description,
+        weightGrams: data.weightGrams,
+        lengthCm: data.lengthCm,
+        widthCm: data.widthCm,
+        heightCm: data.heightCm,
       },
     });
     const product = toProduct(row);
@@ -318,6 +347,10 @@ export async function updateProduct(
     if (data.badge !== baseline.badge) updateData.badge = data.badge;
     if (data.imageUrl !== baseline.imageUrl) updateData.imageUrl = data.imageUrl;
     if (data.description !== baseline.description) updateData.description = data.description;
+    if (data.weightGrams !== baseline.weightGrams) updateData.weightGrams = data.weightGrams;
+    if (data.lengthCm !== baseline.lengthCm) updateData.lengthCm = data.lengthCm;
+    if (data.widthCm !== baseline.widthCm) updateData.widthCm = data.widthCm;
+    if (data.heightCm !== baseline.heightCm) updateData.heightCm = data.heightCm;
 
     // (3) SERIALIZA a aplicacao: trava a LINHA com SELECT ... FOR UPDATE. Edicoes
     // concorrentes do MESMO produto serializam aqui — a 2a transacao BLOQUEIA ate a

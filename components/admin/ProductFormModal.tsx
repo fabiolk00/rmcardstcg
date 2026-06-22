@@ -9,6 +9,7 @@ import { formatBRL } from "@/lib/utils/currency";
 import { Modal } from "@/components/ui/Modal";
 import { Icon } from "@/components/ui/Icon";
 import { uploadProductImageAction } from "@/app/admin/produtos/actions";
+import { CATEGORY_PACKAGE } from "@/lib/services/superfrete/dimensions";
 import styles from "./ProductFormModal.module.css";
 
 const DESC_MAX = 300;
@@ -29,6 +30,11 @@ export type ProductFormPayload = {
   imageUrl: string;
   description: string;
   isCarousel: boolean;
+  /** Medidas do pacote para frete (Int; 0 = usa o default da categoria). */
+  weightGrams: number;
+  lengthCm: number;
+  widthCm: number;
+  heightCm: number;
 };
 
 type Props = {
@@ -49,6 +55,12 @@ export function ProductFormModal({ product, onSave, onClose }: Props) {
   const [stock, setStock] = useState(String(product.stock));
   const [imageUrl, setImageUrl] = useState(product.imageUrl);
   const [isCarousel, setIsCarousel] = useState(product.isCarousel);
+  // Medidas para frete (string no input; 0 no produto -> vazio -> usa default da categoria).
+  const dimStr = (v: number) => (v > 0 ? String(v) : "");
+  const [weightGrams, setWeightGrams] = useState(dimStr(product.weightGrams));
+  const [lengthCm, setLengthCm] = useState(dimStr(product.lengthCm));
+  const [widthCm, setWidthCm] = useState(dimStr(product.widthCm));
+  const [heightCm, setHeightCm] = useState(dimStr(product.heightCm));
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -56,6 +68,8 @@ export function ProductFormModal({ product, onSave, onClose }: Props) {
 
   const priceCents = Math.round((parseFloat(priceReais.replace(",", ".")) || 0) * 100);
   const stockNum = Math.max(0, Math.trunc(Number(stock) || 0));
+  const toInt = (s: string) => Math.max(0, Math.trunc(Number(s) || 0));
+  const pkgDefault = CATEGORY_PACKAGE[category];
   const final = finalPriceCents({ priceCents, discountPct });
   const descOver = description.length > DESC_MAX;
   const hasCustomImage = imageUrl.trim() !== "" && imageUrl !== PLACEHOLDER_IMAGE;
@@ -106,6 +120,10 @@ export function ProductFormModal({ product, onSave, onClose }: Props) {
       imageUrl: imageUrl.trim() || "/products/placeholder.svg",
       description: description.trim(),
       isCarousel,
+      weightGrams: toInt(weightGrams),
+      lengthCm: toInt(lengthCm),
+      widthCm: toInt(widthCm),
+      heightCm: toInt(heightCm),
     });
     setSaving(false);
     if (err) setError(err);
@@ -295,6 +313,72 @@ export function ProductFormModal({ product, onSave, onClose }: Props) {
             onChange={(e) => setIsCarousel(e.target.checked)}
           />
         </label>
+
+        <div className={`${styles.field} ${styles.full}`}>
+          <span className={styles.label}>Embalagem para frete</span>
+          <p className={styles.pkgHint}>
+            Em branco usa o padrão de “{category}”: {pkgDefault.weightGrams} g ·{" "}
+            {pkgDefault.lengthCm}×{pkgDefault.widthCm}×{pkgDefault.heightCm} cm.
+          </p>
+          <div className={styles.pkgGrid}>
+            <span className={styles.pkgItem}>
+              <span className={styles.pkgLabel}>Peso (g)</span>
+              <input
+                className={styles.input}
+                type="number"
+                min="0"
+                step="1"
+                inputMode="numeric"
+                value={weightGrams}
+                onChange={(e) => setWeightGrams(e.target.value)}
+                placeholder={String(pkgDefault.weightGrams)}
+                aria-label="Peso para frete em gramas"
+              />
+            </span>
+            <span className={styles.pkgItem}>
+              <span className={styles.pkgLabel}>Compr. (cm)</span>
+              <input
+                className={styles.input}
+                type="number"
+                min="0"
+                step="1"
+                inputMode="numeric"
+                value={lengthCm}
+                onChange={(e) => setLengthCm(e.target.value)}
+                placeholder={String(pkgDefault.lengthCm)}
+                aria-label="Comprimento em cm"
+              />
+            </span>
+            <span className={styles.pkgItem}>
+              <span className={styles.pkgLabel}>Largura (cm)</span>
+              <input
+                className={styles.input}
+                type="number"
+                min="0"
+                step="1"
+                inputMode="numeric"
+                value={widthCm}
+                onChange={(e) => setWidthCm(e.target.value)}
+                placeholder={String(pkgDefault.widthCm)}
+                aria-label="Largura em cm"
+              />
+            </span>
+            <span className={styles.pkgItem}>
+              <span className={styles.pkgLabel}>Altura (cm)</span>
+              <input
+                className={styles.input}
+                type="number"
+                min="0"
+                step="1"
+                inputMode="numeric"
+                value={heightCm}
+                onChange={(e) => setHeightCm(e.target.value)}
+                placeholder={String(pkgDefault.heightCm)}
+                aria-label="Altura em cm"
+              />
+            </span>
+          </div>
+        </div>
 
         <div className={`${styles.finalCard} ${styles.full}`}>
           <span className={styles.finalLabel}>Preço final</span>

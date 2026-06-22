@@ -107,6 +107,13 @@ model Product {
   badge       String?
   imageUrl    String   @map("image_url")
   description String
+  // Medidas do pacote para cotacao de frete (com margem de embalagem). Peso em
+  // GRAMAS e dimensoes em CM, sempre Int (nunca float, como *Cents). 0 = nao
+  // definido -> usa o default da categoria (lib/services/superfrete/dimensions).
+  weightGrams Int      @default(0) @map("weight_grams")
+  lengthCm    Int      @default(0) @map("length_cm")
+  widthCm     Int      @default(0) @map("width_cm")
+  heightCm    Int      @default(0) @map("height_cm")
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   orderItems OrderItem[]

@@ -14,6 +14,8 @@ const CATEGORY_ICON: Record<Category, IconName> = {
   "Booster Box": "box",
   "Elite Trainer Box": "archive",
   "Booster Pack": "layers",
+  "Blister Triplo": "layers",
+  "Blister Quadruplo": "layers",
   "Coleção Especial": "shield",
   Tin: "package",
   Acessórios: "sleeves",

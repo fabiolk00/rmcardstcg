@@ -28,6 +28,10 @@ function p(overrides: Partial<Product>): Product {
     badge: null,
     imageUrl: "/products/placeholder.svg",
     description: "x",
+    weightGrams: 0,
+    lengthCm: 0,
+    widthCm: 0,
+    heightCm: 0,
     createdAt: "2025-01-01T00:00:00.000Z",
     ...overrides,
   };

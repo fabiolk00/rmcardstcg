@@ -164,6 +164,79 @@
   font-weight: 800;
 }
 
+/* ---- Frete (cotacao) ---- */
+.shipBox {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.shipBtn {
+  align-self: flex-start;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  background: var(--card);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.shipBtn:hover:not(:disabled) {
+  border-color: var(--ink);
+}
+
+.shipBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.shipHint {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.shipFree {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--green-strong);
+}
+
+.shipOpts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shipOpt {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.shipOpt:hover {
+  border-color: var(--ink);
+}
+
+.shipOptName {
+  flex: 1;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.shipDays {
+  font-weight: 400;
+  color: var(--ink-3);
+}
+
 /* ---- Estados auxiliares ---- */
 .loading {
   color: var(--ink-3);

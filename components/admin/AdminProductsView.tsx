@@ -37,6 +37,10 @@ function blankProduct(): Product {
     badge: null,
     imageUrl: "/products/placeholder.svg",
     description: "",
+    weightGrams: 0,
+    lengthCm: 0,
+    widthCm: 0,
+    heightCm: 0,
     createdAt: "",
   };
 }

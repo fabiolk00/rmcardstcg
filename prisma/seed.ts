@@ -31,6 +31,10 @@ async function main() {
       badge: p.badge,
       imageUrl: p.imageUrl,
       description: p.description,
+      weightGrams: p.weightGrams,
+      lengthCm: p.lengthCm,
+      widthCm: p.widthCm,
+      heightCm: p.heightCm,
       createdAt: new Date(p.createdAt),
     };
     const row = await prisma.product.upsert({

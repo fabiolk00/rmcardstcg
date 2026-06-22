@@ -4,7 +4,10 @@ import { auth } from "@clerk/nextjs/server";
 import { headers } from "next/headers";
 
 import { couponDiscountCents, couponErrorMessage } from "@/lib/cart/coupon";
-import { cartTotals, type CartLine } from "@/lib/cart/totals";
+import { cartTotals, FLAT_SHIPPING_CENTS, type CartLine } from "@/lib/cart/totals";
+import { isFreeShipping, resolveShippingCents } from "@/lib/cart/shipping";
+import { effectivePackage } from "@/lib/services/superfrete/dimensions";
+import { quoteShipping, type ShippingOption } from "@/lib/services/superfrete/quote";
 import { redeemCoupon, validateCoupon } from "@/lib/data/coupons";
 import {
   createOrderWithReservation,
@@ -60,6 +63,12 @@ export type CheckoutInput = {
   items: { productId: string; quantity: number }[];
   /** Codigo de cupom digitado pelo cliente (validado 100% no server). */
   couponCode?: string;
+  /**
+   * Servico de frete escolhido pelo cliente (1=PAC, 2=SEDEX, ...). O server RE-COTA
+   * e bate por este codigo; se nao casar, usa o mais barato. Frete e sempre resolvido
+   * no servidor (nunca confia no preco do client) — fecha "exibido == cobrado".
+   */
+  shippingServiceCode?: number;
 };
 
 export type CheckoutPix = {
@@ -184,6 +193,73 @@ export async function previewCoupon(input: {
   return { ok: true, code: v.coupon.code, discountCents, finalTotalCents };
 }
 
+export type ShippingQuoteResult =
+  | { ok: true; free: boolean; options: ShippingOption[] }
+  | { ok: false; error: string };
+
+/**
+ * Cotacao de frete para a tela de checkout. Server-side: valida CEP/itens, decide
+ * frete GRATIS pela mercadoria (limiar) e, quando pago, cota no SuperFrete. Mock-first
+ * / indisponivel -> uma opcao unica de frete flat, para a UX funcionar ja hoje (sem
+ * token) e exibir o total. O preco final do pedido e SEMPRE re-resolvido no checkout.
+ */
+export async function quoteShippingAction(input: {
+  cep: string;
+  items: { productId: string; quantity: number }[];
+}): Promise<ShippingQuoteResult> {
+  if (!input.items?.length) return { ok: false, error: "Seu carrinho está vazio." };
+  const dest = input.cep?.replace(/\D/g, "") ?? "";
+  if (dest.length !== 8) return { ok: false, error: "Informe um CEP válido (8 dígitos)." };
+
+  let userId = "guest";
+  if (isClerkConfigured()) {
+    const { userId: clerkId } = await auth();
+    if (clerkId) userId = clerkId;
+  }
+  const limited = await checkRateLimit(`shipping-quote:${await clientKey(userId)}`, {
+    limit: 30,
+    windowMs: 60_000,
+  });
+  if (!limited.allowed) return { ok: false, error: "Muitas tentativas. Aguarde um instante." };
+
+  // Mercadoria a partir do BANCO (nunca confia no client) -> decide frete gratis.
+  const products = await getProductsByIds(input.items.map((i) => i.productId));
+  const byId = new Map(products.map((p) => [p.id, p]));
+  const lines: CartLine[] = [];
+  for (const { productId, quantity } of input.items) {
+    const product = byId.get(productId);
+    if (!product || !product.isActive) {
+      return { ok: false, error: "Um dos produtos não está mais disponível." };
+    }
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      return { ok: false, error: "Quantidade inválida no carrinho." };
+    }
+    lines.push({ product, quantity });
+  }
+  const totals = cartTotals(lines);
+  if (isFreeShipping(totals.merchandiseCents)) return { ok: true, free: true, options: [] };
+
+  // Itens de cotacao com as medidas EFETIVAS do produto (byId tem o Product completo;
+  // CartLine.product e um Pick sem category/dimensoes).
+  const quoteItems = input.items.flatMap((i) => {
+    const product = byId.get(i.productId);
+    return product ? [{ quantity: i.quantity, pkg: effectivePackage(product) }] : [];
+  });
+  let options: ShippingOption[] = [];
+  try {
+    options = await quoteShipping(input.cep, quoteItems);
+  } catch (err) {
+    console.error("[shipping-quote] falhou:", err instanceof Error ? err.message : err);
+  }
+  if (options.length === 0) {
+    // Mock-first / indisponivel: frete flat como opcao unica (serviceCode 0).
+    options = [
+      { serviceCode: 0, name: "Frete padrão", priceCents: FLAT_SHIPPING_CENTS, days: null },
+    ];
+  }
+  return { ok: true, free: false, options };
+}
+
 export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
   if (!input.checkoutKey) {
     return { ok: false, error: "Sessão de checkout inválida. Recarregue a página." };
@@ -272,9 +348,43 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
     appliedCouponDiscountCents = couponDiscountCents(v.coupon, totals.merchandiseCents);
   }
 
+  // FRETE (custo + free), resolvido no SERVIDOR. Gratis no limiar; senao re-cota no
+  // SuperFrete (mock-first -> []), casa pelo servico escolhido (ou o mais barato) e
+  // cai no flat se a cotacao nao vier. O cliente NUNCA define o preco do frete.
+  let quotedShippingCents: number | null = null;
+  let shippingService: string | null = null;
+  let shippingDays: string | null = null;
+  if (!isFreeShipping(totals.merchandiseCents)) {
+    try {
+      const quoteItems = input.items.flatMap((i) => {
+        const product = productById.get(i.productId);
+        return product ? [{ quantity: i.quantity, pkg: effectivePackage(product) }] : [];
+      });
+      const options = await quoteShipping(input.customer.cep, quoteItems);
+      const chosen = options.find((o) => o.serviceCode === input.shippingServiceCode) ?? options[0];
+      if (chosen) {
+        quotedShippingCents = chosen.priceCents;
+        shippingService = chosen.name;
+        shippingDays = chosen.days != null ? `${chosen.days} dias úteis` : null;
+      }
+    } catch (err) {
+      // Cotacao indisponivel nao derruba o checkout: cai no frete flat.
+      console.error(
+        "[checkout] cotacao de frete falhou; usando frete flat:",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+  const shippingCents = resolveShippingCents({
+    merchandiseCents: totals.merchandiseCents,
+    quotedCents: quotedShippingCents,
+  });
+
+  // Total = mercadoria + frete resolvido - cupom, com piso no frete (cupom nunca
+  // derruba abaixo do transporte ja cobrado).
   const finalTotalCents = Math.max(
-    totals.shippingCents,
-    totals.totalCents - appliedCouponDiscountCents,
+    shippingCents,
+    totals.merchandiseCents + shippingCents - appliedCouponDiscountCents,
   );
 
   // Cria o pedido pendente, reserva o estoque E redime o cupom na MESMA transacao
@@ -298,7 +408,9 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
       discountCents: totals.discountCents,
       couponCode: appliedCouponCode,
       couponDiscountCents: appliedCouponDiscountCents,
-      shippingCents: totals.shippingCents,
+      shippingCents,
+      shippingService,
+      shippingDays,
       totalCents: finalTotalCents,
       paymentMethod: "PIX",
       dueDate: pixDueDateObject(),
