@@ -44,7 +44,7 @@ export default async function ReciboPage({ params }: { params: Promise<{ id: str
 
   return (
     <div className={`${styles.page} receipt-print-root`}>
-      <div className={`${styles.toolbar} receipt-noprint`}>
+      <div className={`${styles.toolbar} noprint`}>
         <Link href={`/minhas-compras/${numericId}`} className={styles.back}>
           <Icon name="chevronLeft" size={16} />
           <span>Voltar ao pedido</span>

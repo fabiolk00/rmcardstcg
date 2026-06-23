@@ -744,7 +744,11 @@ export async function updateOrderTracking(
 ): Promise<AdminOrderUpdate> {
   const trackingCode =
     input.trackingCode && input.trackingCode.trim().length > 0 ? input.trackingCode.trim() : null;
-  const carrier = input.carrier && isCarrierId(input.carrier) ? input.carrier : null;
+  // Transportador sem codigo nao tem sentido (nem aparece na vitrine, que exibe o
+  // bloco so quando ha codigo): sem codigo -> carrier tambem null. Mantem estado
+  // persistido == estado exibido e evita audit "changed" de dado invisivel.
+  const carrier =
+    trackingCode && input.carrier && isCarrierId(input.carrier) ? input.carrier : null;
 
   return prisma.$transaction(
     async (tx) => {

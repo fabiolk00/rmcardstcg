@@ -66,6 +66,8 @@ async function main() {
         paymentStatus: o.paymentStatus,
         paymentMethod: o.paymentMethod,
         shippingStatus: o.shippingStatus,
+        trackingCode: o.trackingCode,
+        shippingCarrier: o.shippingCarrier,
         internalNote: o.internalNote,
         createdAt: new Date(o.createdAt),
         items: {

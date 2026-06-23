@@ -11,7 +11,7 @@ export function WhatsAppFab() {
 
   return (
     <a
-      className={styles.fab}
+      className={`${styles.fab} noprint`}
       href={href}
       target="_blank"
       rel="noopener noreferrer"
