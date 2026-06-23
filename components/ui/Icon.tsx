@@ -22,7 +22,8 @@ export type IconName =
   | "x"
   | "edit"
   | "power"
-  | "rotate";
+  | "rotate"
+  | "star";
 
 const PATHS: Record<IconName, ReactNode> = {
   arrow: (
@@ -134,6 +135,9 @@ const PATHS: Record<IconName, ReactNode> = {
       <polyline points="1 4 1 10 7 10" />
       <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
     </>
+  ),
+  star: (
+    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
   ),
 };
 

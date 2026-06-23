@@ -1,0 +1,144 @@
+.head {
+  margin-bottom: var(--space-6);
+}
+
+.title {
+  font-size: clamp(22px, 4vw, 28px);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}
+
+.sub {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.empty {
+  padding: var(--space-8) var(--space-4);
+  text-align: center;
+  font-size: 15px;
+  color: var(--ink-3);
+  border: 1px dashed var(--border);
+  border-radius: var(--r-md);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--card);
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.author {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.product {
+  color: var(--ink-2);
+}
+
+.dot {
+  color: var(--ink-3);
+}
+
+.date {
+  color: var(--ink-3);
+}
+
+.reviewTitle {
+  margin-top: var(--space-3);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.body {
+  margin-top: var(--space-2);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  white-space: pre-line;
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.approve,
+.reject {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 var(--space-5);
+  border-radius: var(--r-pill);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background 140ms,
+    border-color 140ms,
+    transform 140ms;
+}
+
+.approve {
+  background: var(--ink);
+  color: var(--on-ink);
+}
+
+.approve:hover:not(:disabled) {
+  background: var(--ink-hover);
+  transform: translateY(-1px);
+}
+
+.reject {
+  background: var(--card);
+  color: var(--red-strong);
+  border: 1px solid var(--border);
+}
+
+.reject:hover:not(:disabled) {
+  border-color: var(--red-strong);
+}
+
+.approve:disabled,
+.reject:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+.toast {
+  position: fixed;
+  bottom: var(--space-6);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  padding: 10px var(--space-5);
+  border-radius: var(--r-pill);
+  background: var(--ink);
+  color: var(--on-ink);
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: var(--shadow-lg);
+}

@@ -1,3 +1,4 @@
+import { auth } from "@clerk/nextjs/server";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { cache } from "react";
@@ -5,11 +6,16 @@ import { cache } from "react";
 import { SITE_NAME, absoluteUrl } from "@/lib/config/site";
 import { finalPriceCents } from "@/lib/data/pricing";
 import { getProductBySlug, getRelatedProducts } from "@/lib/data/products";
+import { getApprovedReviews, getReviewStats } from "@/lib/data/reviews";
 import type { Product } from "@/lib/data/types";
+import { isClerkConfigured } from "@/lib/services/clerk/config";
 import { Breadcrumb } from "@/components/product/Breadcrumb";
 import { ProductGallery } from "@/components/product/ProductGallery";
 import { ProductInfo } from "@/components/product/ProductInfo";
 import { RelatedProducts } from "@/components/product/RelatedProducts";
+import { ReviewForm } from "@/components/product/ReviewForm";
+import { ReviewsList } from "@/components/product/ReviewsList";
+import { ReviewStats } from "@/components/product/ReviewStats";
 import { ReviewsSummary } from "@/components/product/ReviewsSummary";
 import styles from "./produto.module.css";
 
@@ -94,7 +100,19 @@ export default async function ProdutoPage({ params }: { params: Promise<{ slug: 
   const product = await loadProduct(slug);
   if (!product) notFound();
 
-  const related = await getRelatedProducts(product);
+  // Tudo em paralelo (sem N+1): relacionados, agregado e 1a pagina de aprovadas.
+  const [related, reviewStats, reviewPage] = await Promise.all([
+    getRelatedProducts(product),
+    getReviewStats(product.id),
+    getApprovedReviews(product.id),
+  ]);
+
+  // Gating do formulario: com Clerk ativo, so autenticado avalia; mock-first libera.
+  let canReview = true;
+  if (isClerkConfigured()) {
+    const { userId } = await auth();
+    canReview = Boolean(userId);
+  }
 
   return (
     <article className={styles.wrap}>
@@ -122,7 +140,11 @@ export default async function ProdutoPage({ params }: { params: Promise<{ slug: 
         </section>
       )}
 
-      <ReviewsSummary rating={product.rating} reviewCount={product.reviewCount} />
+      <ReviewsSummary rating={product.rating} reviewCount={product.reviewCount}>
+        <ReviewStats stats={reviewStats} />
+        <ReviewForm slug={product.slug} canReview={canReview} />
+        <ReviewsList reviews={reviewPage.reviews} total={reviewPage.total} />
+      </ReviewsSummary>
 
       <RelatedProducts products={related} />
 

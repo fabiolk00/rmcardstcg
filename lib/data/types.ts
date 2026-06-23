@@ -73,6 +73,32 @@ export interface Product {
 export type PaymentStatus = "pending" | "paid" | "cancelled";
 export type ShippingStatus = "pending" | "sent" | "delivered" | "cancelled";
 
+export type ReviewStatus = "pending" | "approved" | "rejected";
+
+export interface Review {
+  id: string;
+  productId: string;
+  /** Autor (clerk_user_id no DB; "guest" no mock-first). */
+  userId: string;
+  authorName: string;
+  /** Nota inteira 1–5. */
+  rating: number;
+  title: string | null;
+  body: string;
+  status: ReviewStatus;
+  /** ISO 8601. */
+  createdAt: string;
+}
+
+/** Agregado das avaliacoes APROVADAS de um produto (ReviewStats). */
+export interface ReviewStats {
+  count: number;
+  /** Media 0–5, uma casa decimal (mesmo formato de Product.rating). */
+  average: number;
+  /** Contagem por nota (1..5). */
+  distribution: Record<1 | 2 | 3 | 4 | 5, number>;
+}
+
 export interface OrderItem {
   productId: string;
   /** Snapshot do nome no momento da compra. */

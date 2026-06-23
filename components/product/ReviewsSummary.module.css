@@ -49,3 +49,10 @@
   font-size: 14px;
   color: var(--ink-3);
 }
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  margin-top: var(--space-6);
+}

@@ -55,3 +55,8 @@ CREATE UNIQUE INDEX "coupons_code_key" ON "coupons"(LOWER("code"));
 -- source: ...:126
 ALTER TABLE "coupon_redemptions" DROP CONSTRAINT IF EXISTS "coupon_redemptions_discount_cents_chk";
 ALTER TABLE "coupon_redemptions" ADD  CONSTRAINT "coupon_redemptions_discount_cents_chk" CHECK ("discount_cents" >= 0);
+
+-- == reviews: nota 1..5 (CHECK que o push omite) ==============================
+-- source: prisma/migrations/20260615130000_add_reviews/migration.sql
+ALTER TABLE "reviews" DROP CONSTRAINT IF EXISTS "reviews_rating_chk";
+ALTER TABLE "reviews" ADD  CONSTRAINT "reviews_rating_chk" CHECK ("rating" BETWEEN 1 AND 5);

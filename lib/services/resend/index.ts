@@ -46,3 +46,43 @@ export function sendOrderConfirmationEmail(order: Order): Promise<void> {
 export function sendPaymentConfirmationEmail(order: Order): Promise<void> {
   return sendOrderEmail(order, "paid");
 }
+
+/**
+ * Notifica o(s) admin(s) de uma nova avaliacao a moderar. Mock-first: no-op sem
+ * RESEND_API_KEY ou sem ADMIN_EMAILS. Tolerante a falha (e-mail nunca derruba a
+ * submissao) — erros sao logados e engolidos, como os e-mails de pedido.
+ */
+export async function sendReviewModerationEmail(input: {
+  productName: string;
+  authorName: string;
+  rating: number;
+  body: string;
+}): Promise<void> {
+  if (!isResendConfigured()) return;
+  const admins = (process.env.ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((e) => e.trim())
+    .filter(Boolean);
+  if (admins.length === 0) return;
+
+  try {
+    const { apiKey, from } = getResendConfig();
+    const { error } = await new Resend(apiKey).emails.send({
+      from,
+      to: admins,
+      subject: `Nova avaliação para moderar — ${input.productName}`,
+      text:
+        `${input.authorName} avaliou "${input.productName}" com ${input.rating}/5:\n\n` +
+        `${input.body}\n\n` +
+        `Modere em /admin/avaliacoes.`,
+    });
+    if (error) {
+      console.error("[resend] falha ao notificar nova avaliação:", error.message);
+    }
+  } catch (err) {
+    console.error(
+      "[resend] erro ao notificar nova avaliação:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+}

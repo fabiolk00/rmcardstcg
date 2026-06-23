@@ -1,0 +1,174 @@
+.openBtn {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 var(--space-5);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--ink);
+  background: var(--card);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background 140ms,
+    color 140ms,
+    transform 140ms;
+}
+
+.openBtn:hover {
+  background: var(--ink);
+  color: var(--on-ink);
+  transform: translateY(-1px);
+}
+
+.gate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-soft);
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.loginLink {
+  font-weight: 700;
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.done {
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-soft);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--green-strong);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: 520px;
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--card);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.starInput {
+  display: inline-flex;
+  gap: 4px;
+  color: var(--gold);
+}
+
+.starBtn {
+  display: inline-flex;
+  padding: 2px;
+  background: none;
+  cursor: pointer;
+  color: inherit;
+  transition: transform 120ms;
+}
+
+.starBtn:hover {
+  transform: scale(1.1);
+}
+
+.input,
+.textarea {
+  width: 100%;
+  padding: 10px var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg-soft);
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.input:focus,
+.textarea:focus {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+  background: var(--card);
+}
+
+.error {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--red-strong);
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.submit {
+  display: inline-flex;
+  align-items: center;
+  min-height: 46px;
+  padding: 0 var(--space-6);
+  border-radius: var(--r-pill);
+  background: var(--ink);
+  color: var(--on-ink);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background 140ms,
+    transform 140ms;
+}
+
+.submit:hover:not(:disabled) {
+  background: var(--ink-hover);
+  transform: translateY(-1px);
+}
+
+.submit:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.cancel {
+  display: inline-flex;
+  align-items: center;
+  min-height: 46px;
+  padding: 0 var(--space-4);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.cancel:hover {
+  color: var(--ink);
+}

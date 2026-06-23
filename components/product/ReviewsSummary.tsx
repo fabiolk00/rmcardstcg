@@ -29,15 +29,15 @@ export function ReviewsSummary({
               {reviewCount} {reviewCount === 1 ? "avaliação" : "avaliações"}
             </span>
           </div>
-          <p className={styles.note}>
-            Nota média baseada nas avaliações verificadas de quem comprou.
-          </p>
+          <p className={styles.note}>Nota média das avaliações dos nossos clientes.</p>
         </div>
       ) : (
-        <p className={styles.empty}>Este produto ainda não recebeu avaliações.</p>
+        <p className={styles.empty}>
+          Este produto ainda não recebeu avaliações. Seja o primeiro a avaliar.
+        </p>
       )}
 
-      {children}
+      {children && <div className={styles.panel}>{children}</div>}
     </section>
   );
 }
