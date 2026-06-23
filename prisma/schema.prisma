@@ -54,6 +54,7 @@ enum AuditAction {
   order_payment_status_update  @map("order.payment_status_update")
   order_shipping_status_update @map("order.shipping_status_update")
   order_note_update            @map("order.note_update")
+  order_tracking_update        @map("order.tracking_update")
   coupon_create                @map("coupon.create")
   coupon_update                @map("coupon.update")
   coupon_deactivate            @map("coupon.deactivate")
@@ -156,6 +157,10 @@ model Order {
   paymentStatus  PaymentStatus  @default(pending) @map("payment_status")
   paymentMethod  String         @map("payment_method")
   shippingStatus ShippingStatus @default(pending) @map("shipping_status")
+  // Rastreio do envio (admin preenche ao despachar). carrier = id do transportador
+  // (lib/data/carriers); trackingCode = codigo do objeto. Ambos nullable (legado/sem envio).
+  trackingCode    String?       @map("tracking_code")
+  shippingCarrier String?       @map("shipping_carrier")
   internalNote   String?        @map("internal_note")
   // Correlacao com o Asaas: a cobranca/cliente desta venda. O webhook so muda o
   // status se o payment.id do evento bater com asaasPaymentId (anti-replay).

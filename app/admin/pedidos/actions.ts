@@ -8,6 +8,7 @@ import {
   adjustOrderPaymentStatus,
   updateOrderInternalNote,
   updateOrderShippingStatus,
+  updateOrderTracking,
 } from "@/lib/data/orders";
 import type { Order, PaymentStatus, ShippingStatus } from "@/lib/data/types";
 
@@ -72,6 +73,27 @@ export async function updateInternalNoteAction(
   if (numericId === null) return { ok: false, error: "Pedido inválido." };
 
   const res = await updateOrderInternalNote(numericId, note, guard.actor);
+  if (res.ok && res.changed) revalidatePath(ADMIN_PEDIDOS_PATH);
+  return toActionResult(res);
+}
+
+/** Preenche/atualiza o RASTREIO (codigo + transportador) do pedido. */
+export async function updateTrackingAction(
+  orderId: string,
+  trackingCode: string,
+  carrier: string,
+): Promise<OrderActionResult> {
+  const guard = await requireAdmin();
+  if (!guard.ok) return { ok: false, error: guard.error };
+
+  const numericId = parseOrderId(orderId);
+  if (numericId === null) return { ok: false, error: "Pedido inválido." };
+
+  const res = await updateOrderTracking(
+    numericId,
+    { trackingCode: trackingCode || null, carrier: carrier || null },
+    guard.actor,
+  );
   if (res.ok && res.changed) revalidatePath(ADMIN_PEDIDOS_PATH);
   return toActionResult(res);
 }

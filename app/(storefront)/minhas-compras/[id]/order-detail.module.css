@@ -191,6 +191,36 @@
   color: var(--ink-3);
 }
 
+.tracking {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: var(--space-2);
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.trackCode {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+.trackLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  font-weight: 700;
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.trackLink:hover {
+  color: var(--ink-2);
+}
+
 .actions {
   display: flex;
   gap: var(--space-3);

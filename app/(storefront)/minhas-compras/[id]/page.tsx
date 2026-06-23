@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { carrierLabel, carrierTrackingUrl } from "@/lib/data/carriers";
 import { getOrderForUser } from "@/lib/data/orders";
 import { isClerkConfigured } from "@/lib/services/clerk/config";
 import { formatBRL } from "@/lib/utils/currency";
@@ -41,6 +42,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
 
   const numericId = order.id.replace(/^#/, "");
   const itemsCount = order.items.reduce((sum, i) => sum + i.quantity, 0);
+  const trackingUrl = carrierTrackingUrl(order.shippingCarrier, order.trackingCode);
 
   return (
     <section className={styles.wrap}>
@@ -162,10 +164,32 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
               </span>
             ) : null}
           </p>
+
+          {order.trackingCode && (
+            <p className={styles.tracking}>
+              Rastreio: <strong className={styles.trackCode}>{order.trackingCode}</strong>
+              {order.shippingCarrier && (
+                <span className={styles.shipService}> · {carrierLabel(order.shippingCarrier)}</span>
+              )}
+              {trackingUrl && (
+                <a
+                  href={trackingUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={styles.trackLink}
+                >
+                  Rastrear <Icon name="arrow" size={13} />
+                </a>
+              )}
+            </p>
+          )}
         </div>
       </div>
 
       <div className={styles.actions}>
+        <Link href={`/minhas-compras/${numericId}/recibo`} className={styles.shopMore}>
+          <Icon name="receipt" size={15} /> Comprovante
+        </Link>
         <Link href="/colecoes" className={styles.shopMore}>
           Continuar comprando <Icon name="arrow" size={15} />
         </Link>

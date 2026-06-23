@@ -10,6 +10,7 @@ import {
   adjustPaymentStatusAction,
   updateInternalNoteAction,
   updateShippingStatusAction,
+  updateTrackingAction,
 } from "@/app/admin/pedidos/actions";
 import styles from "./AdminOrdersView.module.css";
 
@@ -254,6 +255,7 @@ export function AdminOrdersView({ orders: initialOrders }: { orders: Order[] }) 
             onShipping: (to) => updateShippingStatusAction(editing.id, to),
             onPayment: (to, reason) => adjustPaymentStatusAction(editing.id, to, reason),
             onNote: (note) => updateInternalNoteAction(editing.id, note),
+            onTracking: (code, carrier) => updateTrackingAction(editing.id, code, carrier),
           }}
         />
       )}

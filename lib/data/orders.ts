@@ -3,6 +3,7 @@ import { Prisma } from "../generated/prisma/client";
 import { AuditAction, AuditEntityType } from "../generated/prisma/enums";
 import type { OrderItemModel, OrderModel } from "../generated/prisma/models";
 import { type AuditActor, writeAuditLog } from "./audit";
+import { isCarrierId } from "./carriers";
 import { commitStock, releaseStock, reserveStock, restockUnits } from "./inventory";
 import { SHIPPING_TRANSITIONS } from "./orderTransitions";
 import type { Order, OrderAddress, OrderItem, PaymentStatus, ShippingStatus } from "./types";
@@ -49,6 +50,8 @@ function toOrder(row: OrderRow): Order {
     paymentStatus: row.paymentStatus as PaymentStatus,
     paymentMethod: row.paymentMethod,
     shippingStatus: row.shippingStatus as ShippingStatus,
+    trackingCode: row.trackingCode,
+    shippingCarrier: row.shippingCarrier,
     internalNote: row.internalNote,
     createdAt: row.createdAt.toISOString(),
   };
@@ -717,6 +720,62 @@ export async function updateOrderInternalNote(
         entityId: String(orderId),
         before: orderAuditSnapshot(existing),
         after: orderAuditSnapshot({ ...existing, internalNote: normalized }),
+        requestId: ctx?.requestId ?? null,
+        ip: ctx?.ip ?? null,
+      });
+
+      return { ok: true, changed: true, order: await reloadOrder(tx, orderId) } as const;
+    },
+    { timeout: 15000, maxWait: 5000 },
+  );
+}
+
+/**
+ * Preenche/atualiza o RASTREIO do pedido (admin): codigo + transportador. Grava
+ * audit_log na MESMA transacao (invariante 3). Normaliza: codigo vazio -> null;
+ * carrier so aceito se for um id conhecido (lib/data/carriers), senao null.
+ * Idempotente: mesmo par (codigo, carrier) = no-op (sem audit ruidoso).
+ */
+export async function updateOrderTracking(
+  orderId: number,
+  input: { trackingCode: string | null; carrier: string | null },
+  actor: AuditActor,
+  ctx?: { requestId?: string | null; ip?: string | null },
+): Promise<AdminOrderUpdate> {
+  const trackingCode =
+    input.trackingCode && input.trackingCode.trim().length > 0 ? input.trackingCode.trim() : null;
+  const carrier = input.carrier && isCarrierId(input.carrier) ? input.carrier : null;
+
+  return prisma.$transaction(
+    async (tx) => {
+      const existing = await tx.order.findUnique({
+        where: { id: orderId },
+        select: { trackingCode: true, shippingCarrier: true },
+      });
+      if (!existing) return { ok: false, reason: "not_found" } as const;
+
+      if (
+        (existing.trackingCode ?? null) === trackingCode &&
+        (existing.shippingCarrier ?? null) === carrier
+      ) {
+        return { ok: true, changed: false, order: await reloadOrder(tx, orderId) } as const;
+      }
+
+      await tx.order.update({
+        where: { id: orderId },
+        data: { trackingCode, shippingCarrier: carrier },
+      });
+
+      await writeAuditLog(tx, {
+        actor,
+        action: AuditAction.order_tracking_update,
+        entityType: AuditEntityType.order,
+        entityId: String(orderId),
+        before: {
+          trackingCode: existing.trackingCode ?? null,
+          shippingCarrier: existing.shippingCarrier ?? null,
+        },
+        after: { trackingCode, shippingCarrier: carrier },
         requestId: ctx?.requestId ?? null,
         ip: ctx?.ip ?? null,
       });

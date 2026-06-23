@@ -131,3 +131,29 @@ button:focus-visible {
     padding-inline: var(--space-4);
   }
 }
+
+/* Impressao do comprovante (Minhas Compras > recibo): imprime SO o bloco do
+   recibo, escondendo o chrome da loja (Topbar/Footer/etc.). Ativa apenas em
+   paginas que contem .receipt-print-root (classe global, nao de CSS module). */
+@media print {
+  body:has(.receipt-print-root) * {
+    visibility: hidden;
+  }
+
+  body:has(.receipt-print-root) .receipt-print-root,
+  body:has(.receipt-print-root) .receipt-print-root * {
+    visibility: visible;
+  }
+
+  body:has(.receipt-print-root) .receipt-print-root {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Esconde a barra de ações (voltar / imprimir) no papel. */
+  .receipt-print-root .receipt-noprint {
+    display: none !important;
+  }
+}

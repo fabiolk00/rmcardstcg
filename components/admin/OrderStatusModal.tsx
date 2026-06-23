@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { OrderActionResult } from "@/app/admin/pedidos/actions";
+import { CARRIERS } from "@/lib/data/carriers";
 import { allowedShippingTransitions } from "@/lib/data/orderTransitions";
 import type { Order, PaymentStatus, ShippingStatus } from "@/lib/data/types";
 import { Modal } from "@/components/ui/Modal";
@@ -18,6 +19,7 @@ type Handlers = {
   onShipping: (to: ShippingStatus) => Promise<OrderActionResult>;
   onPayment: (to: PaymentStatus, reason: string) => Promise<OrderActionResult>;
   onNote: (note: string) => Promise<OrderActionResult>;
+  onTracking: (trackingCode: string, carrier: string) => Promise<OrderActionResult>;
 };
 
 type Props = {
@@ -32,6 +34,8 @@ export function OrderStatusModal({ order, onClose, onSaved, handlers }: Props) {
   const [payment, setPayment] = useState<PaymentStatus>(order.paymentStatus);
   const [shipping, setShipping] = useState<ShippingStatus>(order.shippingStatus);
   const [note, setNote] = useState<string>(order.internalNote ?? "");
+  const [carrier, setCarrier] = useState<string>(order.shippingCarrier ?? "");
+  const [trackingCode, setTrackingCode] = useState<string>(order.trackingCode ?? "");
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +49,10 @@ export function OrderStatusModal({ order, onClose, onSaved, handlers }: Props) {
   const paymentChanged = payment !== order.paymentStatus;
   const shippingChanged = shipping !== order.shippingStatus;
   const noteChanged = (note.trim() || null) !== (order.internalNote ?? null);
-  const dirty = paymentChanged || shippingChanged || noteChanged;
+  const trackingChanged =
+    (trackingCode.trim() || null) !== (order.trackingCode ?? null) ||
+    (carrier || null) !== (order.shippingCarrier ?? null);
+  const dirty = paymentChanged || shippingChanged || noteChanged || trackingChanged;
   const needsReason = paymentChanged;
 
   async function handleSave() {
@@ -76,6 +83,14 @@ export function OrderStatusModal({ order, onClose, onSaved, handlers }: Props) {
       }
       if (noteChanged) {
         const r = await handlers.onNote(note);
+        if (!r.ok) {
+          setError(r.error);
+          return;
+        }
+        latest = r.order;
+      }
+      if (trackingChanged) {
+        const r = await handlers.onTracking(trackingCode.trim(), carrier);
         if (!r.ok) {
           setError(r.error);
           return;
@@ -162,6 +177,40 @@ export function OrderStatusModal({ order, onClose, onSaved, handlers }: Props) {
             </option>
           ))}
         </select>
+      </div>
+
+      <div className={styles.field}>
+        <label className={styles.label} htmlFor="os-carrier">
+          Transportadora
+        </label>
+        <select
+          id="os-carrier"
+          className={styles.select}
+          value={carrier}
+          disabled={saving}
+          onChange={(e) => setCarrier(e.target.value)}
+        >
+          <option value="">— Não definida</option>
+          {CARRIERS.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className={styles.field}>
+        <label className={styles.label} htmlFor="os-tracking">
+          Código de rastreio
+        </label>
+        <input
+          id="os-tracking"
+          className={styles.select}
+          value={trackingCode}
+          disabled={saving}
+          placeholder="Ex.: AA123456789BR"
+          onChange={(e) => setTrackingCode(e.target.value)}
+        />
       </div>
 
       <div className={styles.field}>

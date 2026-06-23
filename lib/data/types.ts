@@ -141,6 +141,10 @@ export interface Order {
   paymentStatus: PaymentStatus;
   paymentMethod: string;
   shippingStatus: ShippingStatus;
+  /** Codigo de rastreio do objeto (preenchido pelo admin ao despachar). */
+  trackingCode: string | null;
+  /** Id do transportador (lib/data/carriers); null se nao definido. */
+  shippingCarrier: string | null;
   internalNote: string | null;
   /** ISO 8601. */
   createdAt: string;
