@@ -89,6 +89,18 @@
   font-size: 13px;
 }
 
+.detailLink {
+  font-weight: 700;
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 140ms;
+}
+
+.detailLink:hover {
+  color: var(--ink-2);
+}
+
 .pill {
   display: inline-flex;
   align-items: center;

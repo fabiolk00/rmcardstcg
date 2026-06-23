@@ -84,6 +84,18 @@ export async function getOrdersByUserId(userId: string): Promise<Order[]> {
   return rows.map(toOrder);
 }
 
+/**
+ * Pedido por id legivel SOMENTE se pertencer ao usuario (guard de IDOR centralizado
+ * — a tela de detalhe nunca deve revelar pedido de outro cliente). Retorna null
+ * quando nao existe OU nao e do dono; o chamador trata os dois como 404 (nao
+ * distinguir "existe mas nao e seu" de "nao existe" evita enumeracao de pedidos).
+ */
+export async function getOrderForUser(id: string, userId: string): Promise<Order | null> {
+  const order = await getOrderById(id);
+  if (!order || order.userId !== userId) return null;
+  return order;
+}
+
 /** Dados para criar um pedido (checkout). Totais/snapshots calculados no servidor. */
 export type CreateOrderInput = {
   /** Idempotencia de checkout (invariante 2): chave estavel por tentativa. */

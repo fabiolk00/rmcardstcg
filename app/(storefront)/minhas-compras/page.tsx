@@ -1,27 +1,15 @@
 import { auth } from "@clerk/nextjs/server";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { getOrdersByUserId } from "@/lib/data/orders";
-import type { PaymentStatus, ShippingStatus } from "@/lib/data/types";
 import { isClerkConfigured } from "@/lib/services/clerk/config";
 import { formatBRL } from "@/lib/utils/currency";
+import { PAYMENT_LABEL, SHIPPING_LABEL } from "./labels";
 import styles from "./minhas-compras.module.css";
 
 // Pedidos do usuario — sempre ao vivo (nada de snapshot no build).
 export const dynamic = "force-dynamic";
-
-const PAYMENT_LABEL: Record<PaymentStatus, string> = {
-  paid: "Pago",
-  pending: "Pendente",
-  cancelled: "Cancelado",
-};
-
-const SHIPPING_LABEL: Record<ShippingStatus, string> = {
-  pending: "A enviar",
-  sent: "Enviado",
-  delivered: "Entregue",
-  cancelled: "Cancelado",
-};
 
 function formatDate(iso: string): string {
   return new Intl.DateTimeFormat("pt-BR", {
@@ -99,7 +87,14 @@ export default async function MinhasComprasPage() {
                   const items = order.items.reduce((sum, i) => sum + i.quantity, 0);
                   return (
                     <tr key={order.id}>
-                      <td className={styles.mono}>{order.id}</td>
+                      <td className={styles.mono}>
+                        <Link
+                          href={`/minhas-compras/${order.id.replace(/^#/, "")}`}
+                          className={styles.detailLink}
+                        >
+                          {order.id}
+                        </Link>
+                      </td>
                       <td>{formatDate(order.createdAt)}</td>
                       <td>
                         {items} {items === 1 ? "item" : "itens"}
