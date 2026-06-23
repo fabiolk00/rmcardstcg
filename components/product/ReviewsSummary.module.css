@@ -1,0 +1,51 @@
+.section {
+  padding-top: var(--space-7);
+  border-top: 1px solid var(--border);
+}
+
+.title {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin-bottom: var(--space-4);
+}
+
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-6);
+}
+
+.scoreBox {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-soft);
+}
+
+.score {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.count {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.note {
+  font-size: 13px;
+  color: var(--ink-2);
+  max-width: 38ch;
+}
+
+.empty {
+  font-size: 14px;
+  color: var(--ink-3);
+}

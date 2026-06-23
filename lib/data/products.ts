@@ -3,6 +3,7 @@ import { Prisma } from "../generated/prisma/client";
 import { AuditAction, AuditEntityType } from "../generated/prisma/enums";
 import type { ProductModel } from "../generated/prisma/models";
 import { writeAuditLog, type AuditActor } from "./audit";
+import { RELATED_LIMIT, selectRelatedProducts } from "./related";
 import { CATEGORIES } from "./types";
 import type { Category, Product } from "./types";
 
@@ -76,6 +77,24 @@ export async function getProductsByIds(ids: string[]): Promise<Product[]> {
   if (ids.length === 0) return [];
   const rows = await prisma.product.findMany({ where: { id: { in: ids } } });
   return rows.map(toProduct);
+}
+
+/**
+ * Produtos relacionados ao informado (pagina de produto) — UMA query: ativos da
+ * MESMA categoria (indice @@index([category])), exceto o proprio. Traz uma janela
+ * pequena e a selecao pura (selectRelatedProducts) ordena/limita (em-estoque
+ * primeiro). Sem N+1: nunca consulta produto a produto.
+ */
+export async function getRelatedProducts(
+  product: Pick<Product, "id" | "category">,
+  limit = RELATED_LIMIT,
+): Promise<Product[]> {
+  const rows = await prisma.product.findMany({
+    where: { isActive: true, category: product.category, id: { not: product.id } },
+    orderBy: { createdAt: "desc" },
+    take: limit * 4,
+  });
+  return selectRelatedProducts(rows.map(toProduct), product, limit);
 }
 
 // ===========================================================================

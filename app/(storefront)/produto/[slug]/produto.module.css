@@ -1,0 +1,82 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-8);
+  align-items: start;
+}
+
+.descSection {
+  padding-top: var(--space-7);
+  border-top: 1px solid var(--border);
+}
+
+.descTitle {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin-bottom: var(--space-3);
+}
+
+.desc {
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--ink-2);
+  max-width: 70ch;
+  white-space: pre-line;
+}
+
+/* ---- 404 ---- */
+.notFound {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-9) var(--space-4);
+  text-align: center;
+}
+
+.notFoundTitle {
+  font-size: clamp(24px, 4vw, 34px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.notFoundText {
+  font-size: 15px;
+  color: var(--ink-2);
+  max-width: 44ch;
+}
+
+.notFoundCta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 var(--space-6);
+  border-radius: var(--r-pill);
+  background: var(--ink);
+  color: var(--on-ink);
+  font-size: 14px;
+  font-weight: 700;
+  transition:
+    background 140ms,
+    transform 140ms;
+}
+
+.notFoundCta:hover {
+  background: var(--ink-hover);
+  transform: translateY(-1px);
+}
+
+@media (max-width: 900px) {
+  .top {
+    grid-template-columns: 1fr;
+    gap: var(--space-6);
+  }
+}

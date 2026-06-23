@@ -4,31 +4,8 @@ import type { Product } from "@/lib/data/types";
 import { finalPriceCents } from "@/lib/data/pricing";
 import { formatBRL } from "@/lib/utils/currency";
 import { AddToCartButton } from "./AddToCartButton";
+import { Stars } from "./Stars";
 import styles from "./ProductCard.module.css";
-
-function Stars({ rating }: { rating: number }) {
-  const rounded = Math.round(rating);
-  return (
-    <span className={styles.stars} role="img" aria-label={`Nota ${rating.toFixed(1)} de 5`}>
-      {Array.from({ length: 5 }, (_, i) => (
-        <svg
-          key={i}
-          width="13"
-          height="13"
-          viewBox="0 0 24 24"
-          fill={i < rounded ? "currentColor" : "none"}
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-        </svg>
-      ))}
-    </span>
-  );
-}
 
 export function ProductCard({ product }: { product: Product }) {
   const href = `/produto/${product.slug}`;
@@ -56,7 +33,7 @@ export function ProductCard({ product }: { product: Product }) {
         </h3>
 
         <div className={styles.rating}>
-          <Stars rating={product.rating} />
+          <Stars rating={product.rating} size={13} className={styles.stars} />
           <span className={styles.ratingValue}>{product.rating.toFixed(1)}</span>
           <span className={styles.ratingCount}>· {product.reviewCount} avaliações</span>
         </div>

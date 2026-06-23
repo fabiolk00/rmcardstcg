@@ -1,0 +1,11 @@
+.section {
+  padding-top: var(--space-7);
+  border-top: 1px solid var(--border);
+}
+
+.title {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin-bottom: var(--space-5);
+}
