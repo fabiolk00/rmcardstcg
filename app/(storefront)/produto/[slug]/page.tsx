@@ -40,7 +40,8 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params;
   const product = await loadProduct(slug);
-  if (!product) return { title: `Produto não encontrado — ${SITE_NAME}` };
+  // Inativo = soft-delete: sai da vitrine. Nao expor metadata indexavel dele.
+  if (!product || !product.isActive) return { title: `Produto não encontrado — ${SITE_NAME}` };
 
   const title = `${product.name} — ${SITE_NAME}`;
   const description = descriptionFor(product);
@@ -98,10 +99,14 @@ function productJsonLd(product: Product): string {
 export default async function ProdutoPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const product = await loadProduct(slug);
-  if (!product) notFound();
+  // Produto inexistente OU inativo (soft-delete) -> 404: nao deve aparecer na
+  // vitrine (alinha com getActiveProducts/getRelatedProducts e o carrinho).
+  if (!product || !product.isActive) notFound();
 
   // Tudo em paralelo (sem N+1): relacionados, agregado e 1a pagina de aprovadas.
-  const [related, reviewStats, reviewPage] = await Promise.all([
+  // O total exibido (Mostrando N de M) vem do groupBy do reviewStats — sem um
+  // count() redundante sobre o mesmo predicado.
+  const [related, reviewStats, reviews] = await Promise.all([
     getRelatedProducts(product),
     getReviewStats(product.id),
     getApprovedReviews(product.id),
@@ -128,9 +133,16 @@ export default async function ProdutoPage({ params }: { params: Promise<{ slug: 
         ]}
       />
 
+      {/* key={product.id}: remonta os islands client ao navegar entre produtos
+          (mesmo segmento [slug]) para nao herdar estado (qty/imagem) do anterior. */}
       <div className={styles.top}>
-        <ProductGallery images={[product.imageUrl]} alt={product.name} badge={product.badge} />
-        <ProductInfo product={product} />
+        <ProductGallery
+          key={product.id}
+          images={[product.imageUrl]}
+          alt={product.name}
+          badge={product.badge}
+        />
+        <ProductInfo key={product.id} product={product} />
       </div>
 
       {product.description.trim() && (
@@ -143,7 +155,7 @@ export default async function ProdutoPage({ params }: { params: Promise<{ slug: 
       <ReviewsSummary rating={product.rating} reviewCount={product.reviewCount}>
         <ReviewStats stats={reviewStats} />
         <ReviewForm slug={product.slug} canReview={canReview} />
-        <ReviewsList reviews={reviewPage.reviews} total={reviewPage.total} />
+        <ReviewsList reviews={reviews} total={reviewStats.count} />
       </ReviewsSummary>
 
       <RelatedProducts products={related} />

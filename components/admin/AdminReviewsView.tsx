@@ -20,8 +20,11 @@ function formatDate(iso: string): string {
 export function AdminReviewsView({ reviews: initial }: { reviews: PendingReview[] }) {
   const [reviews, setReviews] = useState<PendingReview[]>(initial);
   const [toast, setToast] = useState<string | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  // Conjunto de ids EM VOO: moderacoes concorrentes (o admin clica em varios cards
+  // antes de o 1o resolver) travam cada card independentemente — um unico busyId
+  // reabilitaria o card anterior ao sobrescrever.
+  const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
+  const [, startTransition] = useTransition();
 
   // Sincroniza com a prop revalidada pelo server.
   // eslint-disable-next-line react-hooks/set-state-in-effect -- sync com a prop revalidada (intencional)
@@ -34,11 +37,15 @@ export function AdminReviewsView({ reviews: initial }: { reviews: PendingReview[
   }, [toast]);
 
   const moderate = (id: string, target: "approved" | "rejected") => {
-    setBusyId(id);
+    setBusyIds((prev) => new Set(prev).add(id));
     startTransition(async () => {
       const res =
         target === "approved" ? await approveReviewAction(id) : await rejectReviewAction(id);
-      setBusyId(null);
+      setBusyIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
       if (res.ok) {
         setReviews((prev) => prev.filter((r) => r.id !== id));
         setToast(target === "approved" ? "Avaliação aprovada." : "Avaliação rejeitada.");
@@ -63,7 +70,7 @@ export function AdminReviewsView({ reviews: initial }: { reviews: PendingReview[
       ) : (
         <ul className={styles.list}>
           {reviews.map((r) => {
-            const busy = pending && busyId === r.id;
+            const busy = busyIds.has(r.id);
             return (
               <li key={r.id} className={styles.card}>
                 <div className={styles.meta}>

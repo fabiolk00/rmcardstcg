@@ -228,7 +228,10 @@ model Review {
 
   // Uma avaliacao por usuario por produto (anti-spam; resubmit colide em P2002).
   @@unique([productId, userId])
-  @@index([productId, status])
+  // Cobre a leitura da vitrine (WHERE product_id+status ORDER BY created_at DESC):
+  // as duas colunas lider sao igualdade e o created_at DESC entrega ja ordenado
+  // (sem sort), servindo tambem o groupBy do recalc/stats (so filtro).
+  @@index([productId, status, createdAt(sort: Desc)])
   @@index([status])
   @@index([userId])
   @@map("reviews")

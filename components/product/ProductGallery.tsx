@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import styles from "./ProductGallery.module.css";
 
@@ -26,33 +26,70 @@ export function ProductGallery({
   const [active, setActive] = useState(0);
   const [zoom, setZoom] = useState(false);
   const multiple = list.length > 1;
+  // Gatilho do zoom (p/ devolver o foco ao fechar) e raiz do dialog (p/ trap de Tab).
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const lightboxRef = useRef<HTMLDivElement>(null);
 
   const go = useCallback(
     (dir: number) => setActive((i) => (i + dir + list.length) % list.length),
     [list.length],
   );
 
-  // Teclado no lightbox: Esc fecha; setas navegam. Trava o scroll do body enquanto
-  // aberto. Cleanup restaura tudo (inclusive ao desmontar com o lightbox aberto).
+  // Teclado no lightbox: Esc fecha; setas navegam; Tab fica preso no dialog (modal).
+  // Trava o scroll do body enquanto aberto. Cleanup restaura o scroll E devolve o
+  // foco ao gatilho (padrao de dialog acessivel).
   useEffect(() => {
     if (!zoom) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setZoom(false);
-      else if (e.key === "ArrowLeft") go(-1);
-      else if (e.key === "ArrowRight") go(1);
+      if (e.key === "Escape") {
+        setZoom(false);
+        return;
+      }
+      if (e.key === "ArrowLeft") {
+        go(-1);
+        return;
+      }
+      if (e.key === "ArrowRight") {
+        go(1);
+        return;
+      }
+      if (e.key === "Tab") {
+        // Focus trap: cicla o Tab entre os botoes focaveis do dialog (aria-modal).
+        const root = lightboxRef.current;
+        if (!root) return;
+        const focusables = Array.from(root.querySelectorAll<HTMLElement>("button"));
+        if (focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        const activeEl = document.activeElement;
+        if (!root.contains(activeEl)) {
+          e.preventDefault();
+          first.focus();
+        } else if (e.shiftKey && activeEl === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && activeEl === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     };
     document.addEventListener("keydown", onKey);
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    const trigger = triggerRef.current;
     return () => {
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = prevOverflow;
+      // Devolve o foco ao gatilho ao fechar (no-op se ja desmontou na navegacao).
+      trigger?.focus();
     };
   }, [zoom, go]);
 
   return (
     <div className={styles.gallery}>
       <button
+        ref={triggerRef}
         type="button"
         className={styles.main}
         onClick={() => setZoom(true)}
@@ -92,6 +129,7 @@ export function ProductGallery({
 
       {zoom && (
         <div
+          ref={lightboxRef}
           className={styles.lightbox}
           role="dialog"
           aria-modal="true"

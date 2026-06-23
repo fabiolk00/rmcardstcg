@@ -150,27 +150,26 @@ export async function submitReview(input: ReviewInput): Promise<SubmitReviewResu
   }
 }
 
-export type ReviewPage = {
-  reviews: Review[];
-  total: number;
-  page: number;
-  pageSize: number;
-};
-
-/** Avaliacoes APROVADAS de um produto, paginadas (mais recentes primeiro). */
+/**
+ * Avaliacoes APROVADAS de um produto, paginadas (mais recentes primeiro). Retorna
+ * so a pagina de reviews — o TOTAL para "mostrando N de M" sai do getReviewStats
+ * (groupBy), evitando um count() redundante sobre o mesmo predicado por pageview.
+ * O indice (product_id, status, created_at DESC) entrega as linhas ja ordenadas.
+ */
 export async function getApprovedReviews(
   productId: string,
   page = 1,
   pageSize = REVIEWS_PAGE_SIZE,
-): Promise<ReviewPage> {
+): Promise<Review[]> {
   const safePage = Number.isInteger(page) && page > 0 ? page : 1;
   const skip = (safePage - 1) * pageSize;
-  const where = { productId, status: "approved" as const };
-  const [rows, total] = await Promise.all([
-    prisma.review.findMany({ where, orderBy: { createdAt: "desc" }, skip, take: pageSize }),
-    prisma.review.count({ where }),
-  ]);
-  return { reviews: rows.map(toReview), total, page: safePage, pageSize };
+  const rows = await prisma.review.findMany({
+    where: { productId, status: "approved" },
+    orderBy: { createdAt: "desc" },
+    skip,
+    take: pageSize,
+  });
+  return rows.map(toReview);
 }
 
 /** Distribuicao/media das avaliacoes APROVADAS (UMA query groupBy; sem N+1). */

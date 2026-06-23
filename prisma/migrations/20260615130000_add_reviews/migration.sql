@@ -47,8 +47,9 @@ CREATE TABLE "reviews" (
 
 -- Anti-spam / idempotencia de autor: no maximo uma review por (produto, usuario).
 CREATE UNIQUE INDEX "reviews_product_id_clerk_user_id_key" ON "reviews"("product_id", "clerk_user_id");
--- Vitrine: reviews aprovadas de um produto (lista + groupBy de distribuicao).
-CREATE INDEX "reviews_product_id_status_idx" ON "reviews"("product_id", "status");
+-- Vitrine: reviews aprovadas de um produto, ja ordenadas por data (lista paginada
+-- sem sort) — e tambem serve o groupBy de distribuicao/recalc (so o filtro lider).
+CREATE INDEX "reviews_product_id_status_created_at_idx" ON "reviews"("product_id", "status", "created_at" DESC);
 -- Moderacao: fila de pendentes no admin.
 CREATE INDEX "reviews_status_idx" ON "reviews"("status");
 CREATE INDEX "reviews_clerk_user_id_idx" ON "reviews"("clerk_user_id");

@@ -53,9 +53,12 @@ export async function submitReviewAction(input: {
   });
   if (!limited.allowed) return { ok: false, error: "Muitas tentativas. Aguarde um instante." };
 
-  // Resolve o produto pelo slug no SERVER (anti-tamper de productId).
+  // Resolve o produto pelo slug no SERVER (anti-tamper de productId). Inativo
+  // (soft-delete) nao e avaliavel — mensagem alinhada com submitReview.
   const product = await getProductBySlug(input.slug);
-  if (!product) return { ok: false, error: "Produto não encontrado." };
+  if (!product || !product.isActive) {
+    return { ok: false, error: "Este produto não está disponível para avaliação." };
+  }
 
   const res = await submitReview({
     productId: product.id,
