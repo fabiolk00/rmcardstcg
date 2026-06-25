@@ -1,5 +1,7 @@
-// Seed do banco a partir de prisma/seed-data.ts (dados iniciais).
-// Roda standalone via `pnpm db:seed` (tsx). Idempotente: pode rodar de novo.
+// Seed do banco a partir de prisma/seed-data.ts (dados de exemplo).
+// FIXTURE DE TESTE: rodado por scripts/{e2e,harness}-with-ephemeral-pg.ts num
+// Postgres EFEMERO descartavel (via `tsx prisma/seed.ts`). NAO e usado em
+// producao — a loja real nasce vazia e e cadastrada pelo /admin. Idempotente.
 import "dotenv/config";
 
 import { prisma } from "../lib/db";

@@ -8,6 +8,7 @@ import { finalPriceCents } from "@/lib/data/pricing";
 import { formatBRL } from "@/lib/utils/currency";
 import { Modal } from "@/components/ui/Modal";
 import { Icon } from "@/components/ui/Icon";
+import { Spinner, SpinnerLabel } from "@/components/ui/Spinner";
 import { uploadProductImageAction } from "@/app/admin/produtos/actions";
 import { CATEGORY_PACKAGE } from "@/lib/services/superfrete/dimensions";
 import styles from "./ProductFormModal.module.css";
@@ -172,7 +173,7 @@ export function ProductFormModal({ product, onSave, onClose }: Props) {
             Cancelar
           </button>
           <button type="button" className={styles.primary} onClick={submit} disabled={!canSave}>
-            {saving ? "Salvando…" : "Salvar"}
+            {saving ? <SpinnerLabel size={14}>Salvando…</SpinnerLabel> : "Salvar"}
           </button>
         </>
       }
@@ -251,7 +252,7 @@ export function ProductFormModal({ product, onSave, onClose }: Props) {
                 onClick={() => fileRef.current?.click()}
                 disabled={uploading || saving}
               >
-                <Icon name="box" size={14} />
+                {uploading ? <Spinner size={14} /> : <Icon name="box" size={14} />}
                 {uploading ? "Enviando…" : hasCustomImage ? "Trocar imagem" : "Enviar imagem"}
               </button>
               <span className={styles.imageHint}>PNG, JPG, WEBP ou GIF até 4 MB.</span>

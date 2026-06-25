@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { Product } from "@/lib/data/types";
 import { Modal } from "@/components/ui/Modal";
+import { SpinnerLabel } from "@/components/ui/Spinner";
 import styles from "./InactivateModal.module.css";
 
 type Props = {
@@ -42,7 +43,7 @@ export function InactivateModal({ product, onClose, onConfirm }: Props) {
             onClick={confirm}
             disabled={!ack || busy}
           >
-            {busy ? "Inativando…" : "Inativar"}
+            {busy ? <SpinnerLabel size={14}>Inativando…</SpinnerLabel> : "Inativar"}
           </button>
         </>
       }

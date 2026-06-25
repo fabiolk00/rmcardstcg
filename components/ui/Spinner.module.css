@@ -1,0 +1,32 @@
+/* Spinner de carregamento — anel que herda a cor do texto (currentColor),
+   entao funciona dentro de botoes ink (branco) ou claros (preto) sem ajuste. */
+.spinner {
+  display: inline-block;
+  flex: none;
+  border-style: solid;
+  border-color: currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  vertical-align: middle;
+  animation: spinner-rotate 0.6s linear infinite;
+}
+
+@keyframes spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Spinner + texto alinhados (estado "ocupado" de botao). */
+.label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 1.4s;
+  }
+}

@@ -1,0 +1,16 @@
+/* Loader centralizado para as telas loading.tsx (troca de rota com dados). */
+.wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  min-height: 50vh;
+  color: var(--ink-3);
+}
+
+.label {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}

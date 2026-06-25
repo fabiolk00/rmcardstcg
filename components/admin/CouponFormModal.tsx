@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Coupon } from "@/lib/data/coupons";
 import type { CouponFormPayload } from "@/app/admin/cupons/actions";
 import { Modal } from "@/components/ui/Modal";
+import { SpinnerLabel } from "@/components/ui/Spinner";
 import styles from "./CouponFormModal.module.css";
 
 type Props = {
@@ -100,7 +101,7 @@ export function CouponFormModal({ coupon, pending, onClose, onSave }: Props) {
             Cancelar
           </button>
           <button type="button" className={styles.primary} onClick={submit} disabled={!canSave}>
-            {pending ? "Salvando…" : "Salvar"}
+            {pending ? <SpinnerLabel size={14}>Salvando…</SpinnerLabel> : "Salvar"}
           </button>
         </>
       }

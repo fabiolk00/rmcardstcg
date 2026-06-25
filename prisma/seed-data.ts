@@ -1,5 +1,5 @@
-// Dados iniciais do seed (antes ficavam como mock em lib/data, que agora le do
-// Postgres). Fonte unica do `pnpm db:seed`. Precos em centavos.
+// Dados de exemplo do seed — FIXTURE DE TESTE apenas (banco efemero dos testes
+// E2E/harness). Producao NAO e semeada. Precos em centavos.
 import type { Order, Product } from "../lib/data/types";
 
 // `available` (derivado: stock - reservado) nao faz parte do dado de seed; o

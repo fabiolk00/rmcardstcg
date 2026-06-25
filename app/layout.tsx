@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { ClerkProvider } from "@clerk/nextjs";
 import { isClerkConfigured } from "@/lib/services/clerk/config";
 import { clerkAppearance } from "@/lib/services/clerk/appearance";
+import { RouteProgress } from "@/components/layout/RouteProgress";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -12,7 +14,12 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const tree = (
     <html lang="pt-BR">
-      <body>{children}</body>
+      <body>
+        <Suspense fallback={null}>
+          <RouteProgress />
+        </Suspense>
+        {children}
+      </body>
     </html>
   );
 

@@ -26,7 +26,7 @@ docker run --rm -e POSTGRES_PASSWORD=test -p 5432:5432 -d postgres
 export DATABASE_URL="postgresql://postgres:test@localhost:5432/postgres"
 export DIRECT_URL="$DATABASE_URL"
 pnpm prisma migrate deploy
-pnpm db:seed            # popula catálogo (opcional, mas dá dados para medir)
+tsx prisma/seed.ts      # popula catálogo (opcional, mas dá dados para medir)
 
 # 3. rode os testes apontando TEST_DATABASE_URL para o mesmo banco
 export TEST_DATABASE_URL="$DATABASE_URL"

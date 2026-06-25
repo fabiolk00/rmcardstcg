@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { Coupon } from "@/lib/data/coupons";
 import { Modal } from "@/components/ui/Modal";
+import { SpinnerLabel } from "@/components/ui/Spinner";
 import styles from "./DeleteCouponModal.module.css";
 
 type Props = {
@@ -37,7 +38,7 @@ export function DeleteCouponModal({ coupon, onClose, onConfirm }: Props) {
             Cancelar
           </button>
           <button type="button" className={styles.danger} onClick={confirm} disabled={!ack || busy}>
-            {busy ? "Excluindo…" : "Excluir"}
+            {busy ? <SpinnerLabel size={14}>Excluindo…</SpinnerLabel> : "Excluir"}
           </button>
         </>
       }

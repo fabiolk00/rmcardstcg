@@ -14,6 +14,7 @@ import { cartTotals } from "@/lib/cart/totals";
 import type { ShippingOption } from "@/lib/services/superfrete/quote";
 import { finalPriceCents } from "@/lib/data/pricing";
 import { formatBRL } from "@/lib/utils/currency";
+import { Spinner, SpinnerLabel } from "@/components/ui/Spinner";
 import styles from "./CheckoutView.module.css";
 
 // UFs para o select de estado.
@@ -321,11 +322,13 @@ export function CheckoutView() {
         )}
 
         <button type="submit" className={styles.submit} disabled={submitting || !shippingReady}>
-          {submitting
-            ? "Gerando PIX…"
-            : shippingReady && displayTotalCents != null
-              ? `Pagar ${formatBRL(displayTotalCents)} via PIX`
-              : "Calcule o frete para continuar"}
+          {submitting ? (
+            <SpinnerLabel>Gerando PIX…</SpinnerLabel>
+          ) : shippingReady && displayTotalCents != null ? (
+            `Pagar ${formatBRL(displayTotalCents)} via PIX`
+          ) : (
+            "Calcule o frete para continuar"
+          )}
         </button>
         <Link href="/carrinho" className={styles.back}>
           Voltar ao carrinho
@@ -368,7 +371,7 @@ export function CheckoutView() {
               onClick={applyCoupon}
               disabled={couponBusy || !coupon.trim()}
             >
-              {couponBusy ? "…" : "Aplicar"}
+              {couponBusy ? <Spinner size={14} /> : "Aplicar"}
             </button>
           </div>
           {couponMsg && (
@@ -413,7 +416,13 @@ export function CheckoutView() {
             onClick={calcShipping}
             disabled={shipLoading || cepDigits.length !== 8}
           >
-            {shipLoading ? "Calculando…" : shipQuoted ? "Recalcular frete" : "Calcular frete"}
+            {shipLoading ? (
+              <SpinnerLabel size={14}>Calculando…</SpinnerLabel>
+            ) : shipQuoted ? (
+              "Recalcular frete"
+            ) : (
+              "Calcular frete"
+            )}
           </button>
           {cepDigits.length !== 8 && (
             <p className={styles.shipHint}>Preencha o CEP no endereço para calcular o frete.</p>

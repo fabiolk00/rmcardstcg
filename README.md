@@ -447,9 +447,12 @@ Com banco real (Postgres/Supabase):
 ```bash
 # preencha DATABASE_URL e DIRECT_URL no .env.local
 pnpm db:migrate           # aplica as migrations
-pnpm db:seed              # popula o catálogo inicial
 pnpm dev
 ```
+
+> O catálogo nasce **vazio** — cadastre os produtos pelo `/admin`. Não há seed de
+> produção; `prisma/seed.ts` é fixture exclusiva dos testes E2E/harness (banco
+> efêmero descartável).
 
 > Sem chaves de Clerk, as rotas protegidas (`/admin`, `/minhas-compras`,
 > `/checkout`) ficam abertas — útil em dev. Em produção, builde com as chaves
@@ -469,7 +472,6 @@ pnpm dev
 | `pnpm format` / `format:check` | Prettier (write / check)             |
 | `pnpm db:generate`             | Gera o Prisma Client                 |
 | `pnpm db:migrate`              | `prisma migrate dev`                 |
-| `pnpm db:seed`                 | Popula o catálogo (`prisma/seed.ts`) |
 | `pnpm db:studio`               | Prisma Studio                        |
 
 ---

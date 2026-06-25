@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { submitReviewAction } from "@/app/(storefront)/produto/[slug]/actions";
+import { SpinnerLabel } from "@/components/ui/Spinner";
 import styles from "./ReviewForm.module.css";
 
 const BODY_MIN = 10;
@@ -163,7 +164,7 @@ export function ReviewForm({ slug, canReview }: { slug: string; canReview: boole
 
       <div className={styles.actions}>
         <button type="submit" className={styles.submit} disabled={submitting}>
-          {submitting ? "Enviando…" : "Enviar avaliação"}
+          {submitting ? <SpinnerLabel>Enviando…</SpinnerLabel> : "Enviar avaliação"}
         </button>
         <button type="button" className={styles.cancel} onClick={() => setOpen(false)}>
           Cancelar
