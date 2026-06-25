@@ -1,0 +1,804 @@
+/* ===========================================================================
+   Hero animado da home — recriação do handoff "Hero Pokemon.dc.html".
+   Coluna esquerda: texto + CTAs + métricas. Coluna direita: palco com três
+   personagens flutuando, cada um cercado de um efeito elemental (água / fogo /
+   elétrico) na paleta monocromática ink + ouro. Tokens espelham app/globals.css;
+   valores de tipografia/animação seguem o design system (handoff hifi).
+   =========================================================================== */
+
+.hero {
+  position: relative;
+  overflow: hidden;
+  font-family: var(--font-sans);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1.02fr 0.98fr;
+  align-items: center;
+  gap: var(--space-7);
+  min-height: 660px;
+  padding-block: var(--space-9);
+}
+
+/* ---------- Coluna esquerda: texto ---------- */
+.copy {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-5);
+  max-width: 520px;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+}
+
+.eyebrowDot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--r-pill);
+  background: var(--gold);
+}
+
+.eyebrowText {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.title {
+  margin: 0;
+  font-size: clamp(34px, 8vw, 60px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.08;
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+.lede {
+  margin: 0;
+  max-width: 440px;
+  font-size: 18px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+/* ---------- CTAs ---------- */
+.ctas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.btnPrimary,
+.btnGhost {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 52px;
+  padding: 0 22px;
+  border-radius: var(--r-pill);
+  font-size: 15px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+}
+
+.btnPrimary {
+  background: var(--ink);
+  color: var(--on-ink);
+}
+
+.btnPrimary:hover {
+  background: var(--ink-hover);
+}
+
+.btnPrimary svg {
+  transition: transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btnPrimary:hover svg {
+  transform: translateX(3px);
+}
+
+.btnGhost {
+  background: var(--bg);
+  color: var(--ink);
+  border-color: var(--border);
+}
+
+.btnGhost:hover {
+  border-color: var(--ink);
+}
+
+/* ---------- Faixa de métricas ---------- */
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-5);
+  width: 100%;
+  margin-top: var(--space-3);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border-soft);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.statValue {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.statLabel {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.statDivider {
+  width: 1px;
+  height: 34px;
+  background: var(--border);
+}
+
+/* ===========================================================================
+   Palco animado (coluna direita)
+   --mo: multiplicador global de duração (motion presets).
+   --stage-scale: redução proporcional do palco inteiro em telas estreitas.
+   O palco é puramente decorativo (aria-hidden no markup).
+   =========================================================================== */
+.stage {
+  --mo: 1;
+  --stage-scale: 1;
+  position: relative;
+  width: 100%;
+  height: calc(600px * var(--stage-scale));
+  perspective: 1400px;
+}
+
+/* presets de velocidade controlados pelo data-motion da seção */
+[data-motion="calmo"] .stage {
+  --mo: 1.5;
+}
+[data-motion="energetico"] .stage {
+  --mo: 0.62;
+}
+
+/* "elenco" de dimensão fixa (560×600), centrado e escalado como uma peça só:
+   mantém a composição intacta — só muda de tamanho — em qualquer largura. */
+.cast {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 560px;
+  height: 600px;
+  transform: translateX(-50%) scale(var(--stage-scale));
+  transform-origin: top center;
+}
+
+/* ---------- halos girando ao fundo ---------- */
+/* Centramos via margens negativas (não via transform) para que o rm-spin gire
+   o halo em torno do próprio centro sem deslocá-lo. */
+.halo {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border-radius: var(--r-pill);
+  border-style: dashed;
+  border-width: 1px;
+}
+
+.haloOuter {
+  width: 460px;
+  height: 460px;
+  margin: -230px 0 0 -230px;
+  border-color: var(--border);
+  opacity: 0.7;
+  animation: rm-spin calc(60s * var(--mo)) linear infinite;
+}
+
+.haloInner {
+  width: 320px;
+  height: 320px;
+  margin: -160px 0 0 -160px;
+  border-color: var(--border-soft);
+  animation: rm-spin calc(44s * var(--mo)) linear infinite reverse;
+}
+
+/* ---------- sparks de ambiente ---------- */
+.spark {
+  position: absolute;
+  border-radius: var(--r-pill);
+  background: var(--gold);
+  animation: rm-spark ease-in infinite;
+}
+
+.spark1 {
+  left: 26%;
+  bottom: 210px;
+  width: 6px;
+  height: 6px;
+  animation-duration: calc(4.2s * var(--mo));
+  animation-delay: 0.2s;
+}
+.spark2 {
+  left: 70%;
+  bottom: 250px;
+  width: 5px;
+  height: 5px;
+  animation-duration: calc(5.1s * var(--mo));
+  animation-delay: 1.6s;
+}
+.spark3 {
+  left: 50%;
+  bottom: 280px;
+  width: 4px;
+  height: 4px;
+  animation-duration: calc(4.6s * var(--mo));
+  animation-delay: 3s;
+}
+
+/* ===========================================================================
+   Personagens — wrapper posicionado → sombra → bob (flutuação) → arte + efeito
+   =========================================================================== */
+.char {
+  position: absolute;
+}
+
+.charLeft {
+  bottom: 150px;
+  left: 4%;
+  width: 168px;
+}
+.charCenter {
+  bottom: 200px;
+  left: 50%;
+  width: 270px;
+  transform: translateX(-50%);
+  z-index: 4;
+}
+.charRight {
+  bottom: 158px;
+  right: 2%;
+  width: 184px;
+}
+
+/* sombra no chão (elipse borrada que pulsa) */
+.shadow {
+  position: absolute;
+  left: 50%;
+  border-radius: var(--r-pill);
+  background: var(--ink);
+  opacity: 0.14;
+  transform: translateX(-50%);
+}
+
+.charLeft .shadow {
+  bottom: -34px;
+  width: 130px;
+  height: 22px;
+  filter: blur(12px);
+  animation: rm-shadow calc(6.4s * var(--mo)) ease-in-out infinite;
+  animation-delay: 0.4s;
+}
+.charCenter .shadow {
+  bottom: -44px;
+  width: 200px;
+  height: 28px;
+  filter: blur(15px);
+  animation: rm-shadow calc(5.8s * var(--mo)) ease-in-out infinite;
+}
+.charRight .shadow {
+  bottom: -36px;
+  width: 140px;
+  height: 24px;
+  filter: blur(13px);
+  animation: rm-shadow calc(7s * var(--mo)) ease-in-out infinite;
+  animation-delay: 1.1s;
+}
+
+/* bob: flutuação vertical */
+.charLeft .bob {
+  animation: rm-bob calc(6.4s * var(--mo)) ease-in-out infinite;
+  animation-delay: 0.4s;
+}
+.charCenter .bob {
+  animation: rm-bob-2 calc(5.8s * var(--mo)) ease-in-out infinite;
+}
+.charRight .bob {
+  animation: rm-bob-3 calc(7s * var(--mo)) ease-in-out infinite;
+  animation-delay: 1.1s;
+}
+
+/* caixa relativa da arte */
+.art {
+  position: relative;
+}
+.charLeft .art {
+  width: 168px;
+  height: 168px;
+}
+.charCenter .art {
+  width: 270px;
+  height: 270px;
+}
+.charRight .art {
+  width: 184px;
+  height: 184px;
+}
+
+/* arte (PNG transparente, object-fit contain) */
+.img {
+  position: absolute;
+  object-fit: contain;
+  background: transparent;
+}
+.charLeft .img {
+  top: 6px;
+  left: 6px;
+  width: 156px;
+  height: 156px;
+}
+.charCenter .img {
+  top: 8px;
+  left: 8px;
+  width: 254px;
+  height: 254px;
+}
+.charRight .img {
+  top: 6px;
+  left: 6px;
+  width: 172px;
+  height: 172px;
+}
+
+/* camada de efeito de poder */
+.fx {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+}
+.fxElectric {
+  inset: -20px;
+}
+
+/* ---------- Fogo: brilho atrás da arte ---------- */
+.glow {
+  position: absolute;
+  top: 48%;
+  left: 50%;
+  width: 320px;
+  height: 320px;
+  border-radius: var(--r-pill);
+  background: radial-gradient(
+    circle,
+    rgba(244, 180, 0, 0.7) 0%,
+    rgba(244, 180, 0, 0.28) 38%,
+    rgba(244, 180, 0, 0) 66%
+  );
+  opacity: 0.34;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  animation: rm-glow calc(2.4s * var(--mo)) ease-in-out infinite;
+}
+
+/* ---------- Água: ondas + bolhas ---------- */
+.ripple {
+  position: absolute;
+  left: 50%;
+  top: 94%;
+  width: 96px;
+  height: 96px;
+  border-radius: var(--r-pill);
+  border: 2.5px solid var(--ink-2);
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  animation: rm-ripple calc(2.8s * var(--mo)) ease-out infinite;
+}
+.ripple2 {
+  animation-delay: 0.9s;
+}
+.ripple3 {
+  animation-delay: 1.8s;
+}
+
+.bubble {
+  position: absolute;
+  border-radius: var(--r-pill);
+  opacity: 0;
+  animation: rm-bubble ease-in infinite;
+}
+.bubble1 {
+  left: 12%;
+  bottom: 28px;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--ink-2);
+  animation-duration: calc(3.2s * var(--mo));
+  animation-delay: 0.1s;
+}
+.bubble2 {
+  left: 30%;
+  bottom: 18px;
+  width: 9px;
+  height: 9px;
+  background: var(--ink-3);
+  animation-duration: calc(2.8s * var(--mo));
+  animation-delay: 0.7s;
+}
+.bubble3 {
+  left: 46%;
+  bottom: 24px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--ink-2);
+  animation-duration: calc(3.5s * var(--mo));
+  animation-delay: 1.3s;
+}
+.bubble4 {
+  left: 64%;
+  bottom: 16px;
+  width: 8px;
+  height: 8px;
+  background: var(--ink-3);
+  animation-duration: calc(3s * var(--mo));
+  animation-delay: 1.9s;
+}
+.bubble5 {
+  left: 80%;
+  bottom: 30px;
+  width: 15px;
+  height: 15px;
+  border: 2px solid var(--ink-2);
+  animation-duration: calc(3.8s * var(--mo));
+  animation-delay: 2.5s;
+}
+.bubble6 {
+  left: 56%;
+  bottom: 14px;
+  width: 7px;
+  height: 7px;
+  background: var(--ink-3);
+  animation-duration: calc(2.6s * var(--mo));
+  animation-delay: 3.1s;
+}
+
+/* ---------- Fogo: brasas ---------- */
+.ember {
+  position: absolute;
+  border-radius: var(--r-pill);
+  background: var(--gold);
+  opacity: 0;
+  animation: rm-ember ease-in infinite;
+}
+.ember1 {
+  left: 22%;
+  bottom: 44px;
+  width: 9px;
+  height: 9px;
+  animation-duration: calc(3s * var(--mo));
+  animation-delay: 0.1s;
+}
+.ember2 {
+  left: 34%;
+  bottom: 30px;
+  width: 11px;
+  height: 11px;
+  animation-duration: calc(3.4s * var(--mo));
+  animation-delay: 0.6s;
+}
+.ember3 {
+  left: 46%;
+  bottom: 38px;
+  width: 8px;
+  height: 8px;
+  animation-duration: calc(2.8s * var(--mo));
+  animation-delay: 1.1s;
+}
+.ember4 {
+  left: 54%;
+  bottom: 26px;
+  width: 12px;
+  height: 12px;
+  animation-duration: calc(3.6s * var(--mo));
+  animation-delay: 1.5s;
+}
+.ember5 {
+  left: 64%;
+  bottom: 42px;
+  width: 8px;
+  height: 8px;
+  animation-duration: calc(3s * var(--mo));
+  animation-delay: 2s;
+}
+.ember6 {
+  left: 74%;
+  bottom: 32px;
+  width: 10px;
+  height: 10px;
+  animation-duration: calc(3.3s * var(--mo));
+  animation-delay: 2.5s;
+}
+.ember7 {
+  left: 40%;
+  bottom: 22px;
+  width: 7px;
+  height: 7px;
+  animation-duration: calc(2.6s * var(--mo));
+  animation-delay: 3s;
+}
+.ember8 {
+  left: 60%;
+  bottom: 20px;
+  width: 7px;
+  height: 7px;
+  animation-duration: calc(3.8s * var(--mo));
+  animation-delay: 3.5s;
+}
+
+/* ---------- Elétrico: flash de halo + raios ---------- */
+.flash {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 210px;
+  height: 210px;
+  border-radius: var(--r-pill);
+  background: radial-gradient(circle, rgba(244, 180, 0, 0.45) 0%, rgba(244, 180, 0, 0) 62%);
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  animation: rm-flash calc(2s * var(--mo)) steps(1, end) infinite;
+  animation-delay: 0.2s;
+}
+
+.bolt {
+  position: absolute;
+  fill: var(--gold);
+  opacity: 0;
+  animation: rm-flash calc(2s * var(--mo)) steps(1, end) infinite;
+}
+.bolt1 {
+  left: 2px;
+  top: 40px;
+  width: 34px;
+  height: 52px;
+  animation-delay: 0.2s;
+}
+.bolt2 {
+  right: 0;
+  top: 54px;
+  width: 30px;
+  height: 46px;
+  animation-delay: 1s;
+}
+.bolt3 {
+  left: 44px;
+  top: 4px;
+  width: 26px;
+  height: 40px;
+  animation-delay: 1.5s;
+}
+.bolt4 {
+  right: 40px;
+  bottom: 2px;
+  width: 28px;
+  height: 43px;
+  animation-delay: 0.6s;
+}
+.bolt5 {
+  left: 70px;
+  bottom: 6px;
+  width: 22px;
+  height: 34px;
+  animation-delay: 1.3s;
+}
+.bolt6 {
+  right: 70px;
+  top: 8px;
+  width: 24px;
+  height: 37px;
+  animation-delay: 1.9s;
+}
+
+/* ===========================================================================
+   Keyframes (valores exatos do handoff)
+   =========================================================================== */
+@keyframes rm-bob {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-22px) rotate(-1.4deg);
+  }
+}
+@keyframes rm-bob-2 {
+  0%,
+  100% {
+    transform: translateY(-6px) rotate(1deg);
+  }
+  50% {
+    transform: translateY(-30px) rotate(-1deg);
+  }
+}
+@keyframes rm-bob-3 {
+  0%,
+  100% {
+    transform: translateY(-2px) rotate(-0.8deg);
+  }
+  50% {
+    transform: translateY(-18px) rotate(0.8deg);
+  }
+}
+@keyframes rm-shadow {
+  0%,
+  100% {
+    transform: translateX(-50%) scaleX(1);
+    opacity: 0.16;
+  }
+  50% {
+    transform: translateX(-50%) scaleX(0.82);
+    opacity: 0.07;
+  }
+}
+@keyframes rm-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes rm-spark {
+  0% {
+    transform: translateY(12px) scale(0.5);
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-90px) scale(1);
+    opacity: 0;
+  }
+}
+@keyframes rm-flash {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  4% {
+    opacity: 1;
+  }
+  9% {
+    opacity: 0.15;
+  }
+  14% {
+    opacity: 0.95;
+  }
+  22% {
+    opacity: 0;
+  }
+}
+@keyframes rm-ember {
+  0% {
+    transform: translateY(0) scale(1);
+    opacity: 0;
+  }
+  18% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-86px) scale(0.25);
+    opacity: 0;
+  }
+}
+@keyframes rm-glow {
+  0%,
+  100% {
+    opacity: 0.22;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    opacity: 0.46;
+    transform: translate(-50%, -50%) scale(1.12);
+  }
+}
+@keyframes rm-bubble {
+  0% {
+    transform: translateY(0) scale(0.5);
+    opacity: 0;
+  }
+  25% {
+    opacity: 0.85;
+  }
+  100% {
+    transform: translateY(-72px) scale(1);
+    opacity: 0;
+  }
+}
+@keyframes rm-ripple {
+  0% {
+    transform: translate(-50%, -50%) scale(0.4);
+    opacity: 0.55;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.6);
+    opacity: 0;
+  }
+}
+
+/* ===========================================================================
+   Responsivo — desktop-first; empilha e escala o palco em telas estreitas.
+   =========================================================================== */
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    gap: var(--space-8);
+    min-height: 0;
+    padding-block: var(--space-8);
+  }
+  .copy {
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 640px) {
+  .stage {
+    --stage-scale: 0.72;
+  }
+}
+
+@media (max-width: 520px) {
+  .stage {
+    --stage-scale: 0.6;
+  }
+}
+
+@media (max-width: 400px) {
+  .stage {
+    --stage-scale: 0.5;
+  }
+}
+
+/* ===========================================================================
+   Acessibilidade — desliga toda a animação do palco e esconde as partículas
+   efêmeras (que, congeladas, virariam pontos soltos). Mantém personagens,
+   sombras, halos e o brilho de fogo num quadro estático limpo. (Obrigatório.)
+   =========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  .stage * {
+    animation: none !important;
+  }
+  .spark,
+  .fx {
+    display: none;
+  }
+  .btnPrimary svg {
+    transition: none;
+  }
+}

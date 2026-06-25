@@ -3,6 +3,7 @@ import { getActiveProducts } from "@/lib/data/products";
 import { selectCarouselProducts } from "@/lib/data/carousel";
 import { CATEGORIES, type Category } from "@/lib/data/types";
 import { ProductGrid } from "@/components/product/ProductGrid";
+import { HeroPokemon } from "@/components/home/HeroPokemon";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import styles from "./page.module.css";
 
@@ -34,40 +35,7 @@ export default async function LandingPage() {
 
   return (
     <>
-      <section className={styles.hero}>
-        <div className={styles.eyebrow}>
-          <span className={styles.dot} /> Pronta-entrega
-        </div>
-        <h1 className={styles.heroTitle}>
-          Sua coleção começa <span className={styles.accent}>aqui.</span>
-        </h1>
-        <p className={styles.heroSub}>
-          Booster Boxes, Elite Trainer Boxes e cartas avulsas com preço justo, entrega rápida em
-          todo o Brasil e garantia de originalidade.
-        </p>
-        <div className={styles.heroCta}>
-          <Link href="/colecoes" className={styles.btnDark}>
-            Ver coleção completa <Icon name="arrow" size={16} />
-          </Link>
-          <Link href="#produtos" className={styles.btnGhost}>
-            Em destaque
-          </Link>
-        </div>
-        <div className={styles.stats}>
-          <div className={styles.stat}>
-            <span className={styles.statV}>12k+</span>
-            <span className={styles.statL}>Clientes ativos</span>
-          </div>
-          <div className={styles.stat}>
-            <span className={styles.statV}>4.9★</span>
-            <span className={styles.statL}>Avaliação média</span>
-          </div>
-          <div className={styles.stat}>
-            <span className={styles.statV}>48h</span>
-            <span className={styles.statL}>Entrega expressa</span>
-          </div>
-        </div>
-      </section>
+      <HeroPokemon />
 
       <section className={styles.cats} aria-label="Categorias">
         <div className={styles.catGrid}>
