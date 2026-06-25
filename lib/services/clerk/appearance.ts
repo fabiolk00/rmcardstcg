@@ -1,6 +1,7 @@
 // Tema do Clerk alinhado aos design tokens (monocromatico ink). Valores concretos
-// porque o appearance do Clerk nao resolve var() de CSS. Tipagem validada no uso
-// (prop appearance do ClerkProvider).
+// porque o appearance do Clerk nao resolve var() de CSS. Aplica-se ao que ainda
+// usa componentes prontos do Clerk (ex.: UserButton na topbar) — as telas de
+// Entrar / Criar conta sao formularios custom (components/auth).
 export const clerkAppearance = {
   variables: {
     colorPrimary: "#0a0a0a",

@@ -1,15 +1,26 @@
-import { SignUp } from "@clerk/nextjs";
 import { AuthShell } from "@/components/layout/AuthShell";
 import { AuthPlaceholder } from "@/components/layout/AuthPlaceholder";
+import { SignUpForm } from "@/components/auth/SignUpForm";
 import { isClerkConfigured } from "@/lib/services/clerk/config";
 
-export default function CriarContaPage() {
+// Mesmo destino do login: conta nova (cliente) cai em /minhas-compras via
+// /pos-login; deep links de rota protegida (redirect_url) tem prioridade.
+function resolveRedirect(value: string | string[] | undefined): string {
+  const url = Array.isArray(value) ? value[0] : value;
+  return url && url.startsWith("/") ? url : "/pos-login";
+}
+
+export default async function CriarContaPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  const redirectUrl = resolveRedirect((await searchParams).redirect_url);
+
   return (
-    <AuthShell>
+    <AuthShell mode="criar-conta">
       {isClerkConfigured() ? (
-        // Mesma rota de decisao do login: conta nova (cliente) cai em /minhas-compras;
-        // se o e-mail estiver em ADMIN_EMAILS, /pos-login ja manda pro painel.
-        <SignUp fallbackRedirectUrl="/pos-login" signInFallbackRedirectUrl="/pos-login" />
+        <SignUpForm redirectUrl={redirectUrl} />
       ) : (
         <AuthPlaceholder mode="criar-conta" />
       )}

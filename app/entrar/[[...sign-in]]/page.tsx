@@ -1,17 +1,26 @@
-import { SignIn } from "@clerk/nextjs";
 import { AuthShell } from "@/components/layout/AuthShell";
 import { AuthPlaceholder } from "@/components/layout/AuthPlaceholder";
+import { SignInForm } from "@/components/auth/SignInForm";
 import { isClerkConfigured } from "@/lib/services/clerk/config";
 
-export default function EntrarPage() {
+// Destino pos-login: respeita o redirect_url do middleware (deep link de rota
+// protegida) e cai em /pos-login (roteador por role) quando nao houver.
+function resolveRedirect(value: string | string[] | undefined): string {
+  const url = Array.isArray(value) ? value[0] : value;
+  return url && url.startsWith("/") ? url : "/pos-login";
+}
+
+export default async function EntrarPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  const redirectUrl = resolveRedirect((await searchParams).redirect_url);
+
   return (
-    <AuthShell>
+    <AuthShell mode="entrar">
       {isClerkConfigured() ? (
-        // fallbackRedirectUrl: usado SO quando nao ha redirect_url na query (clique
-        // direto em "Entrar"). O roteador /pos-login decide admin -> painel,
-        // cliente -> minhas-compras. Deep links de rota protegida (redirect_url do
-        // middleware) continuam tendo prioridade e levam de volta ao destino.
-        <SignIn fallbackRedirectUrl="/pos-login" signUpFallbackRedirectUrl="/pos-login" />
+        <SignInForm redirectUrl={redirectUrl} />
       ) : (
         <AuthPlaceholder mode="entrar" />
       )}

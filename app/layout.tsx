@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { ClerkProvider } from "@clerk/nextjs";
 import { isClerkConfigured } from "@/lib/services/clerk/config";
 import { clerkAppearance } from "@/lib/services/clerk/appearance";
+import { clerkLocalization } from "@/lib/services/clerk/localization";
 import { RouteProgress } from "@/components/layout/RouteProgress";
 import "./globals.css";
 
@@ -26,5 +27,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   // Mock-first: sem Clerk configurado, o app roda sem o provider.
   if (!isClerkConfigured()) return tree;
 
-  return <ClerkProvider appearance={clerkAppearance}>{tree}</ClerkProvider>;
+  return (
+    <ClerkProvider appearance={clerkAppearance} localization={clerkLocalization}>
+      {tree}
+    </ClerkProvider>
+  );
 }

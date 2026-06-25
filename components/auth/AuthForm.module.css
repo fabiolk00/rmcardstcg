@@ -1,0 +1,271 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: 100%;
+}
+
+.heading {
+  text-align: center;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.subheading {
+  margin-top: calc(-1 * var(--space-3));
+  text-align: center;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.subheading strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* Botoes sociais */
+.social {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.googleBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 46px;
+  padding: 0 16px;
+  border-radius: var(--r-sm);
+  background: var(--ink);
+  color: var(--on-ink);
+  border: 1px solid var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.googleBtn:hover:not(:disabled) {
+  background: var(--ink-hover);
+  border-color: var(--ink-hover);
+}
+
+.googleBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Divisor "OU" */
+.divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.divider::before,
+.divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.dividerText {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+/* Campos */
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.input {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.input::placeholder {
+  color: var(--ink-3);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--ink);
+  box-shadow: 0 0 0 1px var(--ink);
+}
+
+.input:disabled {
+  background: var(--bg-soft);
+  color: var(--ink-3);
+  cursor: not-allowed;
+}
+
+.passwordWrap {
+  position: relative;
+}
+
+.passwordWrap .input {
+  padding-right: 44px;
+}
+
+.eyeBtn {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: none;
+  background: transparent;
+  color: var(--ink-3);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.eyeBtn:hover {
+  color: var(--ink);
+  background: var(--bg-soft);
+}
+
+/* Requisitos de senha */
+.rules {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--r-sm);
+  background: var(--bg-soft);
+  list-style: none;
+  margin: 0;
+}
+
+.rule {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.ruleOk {
+  color: var(--green-strong);
+}
+
+.ruleIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border: 1px solid currentColor;
+  border-radius: var(--r-pill);
+}
+
+.forgot {
+  align-self: flex-end;
+  margin-top: calc(-1 * var(--space-1));
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.forgot:hover {
+  text-decoration: underline;
+}
+
+/* CTA principal */
+.submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 48px;
+  margin-top: var(--space-1);
+  border-radius: var(--r-sm);
+  background: var(--ink);
+  color: var(--on-ink);
+  border: 1px solid var(--ink);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.submit:hover:not(:disabled) {
+  background: var(--ink-hover);
+}
+
+.submit:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Mensagens */
+.error {
+  padding: var(--space-3);
+  border-radius: var(--r-sm);
+  background: #fdecea;
+  color: var(--red-strong);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.back {
+  align-self: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.back:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+/* CAPTCHA invisivel do Clerk (sign-up) — sem altura propria quando vazio */
+.captcha:empty {
+  display: none;
+}
