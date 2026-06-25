@@ -26,8 +26,24 @@ export interface HeroPokemonProps {
   characters?: Partial<typeof DEFAULT_CHARACTERS>;
 }
 
-// O polígono de raio dourado (SVG inline, sem dependencia externa). Tamanho e
-// posicao vem do CSS por bolt; o fill usa o token --gold via `.bolt`.
+// Pokébola desenhada em SVG inline (sem dependencia externa). Tamanho, posicao,
+// timing e opacidade (--ball-op) vem do CSS por bola. Cores reais de produto
+// (fora do chrome monocromatico): vermelho/preto/branco.
+function Pokeball({ className }: { className: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+      <path d="M1 12 A11 11 0 0 1 23 12 Z" fill="#ee1515" />
+      <path d="M1 12 A11 11 0 0 0 23 12 Z" fill="#f5f5f5" />
+      <rect x="1.3" y="10.6" width="21.4" height="2.8" fill="#1a1a1a" />
+      <circle cx="12" cy="12" r="11" fill="none" stroke="#1a1a1a" strokeWidth="1.4" />
+      <circle cx="12" cy="12" r="3.4" fill="#f5f5f5" stroke="#1a1a1a" strokeWidth="1.4" />
+      <circle cx="12" cy="12" r="1.3" fill="#fff" stroke="#1a1a1a" strokeWidth="0.8" />
+    </svg>
+  );
+}
+
+// O polígono de raio dourado (SVG inline). Tamanho/posicao/delay vem do CSS por
+// bolt; o fill usa o token --gold via `.bolt`.
 function Bolt({ className }: { className: string }) {
   return (
     <svg viewBox="0 0 22 34" className={className} aria-hidden="true">
@@ -96,9 +112,24 @@ export function HeroPokemon({ motion = "equilibrado", characters }: HeroPokemonP
           </div>
         </div>
 
-        {/* ===== Coluna direita: palco animado (decorativo) ===== */}
-        <div className={styles.stage} aria-hidden="true">
-          <div className={styles.cast}>
+        {/* ===== Coluna direita: palco animado (decorativo, oculto em ≤880px) ===== */}
+        <div className={styles.stageWrap} aria-hidden="true">
+          <div className={styles.stage}>
+            {/* pokébolas caindo do céu, atrás de tudo */}
+            <div className={styles.balls}>
+              {[
+                styles.ball1,
+                styles.ball2,
+                styles.ball3,
+                styles.ball4,
+                styles.ball5,
+                styles.ball6,
+                styles.ball7,
+              ].map((cls, i) => (
+                <Pokeball key={i} className={`${styles.ball} ${cls}`} />
+              ))}
+            </div>
+
             {/* halos girando ao fundo */}
             <span className={`${styles.halo} ${styles.haloOuter}`} />
             <span className={`${styles.halo} ${styles.haloInner}`} />
@@ -135,8 +166,8 @@ export function HeroPokemon({ motion = "equilibrado", characters }: HeroPokemonP
                   <Image
                     src={cast.water.src}
                     alt={cast.water.alt}
-                    width={156}
-                    height={156}
+                    width={193}
+                    height={193}
                     priority
                     className={styles.img}
                   />
@@ -153,8 +184,8 @@ export function HeroPokemon({ motion = "equilibrado", characters }: HeroPokemonP
                   <Image
                     src={cast.fire.src}
                     alt={cast.fire.alt}
-                    width={254}
-                    height={254}
+                    width={324}
+                    height={324}
                     priority
                     className={styles.img}
                   />
@@ -197,8 +228,8 @@ export function HeroPokemon({ motion = "equilibrado", characters }: HeroPokemonP
                   <Image
                     src={cast.electric.src}
                     alt={cast.electric.alt}
-                    width={172}
-                    height={172}
+                    width={210}
+                    height={210}
                     priority
                     className={styles.img}
                   />
