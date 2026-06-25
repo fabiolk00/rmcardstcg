@@ -33,6 +33,7 @@ function blankProduct(): Product {
     rating: 0,
     reviewCount: 0,
     stock: 0,
+    available: 0,
     isActive: true,
     isCarousel: false,
     badge: null,

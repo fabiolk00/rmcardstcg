@@ -109,6 +109,45 @@ export async function getCouponByCode(code: string): Promise<Coupon | null> {
   return row ? toCoupon(row) : null;
 }
 
+/** Uma redencao do cupom, com info minima do pedido para o historico (admin). */
+export type CouponRedemptionEntry = {
+  id: string;
+  orderId: number;
+  /** Numero legivel do pedido ("#" + id), como no dominio de pedidos. */
+  orderNumber: string;
+  userId: string;
+  /** Nome do cliente no pedido; null se o pedido nao resolver. */
+  customerName: string | null;
+  /** E-mail do cliente no pedido; null se o pedido nao resolver. */
+  customerEmail: string | null;
+  /** Abatimento efetivo aplicado neste pedido (centavos). */
+  discountCents: number;
+  /** Total do pedido em centavos; null se o pedido nao resolver. */
+  orderTotalCents: number | null;
+  /** ISO 8601. */
+  createdAt: string;
+};
+
+/** Historico de usos de um cupom, mais recentes primeiro. Read-only. */
+export async function getCouponRedemptions(couponId: string): Promise<CouponRedemptionEntry[]> {
+  const rows = await prisma.couponRedemption.findMany({
+    where: { couponId },
+    orderBy: { createdAt: "desc" },
+    include: { order: { select: { totalCents: true, customerName: true, customerEmail: true } } },
+  });
+  return rows.map((row) => ({
+    id: row.id,
+    orderId: row.orderId,
+    orderNumber: `#${row.orderId}`,
+    userId: row.userId,
+    customerName: row.order ? row.order.customerName : null,
+    customerEmail: row.order ? row.order.customerEmail : null,
+    discountCents: row.discountCents,
+    orderTotalCents: row.order ? row.order.totalCents : null,
+    createdAt: row.createdAt.toISOString(),
+  }));
+}
+
 // ============================================================================
 // CRUD (admin) — toda mutacao grava audit_log na MESMA transacao.
 // ============================================================================

@@ -28,6 +28,7 @@ function toProduct(row: ProductModel): Product {
     rating: Number(row.rating),
     reviewCount: row.reviewCount,
     stock: row.stock,
+    available: Math.max(0, row.stock - row.reserved),
     isActive: row.isActive,
     isCarousel: row.isCarousel,
     badge: row.badge,
@@ -95,6 +96,49 @@ export async function getRelatedProducts(
     take: limit * 4,
   });
   return selectRelatedProducts(rows.map(toProduct), product, limit);
+}
+
+/**
+ * Produto com estoque baixo (visao de admin). `reserved` nao faz parte do
+ * contrato Product (lib/data/types.ts) — vive so no registro do banco —, entao
+ * expomos um shape dedicado com o derivado `available = stock - reserved`.
+ */
+export type LowStockProduct = {
+  id: string;
+  name: string;
+  stock: number;
+  reserved: number;
+  /** Derivado: estoque disponivel (stock - reserved). */
+  available: number;
+};
+
+/** Limite padrao de "estoque baixo" (espelha o selo "baixo" da lista de produtos). */
+export const LOW_STOCK_THRESHOLD = 5;
+
+/**
+ * Produtos com estoque disponivel (stock - reserved) <= threshold, do menor
+ * disponivel para o maior (mais critico primeiro). So leitura: nao toca em
+ * reserva/estoque (ver lib/data/inventory.ts para mutacoes). O filtro roda no
+ * banco via raw query porque `available` e derivado de duas colunas.
+ */
+export async function getLowStockProducts(
+  threshold = LOW_STOCK_THRESHOLD,
+): Promise<LowStockProduct[]> {
+  const rows = await prisma.$queryRaw<
+    { id: string; name: string; stock: number; reserved: number }[]
+  >`
+    SELECT "id", "name", "stock", "reserved"
+    FROM "products"
+    WHERE ("stock" - "reserved") <= ${threshold}
+    ORDER BY ("stock" - "reserved") ASC, "name" ASC
+  `;
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    stock: r.stock,
+    reserved: r.reserved,
+    available: r.stock - r.reserved,
+  }));
 }
 
 // ===========================================================================

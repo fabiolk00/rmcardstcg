@@ -19,11 +19,11 @@ export function ProductInfo({ product }: { product: Product }) {
   const [added, setAdded] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const soldOut = product.stock <= 0;
+  const soldOut = product.available <= 0;
   const hasDiscount = product.discountPct > 0;
   const final = finalPriceCents(product);
-  // Trava de UI: 1..stock (a camada de servico — CartContext — tambem reclampa).
-  const clampQty = (n: number) => Math.max(1, Math.min(n, product.stock));
+  // Trava de UI: 1..disponivel (a camada de servico — CartContext — tambem reclampa).
+  const clampQty = (n: number) => Math.max(1, Math.min(n, product.available));
 
   useEffect(() => {
     return () => {
@@ -64,9 +64,9 @@ export function ProductInfo({ product }: { product: Product }) {
       <p className={styles.stock} aria-live="polite">
         {soldOut ? (
           <span className={styles.stockOut}>Esgotado</span>
-        ) : product.stock <= LOW_STOCK_THRESHOLD ? (
+        ) : product.available <= LOW_STOCK_THRESHOLD ? (
           <span className={styles.stockLow}>
-            Últimas {product.stock} {product.stock === 1 ? "unidade" : "unidades"}
+            Últimas {product.available} {product.available === 1 ? "unidade" : "unidades"}
           </span>
         ) : (
           <span className={styles.stockIn}>Em estoque</span>
@@ -93,7 +93,7 @@ export function ProductInfo({ product }: { product: Product }) {
               type="button"
               className={styles.stepBtn}
               onClick={() => setQty((n) => clampQty(n + 1))}
-              disabled={qty >= product.stock}
+              disabled={qty >= product.available}
               aria-label="Aumentar quantidade"
             >
               <Icon name="plus" size={16} />

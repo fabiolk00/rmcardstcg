@@ -10,7 +10,14 @@ export const FLAT_SHIPPING_CENTS = 2500;
 export type CartProduct = Pick<
   Product,
   "id" | "slug" | "name" | "imageUrl" | "priceCents" | "discountPct" | "stock"
->;
+> & {
+  /**
+   * Disponivel para venda (stock - reservado) no momento em que entrou no
+   * carrinho. Opcional: snapshots antigos (localStorage v1) podem nao ter — o
+   * clamp cai para `stock` nesse caso.
+   */
+  available?: number;
+};
 
 export type CartLine = { product: CartProduct; quantity: number };
 

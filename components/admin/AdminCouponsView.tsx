@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import type { Coupon } from "@/lib/data/coupons";
 import { formatBRL } from "@/lib/utils/currency";
@@ -242,6 +243,14 @@ export function AdminCouponsView({ coupons: initialCoupons }: { coupons: Coupon[
                 </td>
                 <td className={styles.right}>
                   <div className={styles.actions}>
+                    <Link
+                      href={`/admin/cupons/${c.id}`}
+                      className={styles.act}
+                      aria-label={`Ver usos de ${c.code}`}
+                      title="Ver usos"
+                    >
+                      <Icon name="receipt" size={15} />
+                    </Link>
                     <button
                       type="button"
                       className={styles.act}

@@ -5,7 +5,7 @@ import type { Product } from "./types";
  * testavel por unidade (espelha o padrao de lib/data/carousel.ts).
  *
  * Regra: mesma categoria do produto atual, ativos, EXCLUI o proprio produto,
- * prioriza os com estoque (>0) antes dos esgotados (sort estavel, preserva a ordem
+ * prioriza os com disponivel para venda (>0) antes dos esgotados (sort estavel, preserva a ordem
  * recebida dentro de cada grupo — getActiveProducts entrega por createdAt desc), no
  * maximo RELATED_LIMIT. A filtragem por categoria/ativo tambem roda na query
  * (getRelatedProducts); manter aqui deixa a regra testavel isolada do DB.
@@ -20,7 +20,7 @@ export function selectRelatedProducts(
   const sameCategory = pool.filter(
     (p) => p.id !== current.id && p.isActive && p.category === current.category,
   );
-  const inStock = sameCategory.filter((p) => p.stock > 0);
-  const soldOut = sameCategory.filter((p) => p.stock <= 0);
+  const inStock = sameCategory.filter((p) => p.available > 0);
+  const soldOut = sameCategory.filter((p) => p.available <= 0);
   return [...inStock, ...soldOut].slice(0, limit);
 }

@@ -82,7 +82,7 @@ function productJsonLd(product: Product): string {
       priceCurrency: "BRL",
       price: (finalPriceCents(product) / 100).toFixed(2),
       availability:
-        product.stock > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+        product.available > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
       itemCondition: "https://schema.org/NewCondition",
     },
   };

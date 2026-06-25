@@ -2,7 +2,9 @@
 // Postgres). Fonte unica do `pnpm db:seed`. Precos em centavos.
 import type { Order, Product } from "../lib/data/types";
 
-export const SEED_PRODUCTS: Product[] = [
+// `available` (derivado: stock - reservado) nao faz parte do dado de seed; o
+// seed grava stock e o `reserved` nasce com default 0 no banco.
+export const SEED_PRODUCTS: Omit<Product, "available">[] = [
   {
     id: "p-001",
     slug: "booster-box-scarlet-tempest",

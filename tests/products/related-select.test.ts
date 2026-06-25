@@ -10,7 +10,7 @@ import type { Product } from "../../lib/data/types";
 let seq = 0;
 function p(overrides: Partial<Product>): Product {
   seq += 1;
-  return {
+  const base: Product = {
     id: `p-${seq}`,
     slug: `slug-${seq}`,
     name: `Produto ${seq}`,
@@ -21,6 +21,7 @@ function p(overrides: Partial<Product>): Product {
     rating: 5,
     reviewCount: 0,
     stock: 10,
+    available: 10,
     isActive: true,
     isCarousel: false,
     badge: null,
@@ -33,6 +34,8 @@ function p(overrides: Partial<Product>): Product {
     createdAt: "2025-01-01T00:00:00.000Z",
     ...overrides,
   };
+  // available espelha o stock (sem reservas) salvo override explicito do teste.
+  return { ...base, available: overrides.available ?? base.stock };
 }
 
 describe("selectRelatedProducts", () => {

@@ -68,7 +68,7 @@ export function CartView() {
                 <button
                   type="button"
                   onClick={() => setQuantity(line.product.id, line.quantity + 1)}
-                  disabled={line.quantity >= line.product.stock}
+                  disabled={line.quantity >= (line.product.available ?? line.product.stock)}
                   aria-label={`Aumentar quantidade de ${line.product.name}`}
                 >
                   <Icon name="plus" size={14} />

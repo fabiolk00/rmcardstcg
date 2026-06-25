@@ -7,6 +7,7 @@ import styles from "./AdminNav.module.css";
 
 const ITEMS: { href: string; label: string; icon: IconName }[] = [
   { href: "/admin/produtos", label: "Produtos", icon: "package" },
+  { href: "/admin/estoque", label: "Estoque baixo", icon: "box" },
   { href: "/admin/pedidos", label: "Pedidos", icon: "receipt" },
   { href: "/admin/avaliacoes", label: "Avaliações", icon: "star" },
   { href: "/admin/cupons", label: "Cupons", icon: "archive" },

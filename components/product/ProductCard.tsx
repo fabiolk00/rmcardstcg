@@ -11,7 +11,7 @@ export function ProductCard({ product }: { product: Product }) {
   const href = `/produto/${product.slug}`;
   const hasDiscount = product.discountPct > 0;
   const final = finalPriceCents(product);
-  const soldOut = product.stock <= 0;
+  const soldOut = product.available <= 0;
 
   return (
     <article className={styles.card}>

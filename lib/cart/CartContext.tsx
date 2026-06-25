@@ -61,11 +61,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       if (existing) {
         return prev.map((l) =>
           l.product.id === product.id
-            ? { ...l, quantity: clampToStock(l.quantity + quantity, product.stock) }
+            ? { ...l, quantity: clampToStock(l.quantity + quantity, product.available ?? product.stock) }
             : l,
         );
       }
-      return [...prev, { product, quantity: clampToStock(quantity, product.stock) }];
+      return [...prev, { product, quantity: clampToStock(quantity, product.available ?? product.stock) }];
     });
   }, []);
 
@@ -73,7 +73,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setLines((prev) =>
       prev.map((l) =>
         l.product.id === productId
-          ? { ...l, quantity: clampToStock(quantity, l.product.stock) }
+          ? { ...l, quantity: clampToStock(quantity, l.product.available ?? l.product.stock) }
           : l,
       ),
     );

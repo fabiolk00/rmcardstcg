@@ -48,8 +48,15 @@ export interface Product {
   rating: number;
   /** Numero de avaliacoes. */
   reviewCount: number;
-  /** Estoque atual em unidades. */
+  /** Estoque fisico atual em unidades (on-hand). */
   stock: number;
+  /**
+   * Disponivel para venda = max(0, stock - reservado). Derivado: exclui unidades
+   * ja comprometidas por pedidos pendentes (reserva de checkout). A vitrine usa
+   * ESTE valor (nao o stock cru) para esgotado/limite de quantidade. O admin
+   * continua vendo stock e reservado separados.
+   */
+  available: number;
   isActive: boolean;
   /** Exibir no carrossel "Em destaque" da landing (controle do admin). */
   isCarousel: boolean;
