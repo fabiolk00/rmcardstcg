@@ -30,7 +30,7 @@ export type ProductFormPayload = {
   badge: string | null;
   imageUrl: string;
   description: string;
-  isCarousel: boolean;
+  isLanding: boolean;
   /** Medidas do pacote para frete (Int; 0 = usa o default da categoria). */
   weightGrams: number;
   lengthCm: number;
@@ -69,7 +69,7 @@ export function ProductFormModal({ product, onSave, onClose }: Props) {
     badge: product.badge,
     imageUrl: product.imageUrl,
     description: product.description,
-    isCarousel: product.isCarousel,
+    isLanding: product.isLanding,
     weightGrams: product.weightGrams,
     lengthCm: product.lengthCm,
     widthCm: product.widthCm,
@@ -83,7 +83,7 @@ export function ProductFormModal({ product, onSave, onClose }: Props) {
   const [discountPct, setDiscountPct] = useState(product.discountPct);
   const [stock, setStock] = useState(String(product.stock));
   const [imageUrl, setImageUrl] = useState(product.imageUrl);
-  const [isCarousel, setIsCarousel] = useState(product.isCarousel);
+  const [isLanding, setIsCarousel] = useState(product.isLanding);
   // Medidas para frete (string no input; 0 no produto -> vazio -> usa default da categoria).
   const dimStr = (v: number) => (v > 0 ? String(v) : "");
   const [weightGrams, setWeightGrams] = useState(dimStr(product.weightGrams));
@@ -150,7 +150,7 @@ export function ProductFormModal({ product, onSave, onClose }: Props) {
         badge: product.badge,
         imageUrl: imageUrl.trim() || "/products/placeholder.svg",
         description: description.trim(),
-        isCarousel,
+        isLanding,
         weightGrams: toInt(weightGrams),
         lengthCm: toInt(lengthCm),
         widthCm: toInt(widthCm),
@@ -333,16 +333,16 @@ export function ProductFormModal({ product, onSave, onClose }: Props) {
 
         <label className={`${styles.carouselField} ${styles.full}`} htmlFor="pf-carousel">
           <span className={styles.carouselText}>
-            <span className={styles.label}>Carrossel?</span>
+            <span className={styles.label}>Landing?</span>
             <span className={styles.carouselHint}>
-              Exibir este produto na vitrine “Em destaque” da home.
+              Exibir este produto na vitrine “Em destaque” da landing.
             </span>
           </span>
           <input
             id="pf-carousel"
             type="checkbox"
             className={styles.carouselCheck}
-            checked={isCarousel}
+            checked={isLanding}
             onChange={(e) => setIsCarousel(e.target.checked)}
           />
         </label>

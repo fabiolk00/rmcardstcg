@@ -29,7 +29,7 @@ export default async function LandingPage() {
     category,
     count: products.filter((p) => p.category === category).length,
   }));
-  // Carrossel "Em destaque": produtos marcados (isCarousel) e com estoque; cai para
+  // Carrossel "Em destaque": produtos marcados (isLanding) e com estoque; cai para
   // os ativos com estoque quando ninguem esta marcado (ver selectCarouselProducts).
   const featured = selectCarouselProducts(products);
 

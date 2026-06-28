@@ -35,7 +35,7 @@ function blankProduct(): Product {
     stock: 0,
     available: 0,
     isActive: true,
-    isCarousel: false,
+    isLanding: false,
     badge: null,
     imageUrl: "/products/placeholder.svg",
     description: "",
@@ -245,28 +245,31 @@ export function AdminProductsView({ products: initialProducts }: { products: Pro
         <table className={styles.table}>
           <thead>
             <tr>
-              <th scope="col" className={styles.left}>
+              <th scope="col" className={styles.center}>
                 Produto
               </th>
-              <th scope="col" className={styles.left}>
+              <th scope="col" className={styles.center}>
                 Categoria
               </th>
-              <th scope="col" className={styles.right}>
+              <th scope="col" className={styles.center}>
                 Preço
               </th>
-              <th scope="col" className={styles.right}>
+              <th scope="col" className={styles.center}>
                 Desconto
               </th>
-              <th scope="col" className={styles.right}>
+              <th scope="col" className={styles.center}>
                 Preço final
               </th>
               <th scope="col" className={styles.center}>
                 Estoque
               </th>
-              <th scope="col" className={styles.left}>
+              <th scope="col" className={styles.center}>
                 Status
               </th>
-              <th scope="col" className={styles.right}>
+              <th scope="col" className={styles.center}>
+                Landing
+              </th>
+              <th scope="col" className={styles.center}>
                 Ações
               </th>
             </tr>
@@ -274,7 +277,7 @@ export function AdminProductsView({ products: initialProducts }: { products: Pro
           <tbody>
             {paged.map((p) => (
               <tr key={p.id} className={p.isActive ? undefined : styles.inactive}>
-                <td className={styles.left}>
+                <td className={styles.center}>
                   <div className={styles.product}>
                     <span className={styles.thumb}>
                       <Image
@@ -291,24 +294,24 @@ export function AdminProductsView({ products: initialProducts }: { products: Pro
                     </span>
                   </div>
                 </td>
-                <td className={styles.left}>
+                <td className={styles.center}>
                   <span className={styles.catPill}>{p.category}</span>
                 </td>
-                <td className={`${styles.right} tnum`}>
+                <td className={`${styles.center} tnum`}>
                   {p.discountPct > 0 ? (
                     <span className={styles.strike}>{formatBRL(p.priceCents)}</span>
                   ) : (
                     formatBRL(p.priceCents)
                   )}
                 </td>
-                <td className={styles.right}>
+                <td className={styles.center}>
                   {p.discountPct > 0 ? (
                     <span className={styles.disc}>-{p.discountPct}%</span>
                   ) : (
                     <span className={styles.muted}>—</span>
                   )}
                 </td>
-                <td className={`${styles.right} ${styles.finalPrice} tnum`}>
+                <td className={`${styles.center} ${styles.finalPrice} tnum`}>
                   {formatBRL(finalPriceCents(p))}
                 </td>
                 <td className={styles.center}>
@@ -317,24 +320,21 @@ export function AdminProductsView({ products: initialProducts }: { products: Pro
                   </span>
                   {p.stock > 0 && p.stock < 5 && <span className={styles.stockLow}>baixo</span>}
                 </td>
-                <td className={styles.left}>
+                <td className={styles.center}>
                   <div className={styles.statusCell}>
                     <span
                       className={`${styles.pill} ${p.isActive ? styles.pillActive : styles.pillInactive}`}
                     >
                       {p.isActive ? "Ativo" : "Inativo"}
                     </span>
-                    {p.isCarousel && (
-                      <span
-                        className={`${styles.pill} ${styles.pillCarousel}`}
-                        title="No carrossel"
-                      >
-                        Carrossel
-                      </span>
-                    )}
                   </div>
                 </td>
-                <td className={styles.right}>
+                <td className={styles.center}>
+                  <span className={p.isLanding ? styles.landingYes : styles.landingNo}>
+                    {p.isLanding ? "Sim" : "Não"}
+                  </span>
+                </td>
+                <td className={styles.center}>
                   <div className={styles.actions}>
                     <button
                       type="button"
@@ -369,7 +369,7 @@ export function AdminProductsView({ products: initialProducts }: { products: Pro
             ))}
             {paged.length === 0 && (
               <tr>
-                <td colSpan={8} className={styles.emptyCell}>
+                <td colSpan={9} className={styles.emptyCell}>
                   Nenhum produto encontrado com esses filtros.
                 </td>
               </tr>

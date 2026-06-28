@@ -6,7 +6,7 @@ import { test, expect } from "@playwright/test";
  *
  * Fatos do seed usados nas asserts (prisma/seed-data.ts):
  *  - 28 produtos, 27 ativos (1 inativo: "Booster Pack — Lost Origin").
- *  - 8 produtos marcados isCarousel=true, TODOS ativos e com estoque>0 (vitrine da home).
+ *  - 8 produtos marcados isLanding=true, TODOS ativos e com estoque>0 (vitrine da home).
  *  - "Sleeves Ultra Pro (100un) Holo": ativo, com estoque, mas NAO marcado (fora da home).
  *  - Catalogo pagina de 12 em 12 (ColecoesView PER_PAGE=12).
  *  - "Charizard" casa 2 produtos ativos (Tin Collection ex / Single VMAX Rainbow).
@@ -30,7 +30,7 @@ test("home renderiza o hero e a grade de produtos em destaque", async ({ page })
   await expect(page.getByRole("heading", { name: /Sua coleção começa/i })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Nossos produtos." })).toBeVisible();
 
-  // featured = marcados (isCarousel) ativos com estoque>0, slice(0,8). O seed marca
+  // featured = marcados (isLanding) ativos com estoque>0, slice(0,8). O seed marca
   // exatamente 8 elegiveis => 8 cards.
   const cards = page.locator("article");
   await expect(cards.first()).toBeVisible();

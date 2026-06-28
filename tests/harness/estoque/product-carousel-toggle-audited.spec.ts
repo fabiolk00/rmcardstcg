@@ -23,7 +23,7 @@ import { Client } from "pg";
  * NOTA sobre no-op: updateProduct NAO tem early-return de no-op (so setProductActive
  * tem). Cada chamada grava 1 audit product.update. O diff de intencao controla QUAIS
  * colunas sao escritas, nao SE ha audit. Por isso aqui provamos persistencia + audit
- * + DELTA LIMPO (so isCarousel muda entre before/after), nas duas direcoes.
+ * + DELTA LIMPO (so isLanding muda entre before/after), nas duas direcoes.
  *
  * CAVEAT do harness (resolvido como infra): o client Prisma e ESM puro; o runner do
  * Playwright transpila os specs p/ CJS (import.meta = SyntaxError). Por isso a seam
@@ -57,7 +57,7 @@ function runSeamRaw(
   return { ok: JSON.parse(okLine.slice("__SEAM_RESULT__".length)) };
 }
 
-type SeamProduct = { id: string; slug: string; isCarousel: boolean };
+type SeamProduct = { id: string; slug: string; isLanding: boolean };
 
 function runProductSeam(op: SeamOp, payload: unknown): SeamProduct {
   const res = runSeamRaw(op, payload);
@@ -79,8 +79,8 @@ type AuditRow = {
   action: string;
   entity_type: string;
   entity_id: string;
-  before: { isCarousel: boolean; priceCents: number; stock: number } | null;
-  after: { isCarousel: boolean; priceCents: number; stock: number } | null;
+  before: { isLanding: boolean; priceCents: number; stock: number } | null;
+  after: { isLanding: boolean; priceCents: number; stock: number } | null;
 };
 
 async function latestAudit(client: Client, productId: string): Promise<AuditRow> {
@@ -102,15 +102,15 @@ async function countEntityAudit(client: Client, productId: string): Promise<numb
   return Number(r.rows[0].count);
 }
 
-test("estoque.product.carousel-toggle-audited: isCarousel false<->true persiste e audita na mesma tx (delta limpo)", async () => {
+test("estoque.product.carousel-toggle-audited: isLanding false<->true persiste e audita na mesma tx (delta limpo)", async () => {
   const client = makeClient();
   await client.connect();
   try {
     const tag = randomUUID().slice(0, 8);
     const sku = `HARNESS-CAROUSEL-${tag}`;
     const actor = { clerkUserId: null, email: null, role: null };
-    // Input completo reusado entre create/update: so isCarousel muda entre as chamadas,
-    // entao o diff de intencao do updateProduct deixa o UPDATE com SO a coluna is_carousel.
+    // Input completo reusado entre create/update: so isLanding muda entre as chamadas,
+    // entao o diff de intencao do updateProduct deixa o UPDATE com SO a coluna is_landing.
     const baseInput = {
       name: `Produto Harness Carousel ${tag}`,
       category: "Booster Box",
@@ -123,36 +123,36 @@ test("estoque.product.carousel-toggle-audited: isCarousel false<->true persiste 
       description: "fixture do harness para carousel-toggle-audited",
     };
 
-    // --- setup: cria o produto com isCarousel:false (createProduct ja grava 1 audit).
+    // --- setup: cria o produto com isLanding:false (createProduct ja grava 1 audit).
     const created = runProductSeam("createProduct", {
       actor,
-      input: { ...baseInput, isCarousel: false },
+      input: { ...baseInput, isLanding: false },
     });
     const productId = created.id;
-    expect(created.isCarousel, "produto nasce fora do carrossel").toBe(false);
+    expect(created.isLanding, "produto nasce fora do carrossel").toBe(false);
 
-    const seeded = await client.query<{ is_carousel: boolean }>(
-      `SELECT is_carousel FROM "products" WHERE id = $1`,
+    const seeded = await client.query<{ is_landing: boolean }>(
+      `SELECT is_landing FROM "products" WHERE id = $1`,
       [productId],
     );
     expect(seeded.rowCount).toBe(1);
-    expect(seeded.rows[0].is_carousel, "create persistiu is_carousel=false").toBe(false);
+    expect(seeded.rows[0].is_landing, "create persistiu is_landing=false").toBe(false);
     expect(await countEntityAudit(client, productId), "create deixou 1 audit").toBe(1);
 
     // === passo 1: MARCA (false -> true) ===
     const on = runProductSeam("updateProduct", {
       actor,
       id: productId,
-      input: { ...baseInput, isCarousel: true },
+      input: { ...baseInput, isLanding: true },
     });
-    expect(on.isCarousel, "retorno reflete isCarousel=true").toBe(true);
+    expect(on.isLanding, "retorno reflete isLanding=true").toBe(true);
 
     const afterOn = await client.query<{
-      is_carousel: boolean;
+      is_landing: boolean;
       price_cents: number;
       stock: number;
-    }>(`SELECT is_carousel, price_cents, stock FROM "products" WHERE id = $1`, [productId]);
-    expect(afterOn.rows[0].is_carousel, "is_carousel persiste true").toBe(true);
+    }>(`SELECT is_landing, price_cents, stock FROM "products" WHERE id = $1`, [productId]);
+    expect(afterOn.rows[0].is_landing, "is_landing persiste true").toBe(true);
     expect(afterOn.rows[0].price_cents, "preco intocado pelo toggle").toBe(P);
     expect(afterOn.rows[0].stock, "estoque intocado pelo toggle").toBe(STOCK);
 
@@ -160,8 +160,8 @@ test("estoque.product.carousel-toggle-audited: isCarousel false<->true persiste 
     const a1 = await latestAudit(client, productId);
     expect(a1.action, "action @map dotted product.update").toBe("product.update");
     expect(a1.entity_type).toBe("product");
-    expect(a1.before?.isCarousel, "before.isCarousel=false").toBe(false);
-    expect(a1.after?.isCarousel, "after.isCarousel=true").toBe(true);
+    expect(a1.before?.isLanding, "before.isLanding=false").toBe(false);
+    expect(a1.after?.isLanding, "after.isLanding=true").toBe(true);
     // Delta limpo: so o flag muda; preco/estoque iguais nos dois snapshots.
     expect(a1.before?.priceCents).toBe(P);
     expect(a1.after?.priceCents).toBe(P);
@@ -172,21 +172,21 @@ test("estoque.product.carousel-toggle-audited: isCarousel false<->true persiste 
     const off = runProductSeam("updateProduct", {
       actor,
       id: productId,
-      input: { ...baseInput, isCarousel: false },
+      input: { ...baseInput, isLanding: false },
     });
-    expect(off.isCarousel, "retorno reflete isCarousel=false").toBe(false);
+    expect(off.isLanding, "retorno reflete isLanding=false").toBe(false);
 
-    const afterOff = await client.query<{ is_carousel: boolean }>(
-      `SELECT is_carousel FROM "products" WHERE id = $1`,
+    const afterOff = await client.query<{ is_landing: boolean }>(
+      `SELECT is_landing FROM "products" WHERE id = $1`,
       [productId],
     );
-    expect(afterOff.rows[0].is_carousel, "is_carousel volta a false").toBe(false);
+    expect(afterOff.rows[0].is_landing, "is_landing volta a false").toBe(false);
 
     expect(await countEntityAudit(client, productId), "desmarcar gera +1 audit (total 3)").toBe(3);
     const a2 = await latestAudit(client, productId);
     expect(a2.action).toBe("product.update");
-    expect(a2.before?.isCarousel, "before.isCarousel=true").toBe(true);
-    expect(a2.after?.isCarousel, "after.isCarousel=false").toBe(false);
+    expect(a2.before?.isLanding, "before.isLanding=true").toBe(true);
+    expect(a2.after?.isLanding, "after.isLanding=false").toBe(false);
   } finally {
     await client.end();
   }

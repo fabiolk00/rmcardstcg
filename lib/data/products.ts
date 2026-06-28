@@ -30,7 +30,7 @@ function toProduct(row: ProductModel): Product {
     stock: row.stock,
     available: Math.max(0, row.stock - row.reserved),
     isActive: row.isActive,
-    isCarousel: row.isCarousel,
+    isLanding: row.isLanding,
     badge: row.badge,
     imageUrl: row.imageUrl,
     description: row.description,
@@ -178,7 +178,7 @@ export type ProductInput = {
   imageUrl: string;
   description: string;
   /** Exibir no carrossel "Em destaque" da landing. */
-  isCarousel: boolean;
+  isLanding: boolean;
   /** Medidas do pacote para frete (Int; 0 = usa o default da categoria). */
   weightGrams: number;
   lengthCm: number;
@@ -196,7 +196,7 @@ type NormalizedProductInput = {
   badge: string | null;
   imageUrl: string;
   description: string;
-  isCarousel: boolean;
+  isLanding: boolean;
   weightGrams: number;
   lengthCm: number;
   widthCm: number;
@@ -239,7 +239,7 @@ function normalizeProductInput(input: ProductInput): NormalizedProductInput {
   const badge = input.badge?.trim() ? input.badge.trim() : null;
   const imageUrl = input.imageUrl?.trim() ? input.imageUrl.trim() : "/products/placeholder.svg";
   // Checkbox: forca booleano (undefined/null/"" do client viram false).
-  const isCarousel = input.isCarousel === true;
+  const isLanding = input.isLanding === true;
   // Medidas para frete (grama/cm, Int >= 0). Invalido/ausente -> 0, que faz a cotacao
   // usar o default da categoria. Sem teto rigido (variam por produto).
   const dim = (v: unknown): number =>
@@ -255,7 +255,7 @@ function normalizeProductInput(input: ProductInput): NormalizedProductInput {
     badge,
     imageUrl,
     description,
-    isCarousel,
+    isLanding,
     weightGrams: dim(input.weightGrams),
     lengthCm: dim(input.lengthCm),
     widthCm: dim(input.widthCm),
@@ -275,7 +275,7 @@ function auditSnapshot(p: Product): Prisma.InputJsonValue {
     discountPct: p.discountPct,
     stock: p.stock,
     isActive: p.isActive,
-    isCarousel: p.isCarousel,
+    isLanding: p.isLanding,
     badge: p.badge,
     imageUrl: p.imageUrl,
     description: p.description,
@@ -342,7 +342,7 @@ export async function createProduct(actor: AuditActor, input: ProductInput): Pro
         discountPct: data.discountPct,
         stock: data.stock,
         isActive: true,
-        isCarousel: data.isCarousel,
+        isLanding: data.isLanding,
         badge: data.badge,
         imageUrl: data.imageUrl,
         description: data.description,
@@ -411,7 +411,7 @@ export async function updateProduct(
       badge: baseline.badge,
       imageUrl: baseline.imageUrl,
       description: baseline.description,
-      isCarousel: baseline.isCarousel,
+      isLanding: baseline.isLanding,
       weightGrams: baseline.weightGrams,
       lengthCm: baseline.lengthCm,
       widthCm: baseline.widthCm,
@@ -435,7 +435,7 @@ export async function updateProduct(
     if (data.priceCents !== cmp.priceCents) updateData.priceCents = data.priceCents;
     if (data.discountPct !== cmp.discountPct) updateData.discountPct = data.discountPct;
     if (data.stock !== cmp.stock) updateData.stock = data.stock;
-    if (data.isCarousel !== cmp.isCarousel) updateData.isCarousel = data.isCarousel;
+    if (data.isLanding !== cmp.isLanding) updateData.isLanding = data.isLanding;
     if (data.badge !== cmp.badge) updateData.badge = data.badge;
     if (data.imageUrl !== cmp.imageUrl) updateData.imageUrl = data.imageUrl;
     if (data.description !== cmp.description) updateData.description = data.description;

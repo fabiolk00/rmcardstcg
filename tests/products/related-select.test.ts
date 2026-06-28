@@ -23,7 +23,7 @@ function p(overrides: Partial<Product>): Product {
     stock: 10,
     available: 10,
     isActive: true,
-    isCarousel: false,
+    isLanding: false,
     badge: null,
     imageUrl: "/products/placeholder.svg",
     description: "x",

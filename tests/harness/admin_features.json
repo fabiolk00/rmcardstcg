@@ -1427,18 +1427,18 @@
     "id": "estoque.product.carousel-toggle-audited",
     "team": "estoque",
     "category": "functional",
-    "title": "Admin marca/desmarca produto no carrossel da landing (flag isCarousel + auditoria)",
+    "title": "Admin marca/desmarca produto no carrossel da landing (flag isLanding + auditoria)",
     "route": "/admin/produtos",
     "priority": 36,
     "steps": [
-      "Cria um produto proprio via createProduct com isCarousel=false (1 audit product.create).",
-      "Chama updateProduct com o MESMO input e isCarousel=true (marca); depois de novo com isCarousel=false (desmarca).",
-      "Assertaa o estado real via pg (products.is_carousel e audit_log)."
+      "Cria um produto proprio via createProduct com isLanding=false (1 audit product.create).",
+      "Chama updateProduct com o MESMO input e isLanding=true (marca); depois de novo com isLanding=false (desmarca).",
+      "Assertaa o estado real via pg (products.is_landing e audit_log)."
     ],
     "asserts": [
-      "products.is_carousel persiste true ao marcar e false ao desmarcar; preco/estoque intocados pelo toggle (delta limpo).",
-      "Cada updateProduct grava 1 audit_log action=product.update na MESMA transacao (before/after = snapshots completos com isCarousel).",
-      "before.isCarousel/after.isCarousel refletem a transicao (false->true e true->false).",
+      "products.is_landing persiste true ao marcar e false ao desmarcar; preco/estoque intocados pelo toggle (delta limpo).",
+      "Cada updateProduct grava 1 audit_log action=product.update na MESMA transacao (before/after = snapshots completos com isLanding).",
+      "before.isLanding/after.isLanding refletem a transicao (false->true e true->false).",
       "Landing: selectCarouselProducts mostra so os marcados ativos com estoque (fallback aos ativos quando nenhum marcado) — coberto por teste de unidade puro e pelo e2e (home conta 8)."
     ],
     "invariants": ["audit-same-tx"],

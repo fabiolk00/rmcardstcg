@@ -4,7 +4,7 @@ import { CAROUSEL_LIMIT, selectCarouselProducts } from "../../lib/data/carousel"
 import type { Product } from "../../lib/data/types";
 
 // selectCarouselProducts e a regra do carrossel "Em destaque" da home: mostra os
-// MARCADOS (isCarousel) ativos e com estoque, cap CAROUSEL_LIMIT; FALLBACK p/ os
+// MARCADOS (isLanding) ativos e com estoque, cap CAROUSEL_LIMIT; FALLBACK p/ os
 // ativos com estoque quando ninguem esta marcado. Funcao pura -> testavel sem DB.
 // Cobre, em especial, o ramo de FALLBACK, que o seed do e2e (que marca produtos)
 // nunca exercita.
@@ -25,7 +25,7 @@ function p(overrides: Partial<Product>): Product {
     stock: 10,
     available: 10,
     isActive: true,
-    isCarousel: false,
+    isLanding: false,
     badge: null,
     imageUrl: "/products/placeholder.svg",
     description: "x",
@@ -42,12 +42,12 @@ function p(overrides: Partial<Product>): Product {
 
 describe("selectCarouselProducts", () => {
   it("retorna apenas os marcados, ativos e com estoque", () => {
-    const marked = p({ isCarousel: true, name: "Marcado" });
+    const marked = p({ isLanding: true, name: "Marcado" });
     const products = [
       marked,
-      p({ isCarousel: false, name: "Nao marcado" }),
-      p({ isCarousel: true, isActive: false, name: "Marcado inativo" }),
-      p({ isCarousel: true, stock: 0, name: "Marcado sem estoque" }),
+      p({ isLanding: false, name: "Nao marcado" }),
+      p({ isLanding: true, isActive: false, name: "Marcado inativo" }),
+      p({ isLanding: true, stock: 0, name: "Marcado sem estoque" }),
     ];
     const out = selectCarouselProducts(products);
     expect(out.map((x) => x.name)).toEqual(["Marcado"]);
@@ -55,7 +55,7 @@ describe("selectCarouselProducts", () => {
 
   it("preserva a ordem recebida e limita a CAROUSEL_LIMIT", () => {
     const many = Array.from({ length: CAROUSEL_LIMIT + 4 }, (_, i) =>
-      p({ isCarousel: true, name: `M${i}` }),
+      p({ isLanding: true, name: `M${i}` }),
     );
     const out = selectCarouselProducts(many);
     expect(out).toHaveLength(CAROUSEL_LIMIT);
@@ -65,16 +65,16 @@ describe("selectCarouselProducts", () => {
   });
 
   it("respeita um limite customizado", () => {
-    const many = Array.from({ length: 5 }, () => p({ isCarousel: true }));
+    const many = Array.from({ length: 5 }, () => p({ isLanding: true }));
     expect(selectCarouselProducts(many, 3)).toHaveLength(3);
   });
 
   it("FALLBACK: sem nenhum marcado elegivel, cai para os ativos com estoque (cap)", () => {
     const products = [
-      p({ isCarousel: false, name: "A" }),
-      p({ isCarousel: false, name: "B" }),
-      p({ isCarousel: false, isActive: false, name: "Inativo" }),
-      p({ isCarousel: false, stock: 0, name: "Sem estoque" }),
+      p({ isLanding: false, name: "A" }),
+      p({ isLanding: false, name: "B" }),
+      p({ isLanding: false, isActive: false, name: "Inativo" }),
+      p({ isLanding: false, stock: 0, name: "Sem estoque" }),
     ];
     const out = selectCarouselProducts(products);
     // So A e B sao elegiveis (ativos, stock>0); inativo e sem-estoque ficam de fora.
@@ -83,8 +83,8 @@ describe("selectCarouselProducts", () => {
 
   it("FALLBACK so dispara quando NENHUM marcado e elegivel (marcado inativo nao conta)", () => {
     const products = [
-      p({ isCarousel: true, isActive: false, name: "Marcado inativo" }),
-      p({ isCarousel: false, name: "Ativo nao marcado" }),
+      p({ isLanding: true, isActive: false, name: "Marcado inativo" }),
+      p({ isLanding: false, name: "Ativo nao marcado" }),
     ];
     // O unico marcado e inativo (nao elegivel) -> fallback para o ativo nao marcado.
     expect(selectCarouselProducts(products).map((x) => x.name)).toEqual(["Ativo nao marcado"]);
