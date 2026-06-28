@@ -6,7 +6,7 @@ import { Icon, type IconName } from "@/components/ui/Icon";
 import styles from "./AdminNav.module.css";
 
 const ITEMS: { href: string; label: string; icon: IconName }[] = [
-  { href: "/admin/produtos", label: "Produtos", icon: "package" },
+  { href: "/admin/produtos", label: "Produtos", icon: "grid" },
   { href: "/admin/estoque", label: "Estoque baixo", icon: "box" },
   { href: "/admin/pedidos", label: "Pedidos", icon: "receipt" },
   { href: "/admin/avaliacoes", label: "Avaliações", icon: "star" },
@@ -27,7 +27,7 @@ export function AdminNav() {
             className={`${styles.item} ${active ? styles.active : ""}`}
             aria-current={active ? "page" : undefined}
           >
-            <Icon name={item.icon} size={16} />
+            <Icon name={item.icon} size={19} />
             <span>{item.label}</span>
           </Link>
         );

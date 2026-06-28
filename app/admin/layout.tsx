@@ -1,10 +1,9 @@
 import { currentUser } from "@clerk/nextjs/server";
-import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AdminNav } from "@/components/admin/AdminNav";
-import { AdminUserArea } from "@/components/admin/AdminUserArea";
-import { Icon } from "@/components/ui/Icon";
+import { AdminProfileCard } from "@/components/admin/AdminProfileCard";
+import { AdminProfileMenu } from "@/components/admin/AdminProfileMenu";
 import { getUserRole } from "@/lib/data/users";
 import { isClerkConfigured } from "@/lib/services/clerk/config";
 import { isAdminEmail } from "@/lib/services/clerk/roles";
@@ -15,12 +14,14 @@ import styles from "./admin.module.css";
 // usuario ainda nao sincronizado. Mock-first (sem Clerk): liberado para dev.
 export default async function AdminLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const clerkEnabled = isClerkConfigured();
+  // Email exibido no card de perfil; placeholder no modo demo (dev sem Clerk).
+  let email = "admin@rmcards.com.br";
 
   if (clerkEnabled) {
     const user = await currentUser();
     if (!user) redirect("/entrar");
-    const email =
-      user.primaryEmailAddress?.emailAddress ?? user.emailAddresses[0]?.emailAddress ?? null;
+    email =
+      user.primaryEmailAddress?.emailAddress ?? user.emailAddresses[0]?.emailAddress ?? email;
     const role = (await getUserRole(user.id)) ?? (isAdminEmail(email) ? "admin" : "cliente");
     if (role !== "admin") redirect("/");
   } else if (process.env.NODE_ENV === "production") {
@@ -34,13 +35,8 @@ export default async function AdminLayout({ children }: Readonly<{ children: Rea
       <aside className={styles.sidebar}>
         <Link href="/admin/produtos" className={styles.brand}>
           <span className={styles.brandMark}>
-            <Image
-              src="/logo-rm.png"
-              alt="RM Cards"
-              width={28}
-              height={28}
-              className={styles.brandLogo}
-            />
+            <span className={styles.brandMarkRM}>RM</span>
+            <span className={styles.brandMarkSub}>CARDS</span>
           </span>
           <span className={styles.brandText}>
             <span className={styles.brandName}>RM Cards</span>
@@ -50,13 +46,11 @@ export default async function AdminLayout({ children }: Readonly<{ children: Rea
 
         <AdminNav />
 
-        <div className={styles.foot}>
-          <Link href="/" className={styles.viewStore}>
-            <Icon name="arrow" size={14} />
-            <span>Ver loja</span>
-          </Link>
-          {clerkEnabled ? <AdminUserArea /> : <span className={styles.demoBadge}>Modo demo</span>}
-        </div>
+        {clerkEnabled ? (
+          <AdminProfileMenu email={email} roleLabel="Administrador" />
+        ) : (
+          <AdminProfileCard email={email} roleLabel="Administrador" />
+        )}
       </aside>
 
       <div className={styles.main}>

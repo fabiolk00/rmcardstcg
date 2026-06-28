@@ -5,79 +5,76 @@
 
 .sidebar {
   display: flex;
-  width: 248px;
+  position: sticky;
+  top: 0;
+  width: 240px;
+  height: 100vh;
   flex-shrink: 0;
   flex-direction: column;
-  gap: var(--space-6);
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
   background: var(--ink);
   color: var(--on-ink);
-  padding: var(--space-6) var(--space-4);
 }
 
+/* ===== Header (marca) ===== */
 .brand {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: 0 var(--space-2);
+  gap: 11px;
+  padding: 20px 16px 16px;
 }
 
 .brandMark {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
   flex-shrink: 0;
-  border-radius: 9px;
-  background: var(--on-ink);
+  border-radius: 11px;
+  background: #fff;
 }
 
-.brandLogo {
-  width: 28px;
-  height: auto;
+.brandMarkRM {
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  color: #0a0a0a;
+}
+
+.brandMarkSub {
+  margin-top: 2px;
+  font-size: 4.5px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  color: #0a0a0a;
 }
 
 .brandText {
   display: flex;
+  min-width: 0;
   flex-direction: column;
 }
 
 .brandName {
   font-size: 15px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: #fff;
 }
 
 .brandSub {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.65);
-}
-
-.foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  margin-top: auto;
-}
-
-.viewStore {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.7);
-}
-
-.viewStore:hover {
-  color: var(--on-ink);
-}
-
-.demoBadge {
-  font-size: 11px;
+  margin-top: 2px;
+  font-size: 11.5px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.55);
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
 }
 
+/* ===== Conteudo ===== */
 .main {
   display: flex;
   flex: 1;
@@ -110,18 +107,14 @@
   }
 
   .sidebar {
+    position: static;
     width: 100%;
-    flex-direction: row;
-    align-items: center;
-    gap: var(--space-4);
+    height: auto;
+    border-right: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   }
 
-  .foot {
-    margin-top: 0;
-    margin-left: auto;
-  }
-
-  .viewStore span {
-    display: none;
+  .brand {
+    padding: 14px 16px;
   }
 }
