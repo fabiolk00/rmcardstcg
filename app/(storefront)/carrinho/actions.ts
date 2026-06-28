@@ -254,7 +254,7 @@ export async function quoteShippingAction(input: {
   if (options.length === 0) {
     // Mock-first / indisponivel: frete flat como opcao unica (serviceCode 0).
     options = [
-      { serviceCode: 0, name: "Frete padrão", priceCents: FLAT_SHIPPING_CENTS, days: null },
+      { serviceCode: 0, name: "Frete padrão", carrier: null, priceCents: FLAT_SHIPPING_CENTS, days: null },
     ];
   }
   return { ok: true, free: false, options };
