@@ -33,6 +33,17 @@ describe("parseShippingOptions", () => {
     expect(sedex?.days).toBeNull();
   });
 
+  it("preco com separador de milhar (BR '1.234,56' e US '1,234.56') nao vira NaN", () => {
+    const out = parseShippingOptions([
+      { id: 1, name: "BR", price: "1.234,56" },
+      { id: 2, name: "US", price: "1,234.56" },
+    ]);
+    const br = out.find((o) => o.serviceCode === 1);
+    const us = out.find((o) => o.serviceCode === 2);
+    expect(br?.priceCents).toBe(123456);
+    expect(us?.priceCents).toBe(123456);
+  });
+
   it("entrada nao-array -> []", () => {
     expect(parseShippingOptions(null)).toEqual([]);
     expect(parseShippingOptions({})).toEqual([]);
