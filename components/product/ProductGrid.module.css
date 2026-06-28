@@ -4,8 +4,10 @@
   gap: var(--space-5);
 }
 
+/* Mobile: sempre 2 cards por linha (o minmax(220px) cairia para 1 coluna). */
 @media (max-width: 640px) {
   .grid {
+    grid-template-columns: repeat(2, 1fr);
     gap: var(--space-3);
   }
 }

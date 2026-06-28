@@ -9,6 +9,13 @@
   gap: var(--space-3);
 }
 
+/* Mobile: fixa 2 coleções por linha (em vez de 1 quando a largura < 300px). */
+@media (max-width: 640px) {
+  .catGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 .catTile {
   display: flex;
   align-items: center;
