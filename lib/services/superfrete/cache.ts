@@ -34,12 +34,14 @@ export function quoteCacheKey(parts: {
   toCep: string;
   services: string;
   products: { quantity: number; weight: number; height: number; width: number; length: number }[];
+  /** Valor declarado (centavos) do seguro — muda o preco, entao muda a chave. */
+  insuranceCents?: number;
 }): string {
   const pkg = parts.products
     .map((p) => `${p.quantity}x${p.weight}|${p.height}|${p.width}|${p.length}`)
     .sort()
     .join(";");
-  return `${parts.fromCep}->${parts.toCep}:${parts.services}:${pkg}`;
+  return `${parts.fromCep}->${parts.toCep}:${parts.services}:${pkg}:i${parts.insuranceCents ?? 0}`;
 }
 
 /** Le do cache (e expira na leitura). undefined => miss (ou desligado). */

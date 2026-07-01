@@ -9,14 +9,14 @@ o cliente re-tenta com backoff e o resultado é cacheável.
 
 ## Arquivos
 
-| Arquivo | Papel |
-|---|---|
-| `config.ts` | Config por env (mock-first). `getSuperFreteConfig()`, `isSuperFreteConfigured()`. |
-| `client.ts` | HTTP de baixo nível: timeout, retry/backoff+jitter (opt-in via `retry`), Retry-After, log estruturado (token mascarado). `superFreteRequest()` → `{ data, meta }`. |
-| `cache.ts` | Cache opcional em memória (TTL por env, desligado por default). |
-| `dimensions.ts` | Medidas de pacote por categoria + `effectivePackage()` (medida do produto com fallback). |
-| `quote.ts` | Parse (segrega cotável × indisponível) + cotação. `quoteShipping()`, `parseQuote()`, `fetchQuote()`. |
-| `record.ts` | **Adapter de registro normalizado** (tabular) p/ pipeline de dados. `quoteShippingRecords()`, `toQuoteRecords()`. |
+| Arquivo         | Papel                                                                                                                                                              |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `config.ts`     | Config por env (mock-first). `getSuperFreteConfig()`, `isSuperFreteConfigured()`.                                                                                  |
+| `client.ts`     | HTTP de baixo nível: timeout, retry/backoff+jitter (opt-in via `retry`), Retry-After, log estruturado (token mascarado). `superFreteRequest()` → `{ data, meta }`. |
+| `cache.ts`      | Cache opcional em memória (TTL por env, desligado por default).                                                                                                    |
+| `dimensions.ts` | Medidas de pacote por categoria + `effectivePackage()` (medida do produto com fallback).                                                                           |
+| `quote.ts`      | Parse (segrega cotável × indisponível) + cotação. `quoteShipping()`, `parseQuote()`, `fetchQuote()`.                                                               |
+| `record.ts`     | **Adapter de registro normalizado** (tabular) p/ pipeline de dados. `quoteShippingRecords()`, `toQuoteRecords()`.                                                  |
 
 ## Uso
 
@@ -25,7 +25,14 @@ import { quoteShipping } from "@/lib/services/superfrete/quote";
 import { quoteShippingRecords } from "@/lib/services/superfrete/record";
 import { effectivePackage } from "@/lib/services/superfrete/dimensions";
 
-const items = lines.map((l) => ({ quantity: l.quantity, pkg: effectivePackage(l.product) }));
+// unitPriceCents (valor da MERCADORIA com desconto, centavos) liga o SEGURO:
+// o valor declarado enviado ao provedor e a soma qty x unitPriceCents, clampada
+// aos limites do provedor (config). Sem valor em nenhum item, seguro desligado.
+const items = lines.map((l) => ({
+  quantity: l.quantity,
+  pkg: effectivePackage(l.product),
+  unitPriceCents: finalPriceCents(l.product),
+}));
 
 // 1) Checkout — só as modalidades com preço, ordenadas asc. [] = indisponível (cai no flat).
 const options = await quoteShipping("80010-000", items);
@@ -43,21 +50,22 @@ pós-conferência** (a transportadora reconfere peso/medidas na postagem) — se
 cotação, preenchido depois pelo evento de postagem. Itens indisponíveis são **segregados**
 (`available: false` + `unavailableReason`), nunca descartados.
 
-| coluna | tipo | nota |
-|---|---|---|
-| `requestId` | string | correlaciona com o log `[superfrete]` |
-| `rowIndex` | int | **chave de linha**: `(requestId, rowIndex)` é única/estável (use isto, não `serviceCode`) |
-| `quotedAt` | string | ISO-8601 da **materialização** (num cache-hit ≠ hora da chamada — ver notas) |
-| `httpStatus` / `latencyMs` / `attempts` / `cacheHit` | num/bool | observabilidade da chamada |
-| `fromCep` / `toCep` | string | rota (dimensional; nunca logado) |
-| `totalWeightKg` / `itemCount` | number | pacote (peso somado em gramas Int e dividido uma vez — sem ruído de FP) |
-| `serviceCode` / `carrier` / `serviceName` | num/string | modalidade (`serviceCode` pode repetir/ser 0 — não é chave) |
-| `available` / `unavailableReason` | bool / string\|null | segregação (reason = texto cru do provedor) |
-| `quotedPriceCents` | int\|null | **valor cotado** |
-| `postAuditPriceCents` | int\|null | **valor pós-conferência** (null na cotação) |
-| `deliveryDays` | int\|null | prazo em dias úteis |
+| coluna                                               | tipo                | nota                                                                                      |
+| ---------------------------------------------------- | ------------------- | ----------------------------------------------------------------------------------------- |
+| `requestId`                                          | string              | correlaciona com o log `[superfrete]`                                                     |
+| `rowIndex`                                           | int                 | **chave de linha**: `(requestId, rowIndex)` é única/estável (use isto, não `serviceCode`) |
+| `quotedAt`                                           | string              | ISO-8601 da **materialização** (num cache-hit ≠ hora da chamada — ver notas)              |
+| `httpStatus` / `latencyMs` / `attempts` / `cacheHit` | num/bool            | observabilidade da chamada                                                                |
+| `fromCep` / `toCep`                                  | string              | rota (dimensional; nunca logado)                                                          |
+| `totalWeightKg` / `itemCount`                        | number              | pacote (peso somado em gramas Int e dividido uma vez — sem ruído de FP)                   |
+| `serviceCode` / `carrier` / `serviceName`            | num/string          | modalidade (`serviceCode` pode repetir/ser 0 — não é chave)                               |
+| `available` / `unavailableReason`                    | bool / string\|null | segregação (reason = texto cru do provedor)                                               |
+| `quotedPriceCents`                                   | int\|null           | **valor cotado**                                                                          |
+| `postAuditPriceCents`                                | int\|null           | **valor pós-conferência** (null na cotação)                                               |
+| `deliveryDays`                                       | int\|null           | prazo em dias úteis                                                                       |
 
 **Notas para o pipeline:**
+
 - **Grão da linha** = `(requestId, rowIndex)`. `serviceCode` é descritivo (pode colidir em 0 / repetir).
 - **Cotação vazia**: uma resposta 200 sem nenhuma modalidade cotável devolve `[]` (zero linhas) — o metadado dessa chamada ainda está no log `[superfrete]` (mesmo `requestId`). Se precisar de uma linha-envelope para essas chamadas, materialize-a no consumidor.
 - **`quotedAt` em cache-hit**: é a hora do consumo; `cacheHit=true` + `requestId` reconciliam a idade real ao particionar por tempo.
@@ -74,7 +82,18 @@ SUPERFRETE_TOKEN=                                    # POR AMBIENTE (sandbox ≠
 SUPERFRETE_USER_AGENT=RM Cards (contato@rmcardstcg.com.br)  # obrigatório pela API
 SUPERFRETE_FROM_CEP=                                 # CEP de origem da loja (só dígitos)
 SUPERFRETE_CACHE_TTL_MS=                             # opcional; 0/ausente = cache desligado
+SUPERFRETE_INSURANCE_MIN_CENTS=                      # piso do valor declarado (default 0)
+SUPERFRETE_INSURANCE_MAX_CENTS=                      # teto do valor declarado (default 1000000 = R$10.000)
 ```
+
+### Seguro / valor declarado
+
+A cotação envia `options.use_insurance_value: true` + `options.insurance_value`
+(REAIS) sempre que os itens têm `unitPriceCents` — valor declarado = soma da
+MERCADORIA (nunca o frete), centavos Int divididos UMA vez, clampado ao
+piso/teto acima. Itens sem valor (fluxos legados) mantêm o seguro desligado. O
+valor declarado também compõe a chave do cache (seguro diferente ⇒ preço
+diferente).
 
 ## Testes
 

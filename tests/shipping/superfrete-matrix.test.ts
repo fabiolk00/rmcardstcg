@@ -9,10 +9,11 @@ import {
   STORE_FROM_CEP,
   UNSERVICED_CEP,
 } from "./fixtures/addresses";
-import { merchandiseCents, quoteItem } from "./fixtures/products";
+import { merchandiseCents, pkgOf, quoteItem } from "./fixtures/products";
 import {
   expectedServices,
   installSuperFreteFake,
+  insuranceFeeCents,
   type FakeProduct,
 } from "./fixtures/superfrete-fake";
 
@@ -32,7 +33,13 @@ function setEnv() {
   process.env.SUPERFRETE_API_URL = "https://sandbox.superfrete.com";
   process.env.SUPERFRETE_USER_AGENT = "RM Cards (test@example.com)";
   delete process.env.SUPERFRETE_CACHE_TTL_MS; // cache OFF: cada caso cota de verdade
+  delete process.env.SUPERFRETE_INSURANCE_MIN_CENTS; // limites default do provedor
+  delete process.env.SUPERFRETE_INSURANCE_MAX_CENTS;
 }
+
+// Limites DEFAULT de valor declarado (pinam o default da config — se o default
+// mudar sem intencao, os testes de borda acusam).
+const INSURANCE_MAX_CENTS_DEFAULT = 1_000_000; // R$ 10.000 (teto do provedor)
 
 /** Modulos sob teste via import dinamico (padrao do repo: pos-stub de env/fetch). */
 async function load() {
@@ -55,9 +62,23 @@ function payloadOf(items: QuoteItem[]): FakeProduct[] {
   }));
 }
 
-/** PAC esperado (centavos) pelo modelo puro; lanca se o modelo nao cotar. */
+/**
+ * Valor declarado esperado (centavos): soma qty x unitPriceCents, clampado ao
+ * teto default — ESPELHA a regra de negocio de forma independente da implementacao.
+ */
+function declaredOf(items: QuoteItem[]): number {
+  const raw = items.reduce(
+    (s, i) => s + (i.unitPriceCents && i.unitPriceCents > 0 ? i.unitPriceCents * i.quantity : 0),
+    0,
+  );
+  return raw <= 0 ? 0 : Math.min(raw, INSURANCE_MAX_CENTS_DEFAULT);
+}
+
+/** PAC esperado (centavos) pelo modelo puro (com seguro); lanca se o modelo nao cotar. */
 function expectedPac(cep: string, items: QuoteItem[]) {
-  const s = expectedServices(cep, payloadOf(items)).find((x) => x.name === "PAC");
+  const s = expectedServices(cep, payloadOf(items), declaredOf(items)).find(
+    (x) => x.name === "PAC",
+  );
   if (!s || s.priceCents == null || s.days == null) throw new Error("modelo deveria cotar PAC");
   return { priceCents: s.priceCents, days: s.days };
 }
@@ -189,20 +210,73 @@ describe("M4 — carrinho misto: uma linha por item, quantidades e unidades pres
 });
 
 describe("M5 — pedido de alto valor (carta rara R$ 2.500): seguro/valor declarado", () => {
-  it("CONTRATO ATUAL: use_insurance_value=false e nenhum valor declarado no payload (achado documentado)", async () => {
+  it("declara a mercadoria (2500.00) com seguro ligado; MESMO pacote com valor maior custa mais", async () => {
     const { calls } = installSuperFreteFake();
     const { quoteShipping } = await load();
-    const rare = [quoteItem("SGL-RARE-001")];
+    const rare = [quoteItem("SGL-RARE-001")]; // unitPriceCents 250000
+    // Par de controle: MESMO pacote fisico, so o valor da mercadoria difere.
+    const cheapSamePkg = [{ quantity: 1, pkg: pkgOf("SGL-RARE-001"), unitPriceCents: 500 }];
 
-    const out = await quoteShipping(address("rj-centro").cep, rare);
+    const outRare = await quoteShipping(address("rj-centro").cep, rare);
+    const outCheap = await quoteShipping(address("rj-centro").cep, cheapSamePkg);
 
-    // A integracao NAO envia o valor da mercadoria: a cotacao depende so de
-    // peso/dimensoes. Asserimos o contrato REAL (nao o desejado) e registramos
-    // a lacuna no relatorio (MATRIX.md) — seguro nao integrado.
+    // Payload: seguro habilitado e valor declarado = MERCADORIA em reais (2500.00
+    // = 250000 centavos / 100, uma divisao) — nunca o frete.
+    expect(calls[0].body.options?.use_insurance_value).toBe(true);
+    expect(calls[0].body.options?.insurance_value).toBe(2500);
+    expect(calls[1].body.options?.use_insurance_value).toBe(true);
+    expect(calls[1].body.options?.insurance_value).toBe(5);
+
+    // O seguro reflete no custo: mesma rota+pacote, valor maior => frete maior,
+    // no delta exato da taxa ad valorem do modelo.
+    expect(outRare[0].priceCents).toBeGreaterThan(outCheap[0].priceCents);
+    expect(outRare[0].priceCents).toBe(expectedPac(address("rj-centro").cep, rare).priceCents);
+    expect(outRare[0].priceCents - outCheap[0].priceCents).toBe(
+      insuranceFeeCents(250000) - insuranceFeeCents(500),
+    );
+  });
+
+  it("borda: itens SEM valor unitario -> seguro desligado e sem insurance_value no payload", async () => {
+    const { calls } = installSuperFreteFake();
+    const { quoteShipping } = await load();
+    // Sem unitPriceCents (fluxo legado): comportamento anterior preservado.
+    const out = await quoteShipping(address("rj-centro").cep, [
+      { quantity: 1, pkg: pkgOf("SGL-RARE-001") },
+    ]);
+    expect(out.length).toBeGreaterThan(0);
     expect(calls[0].body.options?.use_insurance_value).toBe(false);
-    expect(JSON.stringify(calls[0].body)).not.toContain('insurance_value":true');
-    expect(JSON.stringify(calls[0].body)).not.toContain("2500"); // preco nunca vaza p/ o payload
-    expect(out[0].priceCents).toBe(expectedPac(address("rj-centro").cep, rare).priceCents);
+    expect("insurance_value" in (calls[0].body.options ?? {})).toBe(false);
+  });
+
+  it("borda: valor ZERO -> seguro desligado (nao envia declarado invalido)", async () => {
+    const { calls } = installSuperFreteFake();
+    const { quoteShipping } = await load();
+    const out = await quoteShipping(address("rj-centro").cep, [
+      { quantity: 1, pkg: pkgOf("SGL-RARE-001"), unitPriceCents: 0 },
+    ]);
+    expect(out.length).toBeGreaterThan(0);
+    expect(calls[0].body.options?.use_insurance_value).toBe(false);
+    expect("insurance_value" in (calls[0].body.options ?? {})).toBe(false);
+  });
+
+  it("borda: acima do TETO do provedor (6x R$2.500 = R$15.000) -> clampa em R$10.000 e cota", async () => {
+    const { calls } = installSuperFreteFake();
+    const { quoteShipping } = await load();
+    const items = [quoteItem("SGL-RARE-001", 6)]; // 1.500.000 centavos declarados
+    const out = await quoteShipping(address("sp-se").cep, items);
+    // Sem clamp o fake rejeitaria com 400 (> R$10.000) e out seria erro/vazio.
+    expect(out.length).toBeGreaterThan(0);
+    expect(calls[0].body.options?.insurance_value).toBe(INSURANCE_MAX_CENTS_DEFAULT / 100);
+  });
+
+  it("borda: PISO configurado (env) eleva o declarado ao minimo do provedor", async () => {
+    process.env.SUPERFRETE_INSURANCE_MIN_CENTS = "2664"; // ex.: R$ 26,64 (piso Correios)
+    const { calls } = installSuperFreteFake();
+    const { quoteShipping } = await load();
+    const out = await quoteShipping(address("sp-se").cep, [quoteItem("SGL-BULK-001")]); // R$ 5
+    expect(out.length).toBeGreaterThan(0);
+    expect(calls[0].body.options?.use_insurance_value).toBe(true);
+    expect(calls[0].body.options?.insurance_value).toBe(26.64);
   });
 });
 

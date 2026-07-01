@@ -103,9 +103,11 @@ export function pkgOf(sku: string): PackageDims {
   return effectivePackage(product(sku));
 }
 
-/** Linha de carrinho pronta para quoteShipping: {quantity, pkg}. */
+/** Linha de carrinho pronta para quoteShipping: {quantity, pkg, unitPriceCents}. */
 export function quoteItem(sku: string, quantity = 1): QuoteItem {
-  return { quantity, pkg: pkgOf(sku) };
+  const p = product(sku);
+  // discountPct e 0 nas fixtures => valor final == priceCents (mercadoria declarada).
+  return { quantity, pkg: pkgOf(sku), unitPriceCents: p.priceCents };
 }
 
 /** Mercadoria (centavos) de um carrinho de fixtures — para a regra de frete gratis. */

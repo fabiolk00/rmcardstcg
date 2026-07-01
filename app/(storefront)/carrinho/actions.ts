@@ -243,7 +243,16 @@ export async function quoteShippingAction(input: {
   // CartLine.product e um Pick sem category/dimensoes).
   const quoteItems = input.items.flatMap((i) => {
     const product = byId.get(i.productId);
-    return product ? [{ quantity: i.quantity, pkg: effectivePackage(product) }] : [];
+    return product
+      ? [
+          {
+            quantity: i.quantity,
+            pkg: effectivePackage(product),
+            // Valor da MERCADORIA (com desconto) para o valor declarado/seguro.
+            unitPriceCents: finalPriceCents(product),
+          },
+        ]
+      : [];
   });
   let options: ShippingOption[] = [];
   try {
@@ -254,7 +263,13 @@ export async function quoteShippingAction(input: {
   if (options.length === 0) {
     // Mock-first / indisponivel: frete flat como opcao unica (serviceCode 0).
     options = [
-      { serviceCode: 0, name: "Frete padrão", carrier: null, priceCents: FLAT_SHIPPING_CENTS, days: null },
+      {
+        serviceCode: 0,
+        name: "Frete padrão",
+        carrier: null,
+        priceCents: FLAT_SHIPPING_CENTS,
+        days: null,
+      },
     ];
   }
   return { ok: true, free: false, options };
@@ -358,7 +373,16 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
     try {
       const quoteItems = input.items.flatMap((i) => {
         const product = productById.get(i.productId);
-        return product ? [{ quantity: i.quantity, pkg: effectivePackage(product) }] : [];
+        return product
+          ? [
+              {
+                quantity: i.quantity,
+                pkg: effectivePackage(product),
+                // Mesmo valor unitario que compoe a mercadoria cobrada (com desconto).
+                unitPriceCents: finalPriceCents(product),
+              },
+            ]
+          : [];
       });
       const options = await quoteShipping(input.customer.cep, quoteItems);
       const chosen = options.find((o) => o.serviceCode === input.shippingServiceCode) ?? options[0];

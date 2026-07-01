@@ -22,6 +22,25 @@ const DEFAULT_USER_AGENT = "RM Cards (contato@rmcardstcg.com.br)";
 
 const onlyDigits = (s: string) => s.replace(/\D/g, "");
 
+// Limites de VALOR DECLARADO (seguro) aceitos pelo provedor, em centavos Int.
+// Teto default = R$ 10.000 (limite classico de valor declarado dos Correios via
+// agregador); piso default = 0 (sem minimo). Ajustaveis por env se a tabela do
+// provedor mudar — nunca hardcode o valor no fluxo.
+const DEFAULT_INSURANCE_MIN_CENTS = 0;
+const DEFAULT_INSURANCE_MAX_CENTS = 1_000_000;
+
+export type InsuranceLimits = { minCents: number; maxCents: number };
+
+/** Piso/teto de valor declarado (centavos), com override por env. */
+export function getInsuranceLimits(): InsuranceLimits {
+  const min = Number(process.env.SUPERFRETE_INSURANCE_MIN_CENTS);
+  const max = Number(process.env.SUPERFRETE_INSURANCE_MAX_CENTS);
+  return {
+    minCents: Number.isInteger(min) && min >= 0 ? min : DEFAULT_INSURANCE_MIN_CENTS,
+    maxCents: Number.isInteger(max) && max > 0 ? max : DEFAULT_INSURANCE_MAX_CENTS,
+  };
+}
+
 /** true quando ha token e CEP de origem — o minimo para cotar. */
 export function isSuperFreteConfigured(): boolean {
   return Boolean(process.env.SUPERFRETE_TOKEN && process.env.SUPERFRETE_FROM_CEP);

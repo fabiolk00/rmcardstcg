@@ -9,7 +9,10 @@
  *    e com o peso faturavel; PAC < SEDEX sempre; prazo SEDEX < PAC;
  *  - areas REMOTAS (Noronha, interior do Norte) tem sobretaxa e prazo extra;
  *  - acima de 30 kg a modalidade volta como item-ERRO (segregada, nao some);
- *  - CEP nao atendido -> itens-erro; CEP inexistente -> HTTP 400.
+ *  - CEP nao atendido -> itens-erro; CEP inexistente -> HTTP 400;
+ *  - SEGURO (ad valorem): use_insurance_value + insurance_value (REAIS) somam
+ *    1% do valor declarado ao preco de cada modalidade; seguro ligado sem
+ *    valor, ou valor acima do teto de R$ 10.000, e rejeitado com HTTP 400.
  *
  * Instalado no boundary do fetch (padrao do repo: vi.stubGlobal), entao a
  * integracao REAL (config -> client -> quote -> parse) roda inteira por cima.
@@ -53,9 +56,17 @@ export type FakeRequestBody = {
   from?: { postal_code?: string };
   to?: { postal_code?: string };
   services?: string;
-  options?: { use_insurance_value?: boolean };
+  options?: { use_insurance_value?: boolean; insurance_value?: number };
   products?: FakeProduct[];
 };
+
+/** Teto de valor declarado do provedor (reais) — acima disso a API rejeita. */
+export const INSURANCE_CAP_REAIS = 10_000;
+
+/** Taxa ad valorem do seguro (centavos): 1% do valor declarado, por modalidade. */
+export function insuranceFeeCents(insuranceCents: number): number {
+  return insuranceCents > 0 ? Math.round(insuranceCents / 100) : 0;
+}
 
 /** Peso faturavel (g) do pacote consolidado: max(real, cubado a 6000 cm3/kg). */
 export function billableGrams(products: FakeProduct[]): number {
@@ -89,7 +100,11 @@ export type ExpectedService = {
  * Modelo de preco/prazo por modalidade — exportado para os testes calcularem o
  * ESPERADO de forma independente da resposta (mesma funcao pura, zero drift).
  */
-export function expectedServices(toCepRaw: string, products: FakeProduct[]): ExpectedService[] {
+export function expectedServices(
+  toCepRaw: string,
+  products: FakeProduct[],
+  insuranceCents = 0,
+): ExpectedService[] {
   const toCep = onlyDigits(toCepRaw);
   if (toCep === onlyDigits(UNSERVICED_CEP)) {
     return SERVICES.map((s) => ({
@@ -115,7 +130,12 @@ export function expectedServices(toCepRaw: string, products: FakeProduct[]): Exp
   const steps = Math.ceil(grams / 100); // degraus de 100 g (discrimina cubagem fina)
   return SERVICES.map((s) => {
     const t = TABLE[s.name];
-    const priceCents = t.base + zone * t.perZone + steps * t.perStep + (remote ? t.remote : 0);
+    const priceCents =
+      t.base +
+      zone * t.perZone +
+      steps * t.perStep +
+      (remote ? t.remote : 0) +
+      insuranceFeeCents(insuranceCents);
     const days =
       s.name === "PAC" ? 3 + zone * 2 + (remote ? 7 : 0) : Math.max(1, zone) + (remote ? 4 : 0);
     return { id: s.id, name: s.name, priceCents, days, error: null };
@@ -149,7 +169,21 @@ function responseBody(body: FakeRequestBody): { status: number; json: unknown } 
     return { status: 400, json: { message: "CEP de destino não encontrado." } };
   }
 
-  const services = expectedServices(toCep, products);
+  // Seguro: como o provedor real — ligado exige valor declarado valido dentro do teto.
+  const insured = body.options?.use_insurance_value === true;
+  const insuranceReais = Number(body.options?.insurance_value ?? 0);
+  if (insured && (!Number.isFinite(insuranceReais) || insuranceReais <= 0)) {
+    return { status: 400, json: { message: "Seguro habilitado sem valor declarado." } };
+  }
+  if (insuranceReais > INSURANCE_CAP_REAIS) {
+    return {
+      status: 400,
+      json: { message: "Valor declarado acima do limite do provedor (R$ 10.000)." },
+    };
+  }
+  const insuranceCents = insured ? Math.round(insuranceReais * 100) : 0;
+
+  const services = expectedServices(toCep, products, insuranceCents);
   const json = services.map((s) =>
     s.error
       ? { id: s.id, name: s.name, company: { name: "Correios" }, error: s.error }

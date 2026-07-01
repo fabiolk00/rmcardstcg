@@ -36,32 +36,33 @@ opcional `superfrete-sandbox.integration.test.ts` (condicional a
 
 ## Resultado (22 testes, 100% verde — `npx vitest run tests/shipping/superfrete-matrix.test.ts`)
 
-| #   | Cenário                               | Input-chave                                                 | Esperado                                                                                              | Obtido                                                | Status         |
-| --- | ------------------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | -------------- |
-| M1  | Carta avulsa → CEP local              | SGL-BULK (50 g fallback) → 01001-000                        | PAC no piso, < R$ 30, prazo mínimo, ordenado                                                          | igual ao modelo puro                                  | ✅             |
-| M2  | Distância crescente                   | mesmo item → SP→…→Manaus→Humaitá                            | preço/prazo não-decrescentes; remoto estritamente maior                                               | monotônico; Humaitá > Manaus                          | ✅             |
-| M3  | Peso e cubagem                        | booster×box, single×ETB; playmat vs deck box (300 g iguais) | mais pesado custa mais; cubado domina                                                                 | playmat > deck box                                    | ✅             |
-| M4  | Carrinho misto                        | 3×single + 2×sleeves + 1×deck → BH                          | 3 `products` (qty, kg, cm) preservados; preço consolida o pacote                                      | payload exato; preço = modelo                         | ✅             |
-| M5  | Alto valor (R$ 2.500)                 | SGL-RARE → RJ                                               | contrato atual: sem valor declarado no payload                                                        | `use_insurance_value:false`; preço independe do valor | ✅ (achado #1) |
-| M6  | Acima do threshold                    | mercadoria 31 270 / 29 900 exato                            | frete 0 mesmo com cotação válida                                                                      | 0                                                     | ✅             |
-| M7  | Logo abaixo                           | mercadoria 19 270 e 29 899                                  | cobra o valor cotado (> 0)                                                                            | = PAC cotado                                          | ✅             |
-| M8  | CEP inválido/inexistente/não atendido | 5 formatos inválidos; 99999-999; 00000-000; hífen           | `[]` sem rede; `SuperFreteError(400)` tipado + fallback flat; segregação com razão; hífen ≡ sem hífen | conforme                                              | ✅             |
-| M9  | Peso extremo                          | 40× ETB (38 kg)                                             | sem throw; 2 modalidades segregadas c/ razão do limite; `totalWeightKg=38`                            | conforme                                              | ✅             |
-| M10 | Múltiplas modalidades                 | deck → Recife/Cuiabá/Floripa                                | PAC+SEDEX asc; SEDEX mais caro e mais rápido; prazos > 0                                              | conforme                                              | ✅             |
+| #   | Cenário                               | Input-chave                                                 | Esperado                                                                                                                                                                   | Obtido                        | Status         |
+| --- | ------------------------------------- | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | -------------- |
+| M1  | Carta avulsa → CEP local              | SGL-BULK (50 g fallback) → 01001-000                        | PAC no piso, < R$ 30, prazo mínimo, ordenado                                                                                                                               | igual ao modelo puro          | ✅             |
+| M2  | Distância crescente                   | mesmo item → SP→…→Manaus→Humaitá                            | preço/prazo não-decrescentes; remoto estritamente maior                                                                                                                    | monotônico; Humaitá > Manaus  | ✅             |
+| M3  | Peso e cubagem                        | booster×box, single×ETB; playmat vs deck box (300 g iguais) | mais pesado custa mais; cubado domina                                                                                                                                      | playmat > deck box            | ✅             |
+| M4  | Carrinho misto                        | 3×single + 2×sleeves + 1×deck → BH                          | 3 `products` (qty, kg, cm) preservados; preço consolida o pacote                                                                                                           | payload exato; preço = modelo | ✅             |
+| M5  | Alto valor (R$ 2.500)                 | SGL-RARE → RJ; par de controle mesmo pacote R$ 5            | seguro ligado, `insurance_value: 2500` (mercadoria, nunca frete); custo maior no delta ad valorem; bordas: sem valor/zero → off, R$ 15.000 → clamp R$ 10.000, piso via env | conforme (5 casos)            | ✅ (corrigido) |
+| M6  | Acima do threshold                    | mercadoria 31 270 / 29 900 exato                            | frete 0 mesmo com cotação válida                                                                                                                                           | 0                             | ✅             |
+| M7  | Logo abaixo                           | mercadoria 19 270 e 29 899                                  | cobra o valor cotado (> 0)                                                                                                                                                 | = PAC cotado                  | ✅             |
+| M8  | CEP inválido/inexistente/não atendido | 5 formatos inválidos; 99999-999; 00000-000; hífen           | `[]` sem rede; `SuperFreteError(400)` tipado + fallback flat; segregação com razão; hífen ≡ sem hífen                                                                      | conforme                      | ✅             |
+| M9  | Peso extremo                          | 40× ETB (38 kg)                                             | sem throw; 2 modalidades segregadas c/ razão do limite; `totalWeightKg=38`                                                                                                 | conforme                      | ✅             |
+| M10 | Múltiplas modalidades                 | deck → Recife/Cuiabá/Floripa                                | PAC+SEDEX asc; SEDEX mais caro e mais rápido; prazos > 0                                                                                                                   | conforme                      | ✅             |
 
 **Prova de sensibilidade (anti-verde-vácuo):** mutação proposital na conversão
 g→kg de `buildProductsPayload` derruba 14/22 testes; revertida.
 
 ## Achados / inconsistências da integração
 
-1. **Seguro/valor declarado não integrado** (M5): `quote.ts` fixa
-   `options.use_insurance_value: false` e o valor da mercadoria nunca é enviado
-   ao provedor. Uma carta de R$ 2.500 é cotada igual a uma de R$ 5 com o mesmo
-   pacote — em extravio, não há cobertura. Não é bug de código (o payload é
-   intencional e o teste assere o contrato REAL), mas é lacuna de negócio para
-   itens de alto valor; se for desejado, exige enviar
-   `options.insurance_value` (ou equivalente) com o valor declarado. Validar
-   custo no sandbox antes de ligar.
+1. **Seguro/valor declarado não integrado** (M5) — **CORRIGIDO**: `quote.ts`
+   agora envia `options.use_insurance_value: true` + `options.insurance_value`
+   (reais) sempre que os itens carregam `unitPriceCents` (valor da mercadoria
+   com desconto, nunca o frete), clampado ao piso/teto do provedor
+   (`SUPERFRETE_INSURANCE_MIN/MAX_CENTS`, default 0 / R$ 10.000). O valor
+   declarado entra na chave do cache. Validação no sandbox real: caso
+   dedicado em `superfrete-sandbox.integration.test.ts` (R$ 5 vs R$ 2.500 no
+   mesmo pacote, delta logado como evidência) — condicional a
+   `SUPERFRETE_TOKEN` e a rede liberada para `sandbox.superfrete.com`.
 2. Nenhum outro desvio: guards de CEP/itens, normalização de hífen, ordenação,
    segregação de modalidades indisponíveis, conversões g→kg e preço→centavos e
    o threshold exato de frete grátis se comportaram conforme o contrato.

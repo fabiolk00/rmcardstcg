@@ -54,6 +54,44 @@ describe.skipIf(!ENABLED)("SuperFrete sandbox (integração real)", () => {
     }
   });
 
+  it("seguro/valor declarado: aceito pelo provedor e custo nao-diminui com valor maior (R$5 vs R$2.500)", async () => {
+    // MESMO pacote fisico (carta em toploader+envelope) e destino; so o valor
+    // da mercadoria muda. Evidencia da Fase de validacao: o provedor aceita o
+    // insurance_value e o custo reflete o seguro (delta logado por modalidade).
+    const pkg = { weightGrams: 20, lengthCm: 16, widthCm: 11, heightCm: 1 };
+    const cheap = await fetchQuote(DEST_CEP, [{ quantity: 1, pkg, unitPriceCents: 500 }]);
+    const rare = await fetchQuote(DEST_CEP, [{ quantity: 1, pkg, unitPriceCents: 250_000 }]);
+    expect(cheap).not.toBeNull();
+    expect(rare).not.toBeNull();
+    if (!cheap || !rare) return;
+
+    // Aceito = resposta 200 parseavel com ao menos uma modalidade cotavel (um 400
+    // de campo invalido teria lancado SuperFreteError antes).
+    const cheapOptions = parseQuote(cheap.raw).options;
+    const rareOptions = parseQuote(rare.raw).options;
+    expect(cheapOptions.length).toBeGreaterThan(0);
+    expect(rareOptions.length).toBeGreaterThan(0);
+
+    for (const o of rareOptions) {
+      const base = cheapOptions.find((c) => c.serviceCode === o.serviceCode);
+      if (!base) continue;
+      console.info("[sandbox-evidencia] seguro reflete no custo", {
+        service: o.name,
+        cheapCents: base.priceCents,
+        rareCents: o.priceCents,
+        deltaCents: o.priceCents - base.priceCents,
+      });
+      // Ad valorem: valor declarado maior nunca barateia; para R$2.500 vs R$5
+      // espera-se delta ESTRITAMENTE positivo em ao menos uma modalidade.
+      expect(o.priceCents).toBeGreaterThanOrEqual(base.priceCents);
+    }
+    const anyStrictIncrease = rareOptions.some((o) => {
+      const base = cheapOptions.find((c) => c.serviceCode === o.serviceCode);
+      return base != null && o.priceCents > base.priceCents;
+    });
+    expect(anyStrictIncrease).toBe(true);
+  });
+
   it("o registro normalizado e plano e consistente (valor cotado vs pós-conferência)", async () => {
     const records = await toQuoteRecordsFromLive();
     expect(records.length).toBeGreaterThan(0);

@@ -1,4 +1,4 @@
-import { getSuperFreteConfig, isSuperFreteConfigured } from "./config";
+import { getInsuranceLimits, getSuperFreteConfig, isSuperFreteConfigured } from "./config";
 import { superFreteRequest, type SuperFreteCallMeta } from "./client";
 import { cacheGet, cacheSet, quoteCacheKey } from "./cache";
 import type { PackageDims } from "./dimensions";
@@ -26,7 +26,16 @@ import type { PackageDims } from "./dimensions";
 const SHIPPING_SERVICES = "1,2";
 
 /** Uma linha do carrinho para cotacao: quantidade + medidas do pacote. */
-export type QuoteItem = { quantity: number; pkg: PackageDims };
+export type QuoteItem = {
+  quantity: number;
+  pkg: PackageDims;
+  /**
+   * Valor unitario da MERCADORIA (centavos Int, ja com desconto — nunca o frete),
+   * para o valor declarado/seguro. Opcional: sem valor em nenhum item, o seguro
+   * fica desligado (comportamento anterior).
+   */
+  unitPriceCents?: number;
+};
 
 /** Modalidade COTAVEL (tem preco valido). 0 = fallback flat. */
 export type ShippingOption = {
@@ -108,7 +117,9 @@ function deliveryDays(raw: number | undefined): number | null {
  */
 function classifyRawItem(
   item: RawOption,
-): { available: true; option: ShippingOption } | { available: false; modality: UnavailableModality } {
+):
+  | { available: true; option: ShippingOption }
+  | { available: false; modality: UnavailableModality } {
   const serviceCode = Number(item?.id) || 0;
   const name = item?.name ?? "Frete";
   const carrier = item?.company?.name ?? null;
@@ -167,6 +178,27 @@ export function buildProductsPayload(items: QuoteItem[]) {
     }));
 }
 
+/**
+ * VALOR DECLARADO (centavos Int) do carrinho para o seguro: soma de
+ * quantidade x valor unitario da MERCADORIA (nunca o frete), sobre os MESMOS
+ * itens que entram no payload (mesmo filtro de quantidade). Clampado ao
+ * piso/teto do provedor (config, env-override). 0 = seguro desligado
+ * (nenhum item com valor, ou valores invalidos).
+ */
+export function declaredValueCents(items: QuoteItem[]): number {
+  const raw = items
+    .filter((i) => Number.isInteger(i.quantity) && i.quantity > 0)
+    .reduce((sum, i) => {
+      const unit = i.unitPriceCents;
+      return typeof unit === "number" && Number.isInteger(unit) && unit > 0
+        ? sum + unit * i.quantity
+        : sum;
+    }, 0);
+  if (raw <= 0) return 0;
+  const { minCents, maxCents } = getInsuranceLimits();
+  return Math.min(Math.max(raw, minCents), maxCents);
+}
+
 /** Contexto dimensional da cotacao (alimenta o registro normalizado). */
 export type QuoteContext = {
   fromCep: string;
@@ -210,8 +242,19 @@ export async function fetchQuote(toCep: string, items: QuoteItem[]): Promise<Fet
     itemCount: products.reduce((sum, p) => sum + p.quantity, 0),
   };
 
-  // products ja tem o shape { quantity, weight, height, width, length } esperado pela chave.
-  const key = quoteCacheKey({ fromCep, toCep: dest, services: SHIPPING_SERVICES, products });
+  // Seguro: valor declarado da mercadoria (centavos), clampado aos limites do provedor.
+  const insuranceCents = declaredValueCents(items);
+
+  // products ja tem o shape { quantity, weight, height, width, length } esperado pela
+  // chave. O valor declarado TAMBEM entra na chave: a mesma rota/pacote com seguro
+  // diferente tem preco diferente — sem isso um hit serviria a cotacao errada.
+  const key = quoteCacheKey({
+    fromCep,
+    toCep: dest,
+    services: SHIPPING_SERVICES,
+    products,
+    insuranceCents,
+  });
 
   const cached = cacheGet<CachedQuote>(key);
   if (cached) {
@@ -233,7 +276,15 @@ export async function fetchQuote(toCep: string, items: QuoteItem[]): Promise<Fet
       from: { postal_code: fromCep },
       to: { postal_code: dest },
       services: SHIPPING_SERVICES,
-      options: { own_hand: false, receipt: false, use_insurance_value: false },
+      // Seguro (valor declarado): habilitado sempre que ha valor de mercadoria nos
+      // itens. `insurance_value` em REAIS — divisao UNICA de centavos Int (sem
+      // acumulo de FP). Sem valor (fluxos legados/sem preco) fica off, como antes.
+      options: {
+        own_hand: false,
+        receipt: false,
+        use_insurance_value: insuranceCents > 0,
+        ...(insuranceCents > 0 ? { insurance_value: insuranceCents / 100 } : {}),
+      },
       products,
     }),
   });
