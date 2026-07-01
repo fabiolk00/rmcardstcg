@@ -38,8 +38,11 @@ function setEnv() {
 }
 
 // Limites DEFAULT de valor declarado (pinam o default da config — se o default
-// mudar sem intencao, os testes de borda acusam).
-const INSURANCE_MAX_CENTS_DEFAULT = 1_000_000; // R$ 10.000 (teto do provedor)
+// mudar sem intencao, os testes de borda acusam). Valores CONFIRMADOS no
+// sandbox real: piso R$ 24,50; teto por modalidade PAC R$ 3.000 / SEDEX R$ 10.000
+// (o clamp local usa o teto global do SEDEX).
+const INSURANCE_MIN_CENTS_DEFAULT = 2450; // R$ 24,50 (piso do provedor)
+const INSURANCE_MAX_CENTS_DEFAULT = 1_000_000; // R$ 10.000 (teto global = SEDEX)
 
 /** Modulos sob teste via import dinamico (padrao do repo: pos-stub de env/fetch). */
 async function load() {
@@ -64,14 +67,17 @@ function payloadOf(items: QuoteItem[]): FakeProduct[] {
 
 /**
  * Valor declarado esperado (centavos): soma qty x unitPriceCents, clampado ao
- * teto default — ESPELHA a regra de negocio de forma independente da implementacao.
+ * piso/teto default — ESPELHA a regra de negocio de forma independente da
+ * implementacao (abaixo do piso ELEVA ao minimo: no piso o premio real e zero).
  */
 function declaredOf(items: QuoteItem[]): number {
   const raw = items.reduce(
     (s, i) => s + (i.unitPriceCents && i.unitPriceCents > 0 ? i.unitPriceCents * i.quantity : 0),
     0,
   );
-  return raw <= 0 ? 0 : Math.min(raw, INSURANCE_MAX_CENTS_DEFAULT);
+  return raw <= 0
+    ? 0
+    : Math.min(Math.max(raw, INSURANCE_MIN_CENTS_DEFAULT), INSURANCE_MAX_CENTS_DEFAULT);
 }
 
 /** PAC esperado (centavos) pelo modelo puro (com seguro); lanca se o modelo nao cotar. */
@@ -156,24 +162,29 @@ describe("M2 — monotonicidade por distancia (mesmo item, destinos cada vez mai
 describe("M3 — monotonicidade por peso e efeito da cubagem (mesmo destino)", () => {
   const dest = () => address("ba-salvador").cep;
 
+  // MESMO valor declarado nos dois lados: isola o efeito de peso/cubagem do
+  // efeito do seguro (que tambem mexe no preco).
+  const SAME_VALUE_CENTS = 10_000;
+  const withSameValue = (sku: string) => ({ ...quoteItem(sku), unitPriceCents: SAME_VALUE_CENTS });
+
   it.each([
     ["BST-SV-001 (booster 25g)", "BBX-SV-001 (booster box 550g)", "BST-SV-001", "BBX-SV-001"],
     ["SGL-BULK-001 (single 50g)", "ETB-SV-001 (ETB 950g)", "SGL-BULK-001", "ETB-SV-001"],
   ])("item mais pesado custa mais: %s < %s", async (_a, _b, lightSku, heavySku) => {
     installSuperFreteFake();
     const { quoteShipping } = await load();
-    const light = await quoteShipping(dest(), [quoteItem(lightSku)]);
-    const heavy = await quoteShipping(dest(), [quoteItem(heavySku)]);
+    const light = await quoteShipping(dest(), [withSameValue(lightSku)]);
+    const heavy = await quoteShipping(dest(), [withSameValue(heavySku)]);
     expect(heavy[0].priceCents).toBeGreaterThan(light[0].priceCents);
   });
 
   it("cubagem: playmat enrolado (300g reais, 427g cubados) custa mais que deck box (300g compactos)", async () => {
     installSuperFreteFake();
     const { quoteShipping } = await load();
-    // MESMO peso real (300g) — so o volume difere; preco maior prova que as
-    // dimensoes fluem ate o provedor e o peso cubado domina.
-    const compact = await quoteShipping(dest(), [quoteItem("ACC-DBX-001")]);
-    const rolled = await quoteShipping(dest(), [quoteItem("ACC-PLM-001")]);
+    // MESMO peso real (300g) e MESMO valor declarado — so o volume difere; preco
+    // maior prova que as dimensoes fluem ate o provedor e o peso cubado domina.
+    const compact = await quoteShipping(dest(), [withSameValue("ACC-DBX-001")]);
+    const rolled = await quoteShipping(dest(), [withSameValue("ACC-PLM-001")]);
     expect(rolled[0].priceCents).toBeGreaterThan(compact[0].priceCents);
   });
 });
@@ -221,18 +232,20 @@ describe("M5 — pedido de alto valor (carta rara R$ 2.500): seguro/valor declar
     const outCheap = await quoteShipping(address("rj-centro").cep, cheapSamePkg);
 
     // Payload: seguro habilitado e valor declarado = MERCADORIA em reais (2500.00
-    // = 250000 centavos / 100, uma divisao) — nunca o frete.
+    // = 250000 centavos / 100, uma divisao) — nunca o frete. O item de R$ 5 e
+    // ELEVADO ao piso real do provedor (R$ 24,50; abaixo disso TODAS as
+    // modalidades voltariam como erro — confirmado no sandbox).
     expect(calls[0].body.options?.use_insurance_value).toBe(true);
     expect(calls[0].body.options?.insurance_value).toBe(2500);
     expect(calls[1].body.options?.use_insurance_value).toBe(true);
-    expect(calls[1].body.options?.insurance_value).toBe(5);
+    expect(calls[1].body.options?.insurance_value).toBe(INSURANCE_MIN_CENTS_DEFAULT / 100);
 
     // O seguro reflete no custo: mesma rota+pacote, valor maior => frete maior,
     // no delta exato da taxa ad valorem do modelo.
     expect(outRare[0].priceCents).toBeGreaterThan(outCheap[0].priceCents);
     expect(outRare[0].priceCents).toBe(expectedPac(address("rj-centro").cep, rare).priceCents);
     expect(outRare[0].priceCents - outCheap[0].priceCents).toBe(
-      insuranceFeeCents(250000) - insuranceFeeCents(500),
+      insuranceFeeCents(250000) - insuranceFeeCents(INSURANCE_MIN_CENTS_DEFAULT),
     );
   });
 
@@ -259,23 +272,49 @@ describe("M5 — pedido de alto valor (carta rara R$ 2.500): seguro/valor declar
     expect("insurance_value" in (calls[0].body.options ?? {})).toBe(false);
   });
 
-  it("borda: acima do TETO do provedor (6x R$2.500 = R$15.000) -> clampa em R$10.000 e cota", async () => {
+  it("borda: acima do TETO global (6x R$2.500 = R$15.000) -> clampa em R$10.000; SEDEX cota, PAC segregado", async () => {
     const { calls } = installSuperFreteFake();
-    const { quoteShipping } = await load();
+    const { quoteShipping, quoteShippingRecords } = await load();
     const items = [quoteItem("SGL-RARE-001", 6)]; // 1.500.000 centavos declarados
     const out = await quoteShipping(address("sp-se").cep, items);
-    // Sem clamp o fake rejeitaria com 400 (> R$10.000) e out seria erro/vazio.
-    expect(out.length).toBeGreaterThan(0);
+
+    // Clamp no teto GLOBAL (SEDEX, R$ 10.000): sem ele, declarado acima derrubaria
+    // as DUAS modalidades no provedor real. PAC (teto proprio R$ 3.000) e
+    // segregado pelo provedor e o parser preserva so o cotavel.
     expect(calls[0].body.options?.insurance_value).toBe(INSURANCE_MAX_CENTS_DEFAULT / 100);
+    expect(out.map((o) => o.name)).toEqual(["SEDEX"]);
+
+    const records = await quoteShippingRecords(address("sp-se").cep, items);
+    const pac = records.find((r) => r.serviceName === "PAC");
+    expect(pac?.available).toBe(false);
+    expect(pac?.unavailableReason).toMatch(/limite máximo de R\$ 3000/);
   });
 
-  it("borda: PISO configurado (env) eleva o declarado ao minimo do provedor", async () => {
-    process.env.SUPERFRETE_INSURANCE_MIN_CENTS = "2664"; // ex.: R$ 26,64 (piso Correios)
+  it("borda: teto POR MODALIDADE (2x R$2.500 = R$5.000): PAC indisponivel, SEDEX segurado cota", async () => {
+    installSuperFreteFake();
+    const { quoteShipping } = await load();
+    // Entre o teto do PAC (R$ 3.000) e o do SEDEX (R$ 10.000): sem clamp local —
+    // o valor declarado vai integral e o provedor decide por modalidade.
+    const out = await quoteShipping(address("sp-se").cep, [quoteItem("SGL-RARE-001", 2)]);
+    expect(out.map((o) => o.name)).toEqual(["SEDEX"]);
+    expect(out[0].priceCents).toBeGreaterThan(0);
+  });
+
+  it("borda: PISO default (R$ 24,50) eleva item de R$ 5 ao minimo — premio zero no piso, cota nas 2 modalidades", async () => {
+    const { calls } = installSuperFreteFake();
+    const { quoteShipping } = await load();
+    const out = await quoteShipping(address("sp-se").cep, [quoteItem("SGL-BULK-001")]); // R$ 5
+    expect(out).toHaveLength(2); // sem o clamp, o provedor segregaria TUDO (< piso)
+    expect(calls[0].body.options?.use_insurance_value).toBe(true);
+    expect(calls[0].body.options?.insurance_value).toBe(INSURANCE_MIN_CENTS_DEFAULT / 100);
+  });
+
+  it("borda: PISO configuravel por env sobrepoe o default", async () => {
+    process.env.SUPERFRETE_INSURANCE_MIN_CENTS = "2664"; // ex.: R$ 26,64
     const { calls } = installSuperFreteFake();
     const { quoteShipping } = await load();
     const out = await quoteShipping(address("sp-se").cep, [quoteItem("SGL-BULK-001")]); // R$ 5
     expect(out.length).toBeGreaterThan(0);
-    expect(calls[0].body.options?.use_insurance_value).toBe(true);
     expect(calls[0].body.options?.insurance_value).toBe(26.64);
   });
 });

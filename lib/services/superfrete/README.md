@@ -82,7 +82,7 @@ SUPERFRETE_TOKEN=                                    # POR AMBIENTE (sandbox ≠
 SUPERFRETE_USER_AGENT=RM Cards (contato@rmcardstcg.com.br)  # obrigatório pela API
 SUPERFRETE_FROM_CEP=                                 # CEP de origem da loja (só dígitos)
 SUPERFRETE_CACHE_TTL_MS=                             # opcional; 0/ausente = cache desligado
-SUPERFRETE_INSURANCE_MIN_CENTS=                      # piso do valor declarado (default 0)
+SUPERFRETE_INSURANCE_MIN_CENTS=                      # piso do valor declarado (default 2450 = R$24,50)
 SUPERFRETE_INSURANCE_MAX_CENTS=                      # teto do valor declarado (default 1000000 = R$10.000)
 ```
 
@@ -94,6 +94,15 @@ MERCADORIA (nunca o frete), centavos Int divididos UMA vez, clampado ao
 piso/teto acima. Itens sem valor (fluxos legados) mantêm o seguro desligado. O
 valor declarado também compõe a chave do cache (seguro diferente ⇒ preço
 diferente).
+
+**Limites confirmados no sandbox real (2026-07-01):** piso **R$ 24,50** —
+abaixo disso o provedor devolve TODAS as modalidades como item-erro ("Valor
+segurado é abaixo do limite mínimo"); no piso o prêmio observado é **zero**,
+por isso o default eleva o declarado ao piso em vez de desligar o seguro. Teto
+**por modalidade**: PAC R$ 3.000, SEDEX R$ 10.000 — o provedor segrega apenas a
+modalidade que estoura (nosso parser preserva as cotáveis), então o clamp local
+usa o teto global (SEDEX). Evidência de custo (mesmo pacote/rota): sem seguro
+PAC 18,71; declarado R$ 2.500 → PAC 47,18 (ad valorem ≈ 1,14%).
 
 ## Testes
 

@@ -11,8 +11,10 @@
  *  - acima de 30 kg a modalidade volta como item-ERRO (segregada, nao some);
  *  - CEP nao atendido -> itens-erro; CEP inexistente -> HTTP 400;
  *  - SEGURO (ad valorem): use_insurance_value + insurance_value (REAIS) somam
- *    1% do valor declarado ao preco de cada modalidade; seguro ligado sem
- *    valor, ou valor acima do teto de R$ 10.000, e rejeitado com HTTP 400.
+ *    1% do valor declarado ao preco de cada modalidade. Limites CONFIRMADOS no
+ *    sandbox real (2026-07-01) e espelhados aqui: piso R$ 24,50 (abaixo, TODAS
+ *    as modalidades viram item-erro) e teto POR MODALIDADE (PAC R$ 3.000,
+ *    SEDEX R$ 10.000) — segregacao em 200, nunca HTTP 400.
  *
  * Instalado no boundary do fetch (padrao do repo: vi.stubGlobal), entao a
  * integracao REAL (config -> client -> quote -> parse) roda inteira por cima.
@@ -60,12 +62,32 @@ export type FakeRequestBody = {
   products?: FakeProduct[];
 };
 
-/** Teto de valor declarado do provedor (reais) — acima disso a API rejeita. */
-export const INSURANCE_CAP_REAIS = 10_000;
+/**
+ * Limites de valor declarado do provedor (reais), CONFIRMADOS no sandbox:
+ * piso unico e teto por modalidade. Mensagens de erro espelham as reais.
+ */
+export const INSURANCE_FLOOR_REAIS = 24.5;
+export const INSURANCE_CAP_REAIS = { PAC: 3_000, SEDEX: 10_000 } as const;
 
 /** Taxa ad valorem do seguro (centavos): 1% do valor declarado, por modalidade. */
 export function insuranceFeeCents(insuranceCents: number): number {
   return insuranceCents > 0 ? Math.round(insuranceCents / 100) : 0;
+}
+
+/**
+ * Erro de seguro POR MODALIDADE (como o provedor real): piso comum, teto por
+ * servico. null = seguro ok para o servico. Exportado p/ o esperado dos testes.
+ */
+export function insuranceError(service: "PAC" | "SEDEX", insuranceCents: number): string | null {
+  if (insuranceCents <= 0) return null; // seguro desligado
+  const reais = insuranceCents / 100;
+  if (reais < INSURANCE_FLOOR_REAIS) {
+    return "Valor segurado é abaixo do limite mínimo de R$ 24,50";
+  }
+  if (reais > INSURANCE_CAP_REAIS[service]) {
+    return `Valor segurado ultrapassa o limite máximo de R$ ${INSURANCE_CAP_REAIS[service]},00`;
+  }
+  return null;
 }
 
 /** Peso faturavel (g) do pacote consolidado: max(real, cubado a 6000 cm3/kg). */
@@ -129,6 +151,10 @@ export function expectedServices(
   const remote = REMOTE_CEPS.has(toCep);
   const steps = Math.ceil(grams / 100); // degraus de 100 g (discrimina cubagem fina)
   return SERVICES.map((s) => {
+    // Piso/teto de seguro POR MODALIDADE (comportamento real): segrega so o
+    // servico que estoura; o outro segue cotavel.
+    const insErr = insuranceError(s.name, insuranceCents);
+    if (insErr) return { id: s.id, name: s.name, priceCents: null, days: null, error: insErr };
     const t = TABLE[s.name];
     const priceCents =
       t.base +
@@ -169,17 +195,12 @@ function responseBody(body: FakeRequestBody): { status: number; json: unknown } 
     return { status: 400, json: { message: "CEP de destino não encontrado." } };
   }
 
-  // Seguro: como o provedor real — ligado exige valor declarado valido dentro do teto.
+  // Seguro: ligado exige valor declarado numerico valido; os LIMITES (piso/teto)
+  // sao aplicados por modalidade em expectedServices, como o provedor real.
   const insured = body.options?.use_insurance_value === true;
   const insuranceReais = Number(body.options?.insurance_value ?? 0);
   if (insured && (!Number.isFinite(insuranceReais) || insuranceReais <= 0)) {
     return { status: 400, json: { message: "Seguro habilitado sem valor declarado." } };
-  }
-  if (insuranceReais > INSURANCE_CAP_REAIS) {
-    return {
-      status: 400,
-      json: { message: "Valor declarado acima do limite do provedor (R$ 10.000)." },
-    };
   }
   const insuranceCents = insured ? Math.round(insuranceReais * 100) : 0;
 

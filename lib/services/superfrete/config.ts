@@ -23,10 +23,13 @@ const DEFAULT_USER_AGENT = "RM Cards (contato@rmcardstcg.com.br)";
 const onlyDigits = (s: string) => s.replace(/\D/g, "");
 
 // Limites de VALOR DECLARADO (seguro) aceitos pelo provedor, em centavos Int.
-// Teto default = R$ 10.000 (limite classico de valor declarado dos Correios via
-// agregador); piso default = 0 (sem minimo). Ajustaveis por env se a tabela do
-// provedor mudar — nunca hardcode o valor no fluxo.
-const DEFAULT_INSURANCE_MIN_CENTS = 0;
+// CONFIRMADOS no sandbox real (2026-07-01): piso R$ 24,50 (abaixo disso TODAS as
+// modalidades voltam como item-erro "abaixo do limite minimo"; no piso o premio
+// observado e zero) e teto POR MODALIDADE (PAC R$ 3.000, SEDEX R$ 10.000 — o
+// provedor segrega a modalidade que estoura, em 200). O clamp local usa o teto
+// GLOBAL (SEDEX): declarar acima so derrubaria as duas. Ajustaveis por env se a
+// tabela do provedor mudar — nunca hardcode o valor no fluxo.
+const DEFAULT_INSURANCE_MIN_CENTS = 2450;
 const DEFAULT_INSURANCE_MAX_CENTS = 1_000_000;
 
 export type InsuranceLimits = { minCents: number; maxCents: number };
