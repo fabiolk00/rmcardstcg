@@ -3,6 +3,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { headers } from "next/headers";
 
+import { DEACTIVATED_ACCOUNT_ERROR, requireActiveUser } from "@/lib/auth/requireActiveUser";
 import { couponDiscountCents, couponErrorMessage } from "@/lib/cart/coupon";
 import { cartTotals, FLAT_SHIPPING_CENTS, type CartLine } from "@/lib/cart/totals";
 import { isFreeShipping, resolveShippingCents } from "@/lib/cart/shipping";
@@ -155,12 +156,16 @@ export async function previewCoupon(input: {
   if (!code) return { ok: false, error: "Informe um cupom." };
   if (!input.items?.length) return { ok: false, error: "Seu carrinho está vazio." };
 
-  let userId = "guest";
-  if (isClerkConfigured()) {
-    const { userId: clerkId } = await auth();
-    if (!clerkId) return { ok: false, error: "Faça login para usar um cupom." };
-    userId = clerkId;
+  // Login + espelho ATIVO (cupom e por-usuario; soft-deleted nao valida).
+  const activeCoupon = await requireActiveUser();
+  if (!activeCoupon.ok) {
+    const error =
+      activeCoupon.reason === "deleted"
+        ? DEACTIVATED_ACCOUNT_ERROR
+        : "Faça login para usar um cupom.";
+    return { ok: false, error };
   }
+  const userId = activeCoupon.userId;
 
   const limited = await checkRateLimit(`coupon-preview:${await clientKey(userId)}`, {
     limit: 20,
@@ -283,13 +288,17 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
     return { ok: false, error: "Seu carrinho está vazio." };
   }
 
-  // Usuario: vem do Clerk quando configurado; senao "guest" (mock-first).
-  let userId = "guest";
-  if (isClerkConfigured()) {
-    const { userId: clerkId } = await auth();
-    if (!clerkId) return { ok: false, error: "Faça login para finalizar a compra." };
-    userId = clerkId;
+  // Usuario: Clerk quando configurado (login + espelho ATIVO — conta desativada
+  // NAO cria pedido novo); senao "guest" (mock-first).
+  const activeUser = await requireActiveUser();
+  if (!activeUser.ok) {
+    const error =
+      activeUser.reason === "deleted"
+        ? DEACTIVATED_ACCOUNT_ERROR
+        : "Faça login para finalizar a compra.";
+    return { ok: false, error };
   }
+  const userId = activeUser.userId;
 
   // IDEMPOTENCIA: se esta chave ja gerou um pedido, reaproveita-o (nunca recria
   // pedido nem cobranca Asaas — so re-deriva o PIX da cobranca existente).

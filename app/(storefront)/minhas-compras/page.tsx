@@ -1,9 +1,8 @@
-import { auth } from "@clerk/nextjs/server";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { requireActiveUser } from "@/lib/auth/requireActiveUser";
 import { getOrdersByUserId } from "@/lib/data/orders";
-import { isClerkConfigured } from "@/lib/services/clerk/config";
 import { formatBRL } from "@/lib/utils/currency";
 import { PAYMENT_LABEL, SHIPPING_LABEL } from "./labels";
 import styles from "./minhas-compras.module.css";
@@ -20,15 +19,12 @@ function formatDate(iso: string): string {
 }
 
 export default async function MinhasComprasPage() {
-  // Pedidos do usuario AUTENTICADO. Fecha o vazamento de IDOR: NUNCA getOrders()
-  // (que traria os pedidos de todos os clientes). Com Clerk, o middleware ja
-  // protege esta rota; sem Clerk (mock-first), cai no usuario "guest".
-  let userId = "guest";
-  if (isClerkConfigured()) {
-    const { userId: clerkId } = await auth();
-    if (!clerkId) redirect("/entrar");
-    userId = clerkId;
-  }
+  // Pedidos do usuario AUTENTICADO E ATIVO. Fecha o vazamento de IDOR (NUNCA
+  // getOrders() global) e bloqueia sessao de usuario soft-deleted (o espelho
+  // manda, nao so a sessao Clerk). Mock-first: cai no usuario "guest".
+  const active = await requireActiveUser();
+  if (!active.ok) redirect(active.reason === "deleted" ? "/" : "/entrar");
+  const userId = active.userId;
 
   const orders = await getOrdersByUserId(userId);
   const totalPaidCents = orders

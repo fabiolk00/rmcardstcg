@@ -1,10 +1,9 @@
-import { auth } from "@clerk/nextjs/server";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { requireActiveUser } from "@/lib/auth/requireActiveUser";
 import { carrierLabel, carrierTrackingUrl } from "@/lib/data/carriers";
 import { getOrderForUser } from "@/lib/data/orders";
-import { isClerkConfigured } from "@/lib/services/clerk/config";
 import { formatBRL } from "@/lib/utils/currency";
 import { Icon } from "@/components/ui/Icon";
 import { OrderPaymentSection } from "@/components/orders/OrderPaymentSection";
@@ -27,13 +26,11 @@ function formatDateTime(iso: string): string {
 export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  // Mesma postura da lista: com Clerk exige login; mock-first cai em "guest".
-  let userId = "guest";
-  if (isClerkConfigured()) {
-    const { userId: clerkId } = await auth();
-    if (!clerkId) redirect("/entrar");
-    userId = clerkId;
-  }
+  // Mesma postura da lista: login + espelho ATIVO (soft-deleted bloqueia);
+  // mock-first cai em "guest".
+  const active = await requireActiveUser();
+  if (!active.ok) redirect(active.reason === "deleted" ? "/" : "/entrar");
+  const userId = active.userId;
 
   // Guard de posse centralizado: pedido inexistente OU de outro usuario -> 404
   // (não distingue os casos, para não permitir enumeração de pedidos alheios).

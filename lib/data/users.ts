@@ -72,6 +72,22 @@ export async function deleteUserByClerkId(
 }
 
 /**
+ * true se o espelho marca o usuario como SOFT-DELETED (deletedAt preenchido).
+ * Distincao importante vs getUserRole: AUSENTE do espelho => false (usuario
+ * recem-criado cujo webhook ainda nao sincronizou NAO pode ser bloqueado) —
+ * so o deletedAt explicito bloqueia. Consumido por lib/auth/requireActiveUser
+ * (telas/actions do cliente): a sessao Clerk pode sobreviver alguns instantes
+ * ao user.deleted, e o espelho pode ser desativado direto no banco.
+ */
+export async function isUserSoftDeleted(clerkUserId: string): Promise<boolean> {
+  const row = await prisma.user.findFirst({
+    where: { clerkUserId, NOT: { deletedAt: null } },
+    select: { id: true },
+  });
+  return row !== null;
+}
+
+/**
  * Role do usuario; null se ainda nao sincronizado OU soft-deleted (um usuario
  * removido no Clerk nao deve manter acesso).
  */

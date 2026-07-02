@@ -1,12 +1,11 @@
 "use server";
 
-import { auth } from "@clerk/nextjs/server";
 import { headers } from "next/headers";
 
+import { DEACTIVATED_ACCOUNT_ERROR, requireActiveUser } from "@/lib/auth/requireActiveUser";
 import { getOrderAsaasRefs, getOrderForUser } from "@/lib/data/orders";
 import { isAsaasConfigured } from "@/lib/services/asaas/config";
 import { getPixQrCode } from "@/lib/services/asaas/payments";
-import { isClerkConfigured } from "@/lib/services/clerk/config";
 import { checkRateLimit } from "@/lib/security/rateLimit";
 
 /**
@@ -41,12 +40,14 @@ async function clientKey(userId: string): Promise<string> {
 }
 
 export async function getOrderPix(orderId: string): Promise<OrderPixResult> {
-  let userId = "guest";
-  if (isClerkConfigured()) {
-    const { userId: clerkId } = await auth();
-    if (!clerkId) return { ok: false, reason: "error", error: "Faça login para ver o pagamento." };
-    userId = clerkId;
+  // Login + espelho ATIVO (sessao de usuario soft-deleted nao re-deriva PIX).
+  const active = await requireActiveUser();
+  if (!active.ok) {
+    const error =
+      active.reason === "deleted" ? DEACTIVATED_ACCOUNT_ERROR : "Faça login para ver o pagamento.";
+    return { ok: false, reason: "error", error };
   }
+  const userId = active.userId;
 
   const limited = await checkRateLimit(`order-pix:${await clientKey(userId)}`, {
     limit: 20,
@@ -70,13 +71,14 @@ export async function getOrderPix(orderId: string): Promise<OrderPixResult> {
     const qr = await getPixQrCode(refs.paymentId);
     return {
       ok: true,
-      pix: { payload: qr.payload, encodedImage: qr.encodedImage, expirationDate: qr.expirationDate },
+      pix: {
+        payload: qr.payload,
+        encodedImage: qr.encodedImage,
+        expirationDate: qr.expirationDate,
+      },
     };
   } catch (err) {
-    console.warn(
-      "[minhas-compras] QR PIX indisponível:",
-      err instanceof Error ? err.message : err,
-    );
+    console.warn("[minhas-compras] QR PIX indisponível:", err instanceof Error ? err.message : err);
     return { ok: false, reason: "qr_unavailable" };
   }
 }

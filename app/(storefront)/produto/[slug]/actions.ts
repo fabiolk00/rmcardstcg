@@ -1,13 +1,12 @@
 "use server";
 
-import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 
+import { DEACTIVATED_ACCOUNT_ERROR, requireActiveUser } from "@/lib/auth/requireActiveUser";
 import { getProductBySlug } from "@/lib/data/products";
 import { submitReview } from "@/lib/data/reviews";
 import { checkRateLimit } from "@/lib/security/rateLimit";
-import { isClerkConfigured } from "@/lib/services/clerk/config";
 import { sendReviewModerationEmail } from "@/lib/services/resend";
 
 /**
@@ -39,13 +38,15 @@ export async function submitReviewAction(input: {
   body: string;
   authorName: string;
 }): Promise<SubmitReviewActionResult> {
-  // Auth: com Clerk exige login; mock-first cai em "guest".
-  let userId = "guest";
-  if (isClerkConfigured()) {
-    const { userId: clerkId } = await auth();
-    if (!clerkId) return { ok: false, error: "Faça login para avaliar." };
-    userId = clerkId;
+  // Auth: com Clerk exige login + espelho ATIVO (soft-deleted nao avalia);
+  // mock-first cai em "guest".
+  const active = await requireActiveUser();
+  if (!active.ok) {
+    const error =
+      active.reason === "deleted" ? DEACTIVATED_ACCOUNT_ERROR : "Faça login para avaliar.";
+    return { ok: false, error };
   }
+  const userId = active.userId;
 
   const limited = await checkRateLimit(`review-submit:${await clientKey(userId)}`, {
     limit: 5,

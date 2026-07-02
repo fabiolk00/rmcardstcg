@@ -90,6 +90,29 @@ describe.skipIf(!TEST_DATABASE_URL)("soft-delete do espelho de usuario", () => {
     expect(second.deletedAt.getTime()).toBe(first.deletedAt.getTime());
   });
 
+  it("isUserSoftDeleted: ativo=false, deletado=true, AUSENTE do espelho=false (sync atrasado nao bloqueia)", async () => {
+    const clerkUserId = await seedUser();
+
+    // Ativo: nao bloqueia.
+    expect(await users.isUserSoftDeleted(clerkUserId)).toBe(false);
+
+    // Soft-deleted: bloqueia (base do guard requireActiveUser das telas do cliente).
+    await users.deleteUserByClerkId(clerkUserId);
+    expect(await users.isUserSoftDeleted(clerkUserId)).toBe(true);
+
+    // Ausente do espelho (webhook ainda nao sincronizou): NAO bloqueia.
+    expect(await users.isUserSoftDeleted("u-nunca-sincronizado")).toBe(false);
+
+    // Revivido pelo upsert: volta a nao bloquear.
+    await users.upsertUserFromClerk({
+      clerkUserId,
+      email: `${clerkUserId}@t.com`,
+      name: "T",
+      emailIsAdmin: false,
+    });
+    expect(await users.isUserSoftDeleted(clerkUserId)).toBe(false);
+  });
+
   it("upsertUserFromClerk revive um id que reaparece (deletedAt volta a null)", async () => {
     const clerkUserId = await seedUser();
     await users.deleteUserByClerkId(clerkUserId);
