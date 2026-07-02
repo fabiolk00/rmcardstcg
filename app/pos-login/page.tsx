@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 /**
  * Destino pos-login por papel:
  *  - admin   -> /admin/produtos (landing do painel; nao existe /admin bare)
- *  - cliente -> /minhas-compras ("meus pedidos")
+ *  - cliente -> /painel/pedidos (painel do cliente; detalhe segue em /minhas-compras)
  *
  * A role e resolvida pelo MESMO caminho do guard de admin (getAuditActor: role do
  * DB com fallback ADMIN_EMAILS), entao um admin recem-criado cujo webhook ainda nao
@@ -24,5 +24,5 @@ export default async function PosLoginPage() {
   const actor = await getAuditActor();
   if (!actor.clerkUserId) redirect("/entrar");
 
-  redirect(actor.role === "admin" ? "/admin/produtos" : "/minhas-compras");
+  redirect(actor.role === "admin" ? "/admin/produtos" : "/painel/pedidos");
 }

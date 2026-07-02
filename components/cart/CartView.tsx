@@ -9,7 +9,9 @@ import { formatBRL } from "@/lib/utils/currency";
 import { Icon } from "@/components/ui/Icon";
 import styles from "./CartView.module.css";
 
-export function CartView() {
+// checkoutHref: destino do CTA "Finalizar compra" — default e a vitrine
+// ("/checkout"); o painel do cliente passa "/painel/checkout".
+export function CartView({ checkoutHref = "/checkout" }: { checkoutHref?: string }) {
   const { lines, hydrated, setQuantity, remove } = useCart();
 
   if (!hydrated) {
@@ -120,7 +122,7 @@ export function CartView() {
           <span className="tnum">{formatBRL(totals.totalCents)}</span>
         </div>
 
-        <Link href="/checkout" className={styles.checkout}>
+        <Link href={checkoutHref} className={styles.checkout}>
           Finalizar compra
         </Link>
         <p className={styles.checkoutHint}>Pagamento via PIX.</p>

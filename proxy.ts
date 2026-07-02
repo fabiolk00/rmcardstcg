@@ -3,7 +3,12 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { isClerkConfigured } from "@/lib/services/clerk/config";
 
 // Rotas que exigem login. O guard por ROLE de admin (F9) fica no app/admin/layout.
-const isProtectedRoute = createRouteMatcher(["/admin(.*)", "/minhas-compras(.*)", "/checkout(.*)"]);
+const isProtectedRoute = createRouteMatcher([
+  "/admin(.*)",
+  "/minhas-compras(.*)",
+  "/checkout(.*)",
+  "/painel(.*)",
+]);
 
 // Middleware Clerk PADRAO (Edge runtime), SEMPRE como `export default` na forma
 // canonica — Edge-safe. O que quebrava o bundle Edge na Vercel ("Edge Function

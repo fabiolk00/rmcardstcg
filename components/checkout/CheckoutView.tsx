@@ -48,7 +48,7 @@ const UFS = [
   "TO",
 ] as const;
 
-type Form = {
+export type Form = {
   name: string;
   email: string;
   phone: string;
@@ -70,9 +70,12 @@ const EMPTY: Form = {
   state: "",
 };
 
-export function CheckoutView() {
+// initialCustomer: prefill opcional do form (painel do cliente injeta o perfil
+// salvo); fundido sobre o EMPTY apenas no estado inicial — a logica de compra
+// (checkoutKey, cupom, frete, PIX) nao muda.
+export function CheckoutView({ initialCustomer }: { initialCustomer?: Partial<Form> } = {}) {
   const { lines, hydrated, clear } = useCart();
-  const [form, setForm] = useState<Form>(EMPTY);
+  const [form, setForm] = useState<Form>(() => ({ ...EMPTY, ...initialCustomer }));
   const [coupon, setCoupon] = useState("");
   // Chave de idempotencia estavel por sessao de checkout (invariante 2): o mesmo
   // submit/duplo-clique reenvia a MESMA chave => 1 pedido + 1 cobranca Asaas.

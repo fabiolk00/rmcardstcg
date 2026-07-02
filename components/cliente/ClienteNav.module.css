@@ -1,0 +1,55 @@
+.nav {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink-3);
+  transition:
+    background 140ms,
+    color 140ms;
+}
+
+.item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+}
+
+.active {
+  border-color: rgba(255, 255, 255, 0.07);
+  background: #1a1a1d;
+  color: #fff;
+}
+
+/* Vem depois de .item:hover p/ vencer no mesmo nivel de especificidade. */
+.active:hover {
+  background: #202023;
+}
+
+@media (max-width: 720px) {
+  .nav {
+    flex: none;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .item span {
+    display: none;
+  }
+
+  .item {
+    padding: 10px;
+  }
+}

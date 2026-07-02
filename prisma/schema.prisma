@@ -242,6 +242,29 @@ model Review {
   @@map("reviews")
 }
 
+model CustomerProfile {
+  // Perfil/endereco do cliente (painel /painel/conta). Chaveado por clerk_user_id
+  // por TEXTO (como orders/reviews — sem FK real ao espelho de users). Alimenta o
+  // prefill do checkout do painel: o form do checkout e um SUBSET destes campos.
+  id          String   @id @default(uuid()) @db.Uuid
+  clerkUserId String   @unique @map("clerk_user_id")
+  name        String
+  email       String?
+  phone       String
+  cpfCnpj     String?  @map("cpf_cnpj")
+  cep         String // 8 digitos, sem mascara (formatacao e da UI)
+  street      String
+  number      String?
+  complement  String?
+  district    String?
+  city        String
+  state       String // UF 2 letras
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("customer_profiles")
+}
+
 model AuditLog {
   // Trilha imutavel de mutacoes de admin. Gravada na MESMA transacao da mutacao
   // (invariante 3) via writeAuditLog(tx, {...}). before/after sao snapshots do

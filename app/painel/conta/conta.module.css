@@ -1,0 +1,122 @@
+/* Tela Conta (/painel/conta) — cabecalho no padrao das views do admin
+   (AdminProductsView.module.css: .head/.title/.sub) e formulario replicando o
+   padrao do checkout (CheckoutView.module.css: .form/.grid/.field/.label/
+   .input/.select/.error/.submit). Nenhuma linguagem visual nova. */
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+.title {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.sub {
+  margin-top: var(--space-1);
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+/* ---- Formulario (padrao CheckoutView) ---- */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 720px;
+}
+
+.sectionTitle {
+  margin-top: var(--space-2);
+  font-size: 16px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.full {
+  grid-column: 1 / -1;
+}
+
+.label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.input,
+.select {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.input:focus,
+.select:focus {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+  border-color: var(--ink);
+}
+
+.error {
+  margin-top: var(--space-1);
+  padding: 10px 12px;
+  border: 1px solid var(--red);
+  border-radius: var(--r-sm);
+  background: #fdecec;
+  color: var(--red-strong);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Feedback de sucesso — mesmo tom do .shipFree do checkout. */
+.success {
+  margin-top: var(--space-1);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--green-strong);
+}
+
+.submit {
+  width: 100%;
+  min-height: 46px;
+  margin-top: var(--space-4);
+  border-radius: var(--r-pill);
+  background: var(--ink);
+  color: var(--on-ink);
+  font-size: 15px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+}
+
+.submit:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+@media (max-width: 540px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}

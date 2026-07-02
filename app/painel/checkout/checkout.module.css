@@ -1,0 +1,6 @@
+.title {
+  margin-bottom: var(--space-6);
+  font-size: clamp(24px, 5vw, 32px);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}

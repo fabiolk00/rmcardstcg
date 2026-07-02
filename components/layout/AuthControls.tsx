@@ -17,15 +17,15 @@ export function AuthControls() {
   return (
     <div className={styles.auth}>
       {isSignedIn ? (
-        // Atalho persistente para "Minhas Compras" no menu da conta — sem ele o
+        // Atalho persistente para "Meus Pedidos" no menu da conta — sem ele o
         // cliente logado so tem o UserButton padrao e nenhum caminho de nav ate os
-        // pedidos.
+        // pedidos (que agora vivem no painel do cliente).
         <UserButton>
           <UserButton.MenuItems>
             <UserButton.Link
-              label="Minhas Compras"
+              label="Meus Pedidos"
               labelIcon={<Icon name="receipt" size={14} />}
-              href="/minhas-compras"
+              href="/painel/pedidos"
             />
           </UserButton.MenuItems>
         </UserButton>

@@ -1,0 +1,39 @@
+/* Cabecalho no padrao das paginas admin (AdminReviewsView.module.css: .head/.title/.sub)
+   e estado vazio no padrao do ColecoesView.module.css (.empty). Nada de estilo novo. */
+
+.head {
+  margin-bottom: var(--space-6);
+}
+
+.title {
+  font-size: clamp(22px, 4vw, 28px);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}
+
+.sub {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.empty {
+  margin-top: var(--space-7);
+  padding: var(--space-9) var(--space-6);
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: var(--r-lg);
+  background: var(--bg-soft);
+}
+
+.emptyTitle {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.emptySub {
+  margin-top: var(--space-2);
+  font-size: 14px;
+  color: var(--ink-2);
+}
