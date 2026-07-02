@@ -20,12 +20,19 @@ export class SuperFreteError extends Error {
   readonly status: number;
   /** id da requisicao (correlaciona log <-> registro normalizado). */
   readonly requestId: string;
+  /**
+   * Body PARSEADO da resposta de erro (ex.: mapa `errors` por campo do /cart).
+   * Consumido pelo modulo de etiqueta para classificar o erro (validation /
+   * unavailable / saldo). NUNCA vai para log (logCall nao recebe body).
+   */
+  readonly body: unknown;
 
-  constructor(message: string, status: number, requestId = "") {
+  constructor(message: string, status: number, requestId = "", body: unknown = null) {
     super(message);
     this.name = "SuperFreteError";
     this.status = status;
     this.requestId = requestId;
+    this.body = body;
   }
 }
 
@@ -135,7 +142,9 @@ export async function superFreteRequest<T>(
         outcome: isTimeout ? "timeout" : "network_error",
       });
       throw new SuperFreteError(
-        isTimeout ? "Tempo de resposta do SuperFrete esgotado." : "Falha de conexao com o SuperFrete.",
+        isTimeout
+          ? "Tempo de resposta do SuperFrete esgotado."
+          : "Falha de conexao com o SuperFrete.",
         isTimeout ? 504 : 502,
         requestId,
       );
@@ -190,7 +199,7 @@ export async function superFreteRequest<T>(
         attempts: attempt + 1,
         outcome: "http_error",
       });
-      throw new SuperFreteError(msg, res.status, requestId);
+      throw new SuperFreteError(msg, res.status, requestId, body);
     }
 
     logCall({

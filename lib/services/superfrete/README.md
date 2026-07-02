@@ -134,3 +134,47 @@ npx vitest run tests/shipping/superfrete-sandbox.integration.test.ts
 - **Resiliência**: a cotação opta por `retry: true` (idempotente); 401/400 nunca re-tentam.
 - **Cache**: opt-in por TTL, em memória por instância; serve checkout e pipeline pela mesma chave.
 - **Sem over-engineering**: nenhuma abstração especulativa para outros endpoints.
+
+---
+
+## Etiquetas (`labels.ts`)
+
+Emissão/gestão de etiquetas — implementa a interface **congelada** `LabelModule`
+(`label-types.ts`; mapeamento provedor ⇄ contrato em `LABEL-CONTRACT.md`). Convenções do
+domínio: **centavos Int / gramas / cm**; conversão p/ reais-float/kg do provedor só na
+borda (divisão única).
+
+```ts
+import { superFreteLabels, createLabel } from "@/lib/services/superfrete/labels";
+
+const label = await createLabel({
+  externalRef: "pedido-123",
+  serviceCode: 1,
+  from,
+  to,
+  items,
+  pkg,
+  declaredValueCents,
+});
+// { superFreteId, trackingCode, status, priceCents, reused }
+```
+
+- **`createLabel` = cart + checkout, IDEMPOTENTE por `externalRef`**: um `LabelStore`
+  (injetável via `deps.store`; default em memória, `labelStoreClear()` p/ testes) cataloga o
+  `superFreteId`. Retry **retoma** (cart dedupado; checkout **409 = já pago = sucesso**);
+  `reused: true` marca dedupe/retomada. Validação **local** antes de qualquer chamada
+  (CEPs 8 dígitos, `to.document` 11/14 dígitos, itens/pacote plausíveis) ⇒ erro
+  `validation` **sem fetch**. Saldo/franquia é checado **antes** do checkout
+  (`insufficient_balance`; o cart pendente fica no store, retomável).
+- **`printLabel(id, format)`** (A4/A6, garante `format=` na URL), **`cancelLabel(id, reason?)`**
+  (`refunded: true` quando já estava paga; já-cancelada é no-op tolerante),
+  **`getWalletBalance()`**, **`getLabelInfo(id)`** (`tracking ""` ⇒ `null`; `insurance_value`
+  string ⇒ centavos).
+- **Erros tipados**: `SuperFreteLabelError` com `code` `validation | insufficient_balance |
+unavailable | provider` (+ `fields` na validação local). `cart/checkout/print/cancel`
+  **nunca** re-tentam no HTTP; GETs (`user`, `order/info`) usam `retry: true`.
+- **SEM fallback flat** (diferente da cotação): sem `SUPERFRETE_TOKEN` +
+  `SUPERFRETE_FROM_CEP` toda função lança `SuperFreteLabelError "provider"`
+  ("SuperFrete nao configurado") — emitir etiqueta não tem modo mock.
+
+Testes determinísticos (fetch mockado): `npx vitest run tests/shipping/superfrete-labels-unit.test.ts`.
