@@ -1,0 +1,154 @@
+/* Rail lateral direito do carrinho (painel do cliente) — tokens do globals.css,
+   moldura no padrao de card das telas existentes. Some em telas estreitas
+   (o conteudo principal tem prioridade; o carrinho segue acessivel pela nav). */
+.rail {
+  position: sticky;
+  top: 84px; /* topbar (60px) + respiro */
+  width: 264px;
+  flex-shrink: 0;
+  align-self: flex-start;
+  /* alinha com o titulo da pagina (padding-top do .content) e da o respiro direito */
+  margin: var(--space-7, 28px) var(--space-6, 24px) var(--space-7, 28px) 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md, 12px);
+  background: var(--card);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.headIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: var(--bg-soft);
+  color: var(--ink);
+}
+
+.headTitle {
+  flex: 1;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.badge {
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--ink);
+  font-size: 11.5px;
+  font-weight: 700;
+  text-align: center;
+  color: var(--on-ink);
+}
+
+.items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.itemName {
+  overflow: hidden;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+}
+
+.itemMeta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.itemQty {
+  font-weight: 600;
+}
+
+.subtotal {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.hint {
+  margin: 0 0 12px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+.checkout {
+  display: block;
+  padding: 9px 12px;
+  border-radius: var(--r-sm, 8px);
+  background: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  color: var(--on-ink);
+}
+
+.checkout:hover {
+  background: var(--ink-hover);
+}
+
+.viewCart {
+  display: block;
+  margin-top: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: center;
+  text-decoration: underline;
+  color: var(--ink-2);
+}
+
+.emptyWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.empty {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+
+.browse {
+  font-size: 12.5px;
+  font-weight: 700;
+  text-decoration: underline;
+  color: var(--ink);
+}
+
+@media (max-width: 1100px) {
+  .rail {
+    display: none;
+  }
+}

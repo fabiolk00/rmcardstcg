@@ -97,6 +97,22 @@
   color: var(--ink-2);
 }
 
+/* Corpo em duas colunas: conteudo (flex) + rail do carrinho (largura fixa,
+   renderizado pelo PainelCartRail; ausente em carrinho/conta e em telas
+   estreitas — o conteudo simplesmente ocupa tudo). O "gap" visual vem do
+   padding lateral do proprio .content (sem padding duplo quando o rail some). */
+.body {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: flex-start;
+}
+
+.body > .content {
+  flex: 1;
+  min-width: 0;
+}
+
 .content {
   padding: var(--space-7) var(--space-6);
 }

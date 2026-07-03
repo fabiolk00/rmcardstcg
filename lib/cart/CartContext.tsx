@@ -13,6 +13,12 @@ type CartContextValue = {
   setQuantity: (productId: string, quantity: number) => void;
   remove: (productId: string) => void;
   clear: () => void;
+  /**
+   * Ultimo item ADICIONADO nesta sessao de navegacao (nome + timestamp) —
+   * alimenta feedback de UI (toast do painel). `at` diferencia adds repetidos
+   * do mesmo produto. Nao persiste no localStorage.
+   */
+  lastAdded: { name: string; at: number } | null;
 };
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -30,6 +36,7 @@ const isValidLine = (l: unknown): l is CartLine => {
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [lines, setLines] = useState<CartLine[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const [lastAdded, setLastAdded] = useState<{ name: string; at: number } | null>(null);
 
   // Carrega do localStorage apos montar (evita mismatch de hidratacao).
   useEffect(() => {
@@ -61,12 +68,19 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       if (existing) {
         return prev.map((l) =>
           l.product.id === product.id
-            ? { ...l, quantity: clampToStock(l.quantity + quantity, product.available ?? product.stock) }
+            ? {
+                ...l,
+                quantity: clampToStock(l.quantity + quantity, product.available ?? product.stock),
+              }
             : l,
         );
       }
-      return [...prev, { product, quantity: clampToStock(quantity, product.available ?? product.stock) }];
+      return [
+        ...prev,
+        { product, quantity: clampToStock(quantity, product.available ?? product.stock) },
+      ];
     });
+    setLastAdded({ name: product.name, at: Date.now() });
   }, []);
 
   const setQuantity = useCallback((productId: string, quantity: number) => {
@@ -87,8 +101,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<CartContextValue>(() => {
     const count = lines.reduce((sum, l) => sum + l.quantity, 0);
-    return { lines, count, hydrated, add, setQuantity, remove, clear };
-  }, [lines, hydrated, add, setQuantity, remove, clear]);
+    return { lines, count, hydrated, add, setQuantity, remove, clear, lastAdded };
+  }, [lines, hydrated, add, setQuantity, remove, clear, lastAdded]);
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }

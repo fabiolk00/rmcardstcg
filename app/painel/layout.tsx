@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { AdminProfileCard } from "@/components/admin/AdminProfileCard";
 import { ClienteNav } from "@/components/cliente/ClienteNav";
 import { ClienteProfileMenu } from "@/components/cliente/ClienteProfileMenu";
+import { PainelCartRail } from "@/components/cliente/PainelCartRail";
+import { PainelCartToast } from "@/components/cliente/PainelCartToast";
 import { requireActiveUser } from "@/lib/auth/requireActiveUser";
 import { CartProvider } from "@/lib/cart/CartContext";
 import { isClerkConfigured } from "@/lib/services/clerk/config";
@@ -60,8 +62,16 @@ export default async function PainelLayout({ children }: Readonly<{ children: Re
           <header className={styles.topbar}>
             <span className={styles.topbarTitle}>Painel do cliente</span>
           </header>
-          <main className={styles.content}>{children}</main>
+          {/* Corpo em duas colunas: conteudo + rail do carrinho (o rail se
+              esconde sozinho em /painel/carrinho e /painel/conta). */}
+          <div className={styles.body}>
+            <main className={styles.content}>{children}</main>
+            <PainelCartRail />
+          </div>
         </div>
+
+        {/* Aviso "adicionado ao carrinho" — vale para todas as telas do painel. */}
+        <PainelCartToast />
       </div>
     </CartProvider>
   );
