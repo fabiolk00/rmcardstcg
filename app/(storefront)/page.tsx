@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirectClienteToPainel } from "@/lib/auth/resolveViewer";
 import { getActiveProducts } from "@/lib/data/products";
 import { selectCarouselProducts } from "@/lib/data/carousel";
 import { CATEGORIES, type Category } from "@/lib/data/types";
@@ -24,6 +25,10 @@ const CATEGORY_ICON: Record<Category, IconName> = {
 };
 
 export default async function LandingPage() {
+  // Cliente logado vive no painel: abrir o site cai direto nos pedidos (a
+  // vitrine publica e para anonimos; admin navega a loja normalmente).
+  await redirectClienteToPainel("/painel/pedidos");
+
   const products = await getActiveProducts();
   const counts = CATEGORIES.map((category) => ({
     category,
