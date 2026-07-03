@@ -1,5 +1,6 @@
 import { unstable_cache } from "next/cache";
 
+import { redirectClienteToPainel } from "@/lib/auth/resolveViewer";
 import { getActiveProducts } from "@/lib/data/products";
 import { CATEGORIES, type Category } from "@/lib/data/types";
 import { ColecoesView } from "@/components/product/ColecoesView";
@@ -28,6 +29,11 @@ export default async function ColecoesPage({
   searchParams: Promise<{ cat?: string }>;
 }) {
   const { cat } = await searchParams;
+  // Cliente logado navega as colecoes DENTRO do painel (mesma tela, mesmo ?cat=).
+  await redirectClienteToPainel(
+    cat ? `/painel/colecoes?cat=${encodeURIComponent(cat)}` : "/painel/colecoes",
+  );
+
   const products = await getCachedActiveProducts();
   const initialCategory = resolveCategory(cat);
 
