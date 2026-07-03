@@ -18,6 +18,11 @@ type Props = {
   onSignOut?: () => void;
   /** Destino do item "Colecoes". */
   colecoesHref?: string;
+  /**
+   * Presente -> o PRIMEIRO item vira o link "Conta" (painel do cliente) no
+   * lugar de "Configuracoes". O admin nao passa e mantem o menu original.
+   */
+  contaHref?: string;
 };
 
 /**
@@ -36,12 +41,12 @@ export function AdminProfileCard({
   onSettings,
   onSignOut,
   colecoesHref = "/colecoes",
+  contaHref,
 }: Props) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const firstItemRef = useRef<HTMLButtonElement>(null);
   const menuId = useId();
 
   // Fecha ao clicar fora (pointerdown) ou Esc. So escuta enquanto aberto.
@@ -64,9 +69,10 @@ export function AdminProfileCard({
     };
   }, [open]);
 
-  // Move o foco para o 1o item ao abrir (acessibilidade do menu).
+  // Move o foco para o 1o item ao abrir (acessibilidade do menu). Via query no
+  // menu (nao ref fixo): o 1o item varia — "Conta" (link) ou "Configuracoes".
   useEffect(() => {
-    if (open) firstItemRef.current?.focus();
+    if (open) menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
   }, [open]);
 
   // Navegacao por setas entre os itens do menu.
@@ -79,9 +85,7 @@ export function AdminProfileCard({
     if (items.length === 0) return;
     const idx = items.indexOf(document.activeElement as HTMLElement);
     const next =
-      e.key === "ArrowDown"
-        ? (idx + 1) % items.length
-        : (idx - 1 + items.length) % items.length;
+      e.key === "ArrowDown" ? (idx + 1) % items.length : (idx - 1 + items.length) % items.length;
     items[next]?.focus();
   };
 
@@ -98,19 +102,25 @@ export function AdminProfileCard({
           ref={menuRef}
           onKeyDown={onMenuKeyDown}
         >
-          <button
-            type="button"
-            role="menuitem"
-            className={styles.item}
-            ref={firstItemRef}
-            onClick={() => {
-              close();
-              onSettings?.();
-            }}
-          >
-            <Icon name="settings" size={17} />
-            <span>Configurações</span>
-          </button>
+          {contaHref ? (
+            <Link href={contaHref} role="menuitem" className={styles.item} onClick={close}>
+              <Icon name="user" size={17} />
+              <span>Conta</span>
+            </Link>
+          ) : (
+            <button
+              type="button"
+              role="menuitem"
+              className={styles.item}
+              onClick={() => {
+                close();
+                onSettings?.();
+              }}
+            >
+              <Icon name="settings" size={17} />
+              <span>Configurações</span>
+            </button>
+          )}
 
           <Link href={colecoesHref} role="menuitem" className={styles.item} onClick={close}>
             <Icon name="layers" size={17} />

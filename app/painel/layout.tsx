@@ -47,7 +47,12 @@ export default async function PainelLayout({ children }: Readonly<{ children: Re
           {clerkEnabled ? (
             <ClienteProfileMenu email={email} roleLabel="Cliente" />
           ) : (
-            <AdminProfileCard email={email} roleLabel="Cliente" colecoesHref="/painel/colecoes" />
+            <AdminProfileCard
+              email={email}
+              roleLabel="Cliente"
+              colecoesHref="/painel/colecoes"
+              contaHref="/painel/conta"
+            />
           )}
         </aside>
 

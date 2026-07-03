@@ -9,18 +9,19 @@ import { AdminProfileCard } from "@/components/admin/AdminProfileCard";
  * seguro; no modo mock-first o layout renderiza o AdminProfileCard direto, sem
  * este wrapper (mesmo padrao do AdminProfileMenu).
  *
- *  - Configurações -> abre o perfil/conta do usuário (modal do Clerk).
- *  - Coleções      -> /painel/colecoes (vitrine dentro do painel).
- *  - Sair          -> signOut e volta para a home.
+ *  - Conta    -> /painel/conta (endereco/dados do cliente; substitui o
+ *                "Configurações" do molde admin).
+ *  - Coleções -> /painel/colecoes (vitrine dentro do painel).
+ *  - Sair     -> signOut e volta para a home.
  */
 export function ClienteProfileMenu({ email, roleLabel }: { email: string; roleLabel: string }) {
-  const { openUserProfile, signOut } = useClerk();
+  const { signOut } = useClerk();
   return (
     <AdminProfileCard
       email={email}
       roleLabel={roleLabel}
       colecoesHref="/painel/colecoes"
-      onSettings={() => openUserProfile()}
+      contaHref="/painel/conta"
       onSignOut={() => signOut({ redirectUrl: "/" })}
     />
   );
