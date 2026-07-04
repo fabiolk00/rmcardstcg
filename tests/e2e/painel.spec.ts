@@ -78,6 +78,10 @@ test("Compre agora: toast de adicionado, rail atualiza e estoque no limite recus
     name: /Adicionar Single — Pikachu Illustrator Reprint ao carrinho/,
   });
 
+  // Espera a HIDRATACAO antes de clicar (o rail sai de "Carregando…" para o
+  // estado vazio SO quando o client montou — clique pre-hidratacao se perde).
+  await expect(rail(page).getByText("Seu carrinho está vazio.")).toBeVisible();
+
   // 1o clique: toast de ADICIONADO (mensagem existente) + rail com o item.
   await addButton.click();
   const toast = page.getByRole("status");

@@ -80,10 +80,11 @@ test("deep-link de produto abre a página pelo slug", async ({ page }) => {
   // seed (nome no heading + controle de compra).
   await page.goto("/produto/booster-box-scarlet-tempest");
 
+  await expect(page.getByRole("heading", { name: "Booster Box — Scarlet Tempest" })).toBeVisible();
+  // Botao ESPECIFICO do produto (a pagina tem 'relacionados' com botoes proprios).
   await expect(
-    page.getByRole("heading", { name: "Booster Box — Scarlet Tempest" }),
+    page.getByRole("button", { name: "Adicionar Booster Box — Scarlet Tempest ao carrinho" }),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: /Adicionar .* ao carrinho/ })).toBeVisible();
 });
 
 test("adicionar ao carrinho coloca o produto no carrinho", async ({ page }) => {
@@ -95,7 +96,15 @@ test("adicionar ao carrinho coloca o produto no carrinho", async ({ page }) => {
   const name = label.replace(/^Adicionar /, "").replace(/ ao carrinho$/, "");
   expect(name.length).toBeGreaterThan(0);
 
-  await addBtn.click();
+  // O botao existe no HTML ANTES da hidratacao (clique perdido sob carga
+  // paralela do dev server). Clica e VERIFICA o efeito client-side
+  // (localStorage do carrinho) com retry — sinal deterministico de que o
+  // handler rodou; as asserts finais continuam na pagina do carrinho.
+  await expect(async () => {
+    await addBtn.click();
+    const raw = await page.evaluate(() => localStorage.getItem("rmcards.cart.v1"));
+    expect(raw ?? "").toContain(name);
+  }).toPass({ timeout: 15_000 });
   await page.goto("/carrinho");
 
   // Sai do estado vazio e mostra o item adicionado. (A linha do carrinho tem 2 links
