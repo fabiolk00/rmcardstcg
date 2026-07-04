@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { addToCartLines, canAddToCart } from "./addToCart";
 import type { CartLine, CartProduct } from "./totals";
 
 const STORAGE_KEY = "rmcards.cart.v1";
@@ -86,31 +87,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, [lines, hydrated]);
 
   const add = useCallback((product: CartProduct, quantity = 1) => {
-    // CHECK de estoque ANTES de adicionar: esgotado (limite <= 0) ou carrinho
-    // ja no limite do disponivel => nao adiciona e sinaliza indisponivel.
-    const limit = product.available ?? product.stock;
-    const current = linesRef.current.find((l) => l.product.id === product.id)?.quantity ?? 0;
-    const ok = limit > 0 && current < limit;
-
-    if (ok) {
-      setLines((prev) => {
-        const existing = prev.find((l) => l.product.id === product.id);
-        if (existing) {
-          return prev.map((l) =>
-            l.product.id === product.id
-              ? {
-                  ...l,
-                  quantity: clampToStock(l.quantity + quantity, product.available ?? product.stock),
-                }
-              : l,
-          );
-        }
-        return [
-          ...prev,
-          { product, quantity: clampToStock(quantity, product.available ?? product.stock) },
-        ];
-      });
-    }
+    // CHECK de estoque + reducer na logica PURA (lib/cart/addToCart — fonte
+    // unica, testada sem React): esgotado ou carrinho ja no limite => nao
+    // adiciona e sinaliza indisponivel. A decisao le o espelho sincrono.
+    const ok = canAddToCart(linesRef.current, product);
+    if (ok) setLines((prev) => addToCartLines(prev, product, quantity).lines);
     setLastAdded({ name: product.name, at: Date.now(), ok });
     return { ok };
   }, []);
