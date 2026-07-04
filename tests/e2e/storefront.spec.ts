@@ -12,7 +12,8 @@ import { test, expect } from "@playwright/test";
  *  - "Charizard" casa 2 produtos ativos (Tin Collection ex / Single VMAX Rainbow).
  *
  * So testamos rotas publicas: /admin, /minhas-compras e /checkout exigem login.
- * A pagina /produto/[slug] ainda e placeholder (renderiza o slug).
+ * O painel do cliente (mock-first navegavel como guest) tem spec propria
+ * (painel.spec.ts).
  */
 
 // Diagnostico: erros de runtime do cliente (ex.: falha de hidratacao) aparecem no
@@ -27,7 +28,8 @@ test.beforeEach(async ({ page }, testInfo) => {
 test("home renderiza o hero e a grade de produtos em destaque", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page.getByRole("heading", { name: /Sua coleção começa/i })).toBeVisible();
+  // Copy atual do hero (components/home/HeroPokemon.tsx).
+  await expect(page.getByRole("heading", { name: /Gotta collect/i })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Nossos produtos." })).toBeVisible();
 
   // featured = marcados (isLanding) ativos com estoque>0, slice(0,8). O seed marca
@@ -74,10 +76,14 @@ test("busca filtra o catálogo por nome", async ({ page }) => {
 });
 
 test("deep-link de produto abre a página pelo slug", async ({ page }) => {
+  // A pagina de produto deixou de ser placeholder: renderiza o produto REAL do
+  // seed (nome no heading + controle de compra).
   await page.goto("/produto/booster-box-scarlet-tempest");
 
-  await expect(page.getByRole("heading", { name: "Produto" })).toBeVisible();
-  await expect(page.getByText("booster-box-scarlet-tempest")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Booster Box — Scarlet Tempest" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /Adicionar .* ao carrinho/ })).toBeVisible();
 });
 
 test("adicionar ao carrinho coloca o produto no carrinho", async ({ page }) => {
