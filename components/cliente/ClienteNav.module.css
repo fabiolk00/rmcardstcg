@@ -46,6 +46,7 @@
     flex-direction: row;
     flex-wrap: nowrap;
     min-width: 0;
+    gap: 2px;
     padding: 8px;
     overflow-x: auto;
     scrollbar-width: none;
@@ -59,9 +60,22 @@
     display: none;
   }
 
+  /* Compacto o bastante p/ os 4 itens caberem (e centralizarem) em ~390px. */
   .item {
     flex: none;
-    padding: 10px 12px;
+    padding: 10px;
+    font-size: 13px;
     white-space: nowrap;
+  }
+
+  /* Centraliza o grupo quando sobra espaco; com overflow as margens auto
+     colapsam a 0 e o scroll continua alcancando o primeiro item (o
+     justify-content: center clipparia o inicio). */
+  .item:first-child {
+    margin-left: auto;
+  }
+
+  .item:last-child {
+    margin-right: auto;
   }
 }
