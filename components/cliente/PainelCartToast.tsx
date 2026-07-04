@@ -30,6 +30,21 @@ export function PainelCartToast() {
 
   if (!visible) return null;
 
+  // ok=false: o check de estoque do carrinho recusou (esgotado ou o carrinho
+  // ja tem todo o disponivel) — aviso de indisponivel, sem atalho de carrinho.
+  if (!lastAdded.ok) {
+    return (
+      <div className={styles.toast} role="status" aria-live="polite">
+        <span className={styles.fail}>
+          <Icon name="x" size={16} />
+        </span>
+        <span className={styles.text}>
+          <strong className={styles.name}>{lastAdded.name}</strong> produto indisponível
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.toast} role="status" aria-live="polite">
       <span className={styles.check}>

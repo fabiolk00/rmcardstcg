@@ -29,6 +29,19 @@
   color: #fff;
 }
 
+/* Variante de recusa (produto indisponivel): mesmo selo, tom de erro. */
+.fail {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--red);
+  color: #fff;
+}
+
 .text {
   min-width: 0;
   font-size: 13px;
