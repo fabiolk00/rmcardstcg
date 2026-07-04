@@ -117,20 +117,33 @@
   padding: var(--space-7) var(--space-6);
 }
 
+/* Mobile: a sidebar vira uma barra FIXA no rodape (nav + avatar), sem marca. */
 @media (max-width: 720px) {
   .shell {
     flex-direction: column;
   }
 
   .sidebar {
-    position: static;
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    z-index: 40;
     width: 100%;
     height: auto;
+    flex-direction: row;
+    align-items: center;
+    padding-bottom: env(safe-area-inset-bottom);
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
     border-right: none;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   }
 
   .brand {
-    padding: 14px 16px;
+    display: none;
+  }
+
+  /* Respiro p/ o conteudo nao terminar escondido atras da barra fixa. */
+  .main {
+    padding-bottom: calc(76px + env(safe-area-inset-bottom));
   }
 }

@@ -38,18 +38,30 @@
   background: #202023;
 }
 
+/* Mobile (barra no rodape): itens mostram o NOME no lugar do icone, em linha
+   unica com scroll horizontal (sem wrap p/ a barra nao crescer na vertical). */
 @media (max-width: 720px) {
   .nav {
-    flex: none;
+    flex: 1;
     flex-direction: row;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    min-width: 0;
+    padding: 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
   }
 
-  .item span {
+  .nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .item svg {
     display: none;
   }
 
   .item {
-    padding: 10px;
+    flex: none;
+    padding: 10px 12px;
+    white-space: nowrap;
   }
 }

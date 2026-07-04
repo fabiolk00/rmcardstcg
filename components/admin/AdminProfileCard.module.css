@@ -157,10 +157,47 @@
   background: rgba(255, 255, 255, 0.07);
 }
 
-/* Mobile: a sidebar deixa de ser vertical fixa; abre o menu PARA BAIXO. */
+/* Header do menu (email + cargo): so existe no mobile, onde o gatilho e so o
+   avatar e o card nao mostra mais essas infos. */
+.menuHeader {
+  display: none;
+}
+
+/* Mobile: a sidebar e uma barra FIXA no rodape — o card vira SO o avatar;
+   email/cargo aparecem no header do menu, que abre PARA CIMA ancorado a direita. */
 @media (max-width: 720px) {
+  .wrap {
+    flex: none;
+    padding: 8px 12px 8px 4px;
+    border-top: none;
+  }
+
+  .card {
+    width: auto;
+    padding: 4px;
+    border-color: transparent;
+    background: transparent;
+  }
+
+  .meta,
+  .chevron {
+    display: none;
+  }
+
   .menu {
-    top: calc(100% - 4px);
-    bottom: auto;
+    left: auto;
+    right: 8px;
+    bottom: calc(100% + 2px);
+    width: min(260px, calc(100vw - 24px));
+  }
+
+  .menuHeader {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 5px;
+    padding: 10px 10px 9px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
   }
 }

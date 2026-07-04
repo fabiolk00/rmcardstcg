@@ -102,6 +102,15 @@ export function AdminProfileCard({
           ref={menuRef}
           onKeyDown={onMenuKeyDown}
         >
+          {/* Header so aparece no mobile (CSS): la o gatilho vira SO o avatar,
+              entao email/cargo migram para dentro do menu. */}
+          <div className={styles.menuHeader}>
+            <span className={styles.email}>{email}</span>
+            <span className={roleStyle === "plain" ? styles.rolePlain : styles.roleChip}>
+              {roleLabel}
+            </span>
+          </div>
+
           {contaHref ? (
             <Link href={contaHref} role="menuitem" className={styles.item} onClick={close}>
               <Icon name="user" size={17} />
@@ -156,10 +165,13 @@ export function AdminProfileCard({
         </div>
       )}
 
+      {/* aria-label: no mobile o card vira so o avatar (email/cargo com
+          display:none), o que apagaria o nome acessivel do botao. */}
       <button
         type="button"
         className={styles.card}
         onClick={() => setOpen((o) => !o)}
+        aria-label={email}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
