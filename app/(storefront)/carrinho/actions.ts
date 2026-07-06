@@ -62,6 +62,12 @@ export type CheckoutInput = {
   checkoutKey: string;
   customer: CheckoutCustomer;
   items: { productId: string; quantity: number }[];
+  /**
+   * Consentimento explicito aos Termos de uso e a Politica de privacidade (LGPD).
+   * A UI trava o submit sem o aceite; o server RE-valida (defense in depth): pedido
+   * so e criado com aceite verdadeiro.
+   */
+  acceptedTerms: boolean;
   /** Codigo de cupom digitado pelo cliente (validado 100% no server). */
   couponCode?: string;
   /**
@@ -270,6 +276,13 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
   }
   if (!input.items?.length) {
     return { ok: false, error: "Seu carrinho está vazio." };
+  }
+  // Consentimento LGPD obrigatorio (re-validado no server; a UI ja trava o submit).
+  if (input.acceptedTerms !== true) {
+    return {
+      ok: false,
+      error: "É necessário aceitar os Termos de uso e a Política de privacidade.",
+    };
   }
 
   // Usuario: Clerk quando configurado (login + espelho ATIVO — conta desativada

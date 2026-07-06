@@ -68,6 +68,36 @@
   font-weight: 600;
 }
 
+/* Consentimento LGPD (Termos + Privacidade) — obrigatorio p/ finalizar. */
+.consent {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  font-size: 13px;
+  color: var(--ink-2);
+  line-height: 1.45;
+}
+
+.consent input {
+  margin-top: 2px;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--ink);
+  cursor: pointer;
+}
+
+.consentLink {
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.consentLink:hover {
+  color: var(--ink-2);
+}
+
 .submit {
   width: 100%;
   min-height: 46px;

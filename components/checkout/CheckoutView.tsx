@@ -81,6 +81,8 @@ export function CheckoutView({ initialCustomer }: { initialCustomer?: Partial<Fo
   // submit/duplo-clique reenvia a MESMA chave => 1 pedido + 1 cobranca Asaas.
   const [checkoutKey] = useState(() => crypto.randomUUID());
   const [submitting, setSubmitting] = useState(false);
+  // Consentimento LGPD (Termos + Privacidade). Trava o submit; re-validado no server.
+  const [accepted, setAccepted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Extract<CheckoutResult, { ok: true }> | null>(null);
   const [copied, setCopied] = useState(false);
@@ -170,11 +172,17 @@ export function CheckoutView({ initialCustomer }: { initialCustomer?: Partial<Fo
       return;
     }
 
+    if (!accepted) {
+      setError("Aceite os Termos de uso e a Política de privacidade para continuar.");
+      return;
+    }
+
     setSubmitting(true);
     const res = await checkout({
       checkoutKey,
       customer: { ...form },
       items: lines.map((l) => ({ productId: l.product.id, quantity: l.quantity })),
+      acceptedTerms: accepted,
       couponCode: coupon.trim() || undefined,
       shippingServiceCode: shipFree ? undefined : (chosenOption?.serviceCode ?? undefined),
     });
@@ -317,6 +325,36 @@ export function CheckoutView({ initialCustomer }: { initialCustomer?: Partial<Fo
             </select>
           </Field>
         </div>
+
+        <label className={styles.consent}>
+          <input
+            type="checkbox"
+            checked={accepted}
+            onChange={(e) => setAccepted(e.target.checked)}
+            aria-label="Aceito os Termos de uso e a Política de privacidade"
+          />
+          <span>
+            Li e aceito os{" "}
+            <Link
+              href="/termos-de-uso"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={styles.consentLink}
+            >
+              Termos de uso
+            </Link>{" "}
+            e a{" "}
+            <Link
+              href="/politica-de-privacidade"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={styles.consentLink}
+            >
+              Política de privacidade
+            </Link>
+            .
+          </span>
+        </label>
 
         {error && (
           <p className={styles.error} role="alert">
