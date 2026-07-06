@@ -15,8 +15,8 @@ export function AuthShell({ mode, children }: { mode: Mode; children: React.Reac
         <Image
           src="/logo-rm.png"
           alt="RM Cards"
-          width={120}
-          height={40}
+          width={56}
+          height={56}
           className={styles.logo}
           priority
         />

@@ -11,6 +11,8 @@ import {
   type ProductInput,
 } from "@/lib/data/products";
 import type { Product } from "@/lib/data/types";
+import { clientRateLimitKey } from "@/lib/security/clientKey";
+import { checkRateLimit } from "@/lib/security/rateLimit";
 import { isSupabaseStorageConfigured } from "@/lib/services/supabase/config";
 import {
   MAX_IMAGE_BYTES,
@@ -93,6 +95,17 @@ export async function setProductActiveAction(
 export async function uploadProductImageAction(formData: FormData): Promise<ActionResult<string>> {
   const guard = await requireAdmin();
   if (!guard.ok) return { ok: false, error: guard.error };
+
+  // Rate limit por-ator (admin-only ja e a 1a barreira; isto e defense-in-depth
+  // contra abuso/upload em rajada mesmo com conta admin comprometida). Mesmo
+  // padrao/store das demais actions — 10 uploads/min.
+  const limited = await checkRateLimit(
+    `upload-image:${await clientRateLimitKey(guard.actor.clerkUserId ?? "guest")}`,
+    { limit: 10, windowMs: 60_000 },
+  );
+  if (!limited.allowed) {
+    return { ok: false, error: "Muitas tentativas. Aguarde um instante." };
+  }
 
   if (!isSupabaseStorageConfigured()) {
     return { ok: false, error: "Upload de imagem não configurado no servidor." };

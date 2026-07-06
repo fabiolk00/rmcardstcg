@@ -174,9 +174,12 @@
   cursor: pointer;
 }
 
+/* Botao do papel ATUAL do usuario: pintado de verde (sucesso) para dar
+   feedback visual imediato de qual role a linha tem hoje. */
 .segOn {
-  background: var(--card);
-  color: var(--ink);
+  background: var(--green);
+  color: #fff;
+  font-weight: 700;
   box-shadow: var(--shadow-sm);
 }
 
