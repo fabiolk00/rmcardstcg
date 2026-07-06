@@ -265,6 +265,26 @@
   text-decoration: underline;
 }
 
+/* Aviso legal com links de Termos e Privacidade (sign-in / sign-up) */
+.legal {
+  margin-top: calc(-1 * var(--space-1));
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+.legalLink {
+  color: var(--ink-2);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.legalLink:hover {
+  color: var(--ink);
+}
+
 /* CAPTCHA invisivel do Clerk (sign-up) — sem altura propria quando vazio */
 .captcha:empty {
   display: none;

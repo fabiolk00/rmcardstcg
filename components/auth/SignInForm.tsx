@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth, useSignIn } from "@clerk/nextjs";
 import { Icon } from "@/components/ui/Icon";
@@ -275,6 +276,23 @@ export function SignInForm({ redirectUrl }: { redirectUrl: string }) {
         <Icon name="arrow" size={16} />
         {busy ? "Entrando…" : "Continuar"}
       </button>
+
+      <p className={styles.legal}>
+        Ao continuar, você concorda com os{" "}
+        <Link href="/termos-de-uso" className={styles.legalLink} target="_blank" rel="noopener noreferrer">
+          Termos de uso
+        </Link>{" "}
+        e a{" "}
+        <Link
+          href="/politica-de-privacidade"
+          className={styles.legalLink}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Política de privacidade
+        </Link>
+        .
+      </p>
     </form>
   );
 }
