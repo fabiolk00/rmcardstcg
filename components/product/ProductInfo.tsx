@@ -48,8 +48,7 @@ export function ProductInfo({ product }: { product: Product }) {
         <Stars rating={product.rating} size={16} />
         <span className={styles.ratingValue}>{product.rating.toFixed(1)}</span>
         <span className={styles.ratingCount}>
-          {product.reviewCount}{" "}
-          {product.reviewCount === 1 ? "avaliação" : "avaliações"}
+          {product.reviewCount} {product.reviewCount === 1 ? "avaliação" : "avaliações"}
         </span>
       </div>
 

@@ -27,14 +27,17 @@ function jsonResponse(body: unknown, status = 200, headers?: Record<string, stri
   });
 }
 
-const ITEMS = [
-  { quantity: 1, pkg: { weightGrams: 150, lengthCm: 22, widthCm: 19, heightCm: 3 } },
-];
+const ITEMS = [{ quantity: 1, pkg: { weightGrams: 150, lengthCm: 22, widthCm: 19, heightCm: 3 } }];
 
 // Array misto: 1 valido (PAC), 1 com error, 1 com preco 0 (invalido).
 const MIXED = [
   { id: 1, name: "PAC", company: { name: "Correios" }, price: "23.50", delivery_time: 6 },
-  { id: 17, name: "Mini Envios", company: { name: "Correios" }, error: "Indisponível para esta rota" },
+  {
+    id: 17,
+    name: "Mini Envios",
+    company: { name: "Correios" },
+    error: "Indisponível para esta rota",
+  },
   { id: 31, name: "Loggi", company: { name: "Loggi" }, price: "0", delivery_time: 1 },
 ];
 
@@ -70,9 +73,8 @@ describe("parseQuote — segregacao cotaveis vs indisponiveis (puro)", () => {
   });
 
   it("parseShippingOptions == parseQuote(raw).options", async () => {
-    const { parseQuote, parseShippingOptions } = await import(
-      "../../lib/services/superfrete/quote"
-    );
+    const { parseQuote, parseShippingOptions } =
+      await import("../../lib/services/superfrete/quote");
     expect(parseShippingOptions(MIXED)).toEqual(parseQuote(MIXED).options);
   });
 });
@@ -87,7 +89,10 @@ describe("quoteShippingRecords — registro normalizado (caixa-preta)", () => {
   });
 
   it("uma linha por modalidade (cotaveis E indisponiveis), flags corretos", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(MIXED, 200)));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse(MIXED, 200)),
+    );
     const { quoteShippingRecords } = await import("../../lib/services/superfrete/record");
     const records = await quoteShippingRecords("80010000", ITEMS);
 

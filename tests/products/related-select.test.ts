@@ -74,9 +74,7 @@ describe("selectRelatedProducts", () => {
     const current = p({ id: "cur", category: "Tin" });
     const pool = [
       current,
-      ...Array.from({ length: RELATED_LIMIT + 3 }, (_, i) =>
-        p({ category: "Tin", name: `R${i}` }),
-      ),
+      ...Array.from({ length: RELATED_LIMIT + 3 }, (_, i) => p({ category: "Tin", name: `R${i}` })),
     ];
     expect(selectRelatedProducts(pool, current)).toHaveLength(RELATED_LIMIT);
   });

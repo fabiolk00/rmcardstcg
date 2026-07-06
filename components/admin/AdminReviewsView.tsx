@@ -60,8 +60,8 @@ export function AdminReviewsView({ reviews: initial }: { reviews: PendingReview[
       <header className={styles.head}>
         <h1 className={styles.title}>Avaliações</h1>
         <p className={styles.sub}>
-          {reviews.length}{" "}
-          {reviews.length === 1 ? "avaliação pendente" : "avaliações pendentes"} de moderação.
+          {reviews.length} {reviews.length === 1 ? "avaliação pendente" : "avaliações pendentes"} de
+          moderação.
         </p>
       </header>
 

@@ -11,7 +11,13 @@ export function roundRating(avg: number): number {
   return Math.round(avg * 10) / 10;
 }
 
-const ZERO_DISTRIBUTION = (): Record<1 | 2 | 3 | 4 | 5, number> => ({ 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 });
+const ZERO_DISTRIBUTION = (): Record<1 | 2 | 3 | 4 | 5, number> => ({
+  1: 0,
+  2: 0,
+  3: 0,
+  4: 0,
+  5: 0,
+});
 
 /**
  * Resumo a partir de pares (nota, quantidade) — as linhas de um groupBy por rating.
@@ -22,7 +28,13 @@ export function summarizeFromCounts(counts: { rating: number; count: number }[])
   let total = 0;
   let weighted = 0;
   for (const { rating, count } of counts) {
-    if (Number.isInteger(rating) && rating >= 1 && rating <= 5 && Number.isFinite(count) && count > 0) {
+    if (
+      Number.isInteger(rating) &&
+      rating >= 1 &&
+      rating <= 5 &&
+      Number.isFinite(count) &&
+      count > 0
+    ) {
       distribution[rating as 1 | 2 | 3 | 4 | 5] += count;
       total += count;
       weighted += rating * count;

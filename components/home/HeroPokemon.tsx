@@ -147,10 +147,7 @@ export function HeroPokemon({ motion = "equilibrado", characters }: HeroPokemonP
                   <div className={styles.fx}>
                     {/* ripple #1 usa só o delay base (0); #2/#3 trazem o override */}
                     {[undefined, styles.ripple2, styles.ripple3].map((cls, i) => (
-                      <span
-                        key={i}
-                        className={cls ? `${styles.ripple} ${cls}` : styles.ripple}
-                      />
+                      <span key={i} className={cls ? `${styles.ripple} ${cls}` : styles.ripple} />
                     ))}
                     {[
                       styles.bubble1,

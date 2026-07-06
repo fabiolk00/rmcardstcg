@@ -208,12 +208,7 @@ export function SignInForm({ redirectUrl }: { redirectUrl: string }) {
       {error && <p className={styles.error}>{error}</p>}
 
       <div className={styles.social}>
-        <button
-          type="button"
-          className={styles.googleBtn}
-          onClick={handleGoogle}
-          disabled={!ready}
-        >
+        <button type="button" className={styles.googleBtn} onClick={handleGoogle} disabled={!ready}>
           <GoogleIcon size={18} />
           Continuar com Google
         </button>

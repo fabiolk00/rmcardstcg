@@ -13,14 +13,14 @@ entrega o shell real antes das telas; nenhum agente fica ocioso.
 
 ## Rotas (montam como children do layout `app/painel/layout.tsx`)
 
-| Rota | Dono | Conteúdo |
-|---|---|---|
-| `/painel` | A | redirect → `/painel/pedidos` |
-| `/painel/conta` | B | formulário de perfil/endereço |
-| `/painel/colecoes` | C | vitrine (reusa `ColecoesView`) |
-| `/painel/pedidos` | D | tabela de pedidos (linha → detalhe EXISTENTE `/minhas-compras/[id]`) |
-| `/painel/carrinho` | E | reusa `CartView` |
-| `/painel/checkout` | E | reusa `CheckoutView` com prefill do perfil |
+| Rota               | Dono | Conteúdo                                                             |
+| ------------------ | ---- | -------------------------------------------------------------------- |
+| `/painel`          | A    | redirect → `/painel/pedidos`                                         |
+| `/painel/conta`    | B    | formulário de perfil/endereço                                        |
+| `/painel/colecoes` | C    | vitrine (reusa `ColecoesView`)                                       |
+| `/painel/pedidos`  | D    | tabela de pedidos (linha → detalhe EXISTENTE `/minhas-compras/[id]`) |
+| `/painel/carrinho` | E    | reusa `CartView`                                                     |
+| `/painel/checkout` | E    | reusa `CheckoutView` com prefill do perfil                           |
 
 `/minhas-compras*` (lista/detalhe/recibo) PERMANECE intacta — o painel linka para o
 detalhe/recibo existentes, não os recria.
@@ -57,7 +57,9 @@ detalhe/recibo existentes, não os recria.
 ## Contratos de dados por tela
 
 ### Perfil/endereço (B produz; E consome)
+
 `schema.prisma` (B é o ÚNICO que edita o schema) — modelo novo ADITIVO:
+
 ```prisma
 model CustomerProfile {
   id          String   @id @default(uuid()) @db.Uuid
@@ -78,38 +80,44 @@ model CustomerProfile {
   @@map("customer_profiles")
 }
 ```
-+ migration SQL em `prisma/migrations/20260702XXXXXX_add_customer_profile/`
-(NÃO aplicar em banco nenhum — deploy aplica). `lib/data/profile.ts` (mock morto)
-é REESCRITO por B:
-- `getCustomerProfile(clerkUserId): Promise<CustomerProfile | null>` — **tolerante**:
+
+- migration SQL em `prisma/migrations/20260702XXXXXX_add_customer_profile/`
+  (NÃO aplicar em banco nenhum — deploy aplica). `lib/data/profile.ts` (mock morto)
+  é REESCRITO por B:
+
+* `getCustomerProfile(clerkUserId): Promise<CustomerProfile | null>` — **tolerante**:
   tabela ausente/erro de leitura → `null` + console.error (produção pode receber o
   código antes da migration; prefill degrada, não quebra).
-- `saveCustomerProfile(clerkUserId, input): Promise<{ok:true} | {ok:false; error:string}>`
+* `saveCustomerProfile(clerkUserId, input): Promise<{ok:true} | {ok:false; error:string}>`
   (upsert por clerkUserId).
-Actions (`app/painel/conta/actions.ts`, B): `requireActiveUser` + validação
-(obrigatórios: name, phone, cep 8 dígitos após strip — UI exibe NNNNN-NNN —, street,
-city, state UF; cpfCnpj opcional 11/14 dígitos). Autopreenchimento por CEP: NÃO existe
-no projeto — não introduzir serviço externo novo.
+  Actions (`app/painel/conta/actions.ts`, B): `requireActiveUser` + validação
+  (obrigatórios: name, phone, cep 8 dígitos após strip — UI exibe NNNNN-NNN —, street,
+  city, state UF; cpfCnpj opcional 11/14 dígitos). Autopreenchimento por CEP: NÃO existe
+  no projeto — não introduzir serviço externo novo.
 
 ### Alinhamento Conta → Checkout (crítico)
+
 O form do checkout (`components/checkout/CheckoutView.tsx` Form) espera:
 `{name, email, phone, cpfCnpj, cep, street, city, state}` — o perfil é SUPERSET.
 Mapa de prefill: `street` do checkout = `street + ", " + number (+ complement)` quando
 number existir; demais campos 1:1; cep formatado NNNNN-NNN na UI.
 
 ### Coleções (C)
+
 Server page: MESMA fonte da vitrine (`app/(storefront)/colecoes/page.tsx` usa catálogo
 ativo via lib/data/products) → `<ColecoesView products={...} initialCategory={...}/>`.
 Handoff com carrinho: os cards existentes já usam `useCart().add` — o layout do painel
 (A) envolve children com `<CartProvider>`; C NÃO duplica fluxo de add.
 
 ### Pedidos (D)
+
 `getOrdersByUserId(userId)` (existente, anti-IDOR). Colunas mínimas: Pedido (link →
 `/minhas-compras/{id}`), Data (desc — já vem ordenado), Itens/Produto, Pagamento,
 Envio (labels de `app/(storefront)/minhas-compras/labels.ts` — importável), Total
 (`formatBRL`). Vazio: mensagem + CTA → `/painel/colecoes`.
 
 ### Carrinho/Checkout (E)
+
 - `/painel/carrinho`: `<CartView/>`. Edição ADITIVA permitida a E:
   `CartView` ganha prop opcional `checkoutHref?: string` (default `"/checkout"`,
   painel passa `"/painel/checkout"`). Storefront intacto.
@@ -121,14 +129,14 @@ Envio (labels de `app/(storefront)/minhas-compras/labels.ts` — importável), T
 
 ## Propriedade de arquivos
 
-| Dono | Arquivos |
-|---|---|
-| Orquestrador | `app/painel/CONTRACT.md` |
+| Dono         | Arquivos                                                                                                                                                                                                                                      |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Orquestrador | `app/painel/CONTRACT.md`                                                                                                                                                                                                                      |
 | A (fundação) | `app/painel/layout.tsx`, `app/painel/page.tsx`, `app/painel/painel.module.css`, `components/cliente/**`, edições: `proxy.ts` (matcher), `app/pos-login/page.tsx` (destino cliente), `components/layout/AuthControls.tsx` (link do UserButton) |
-| B | `app/painel/conta/**`, `lib/data/profile.ts`, `prisma/schema.prisma` (só o modelo novo), `prisma/migrations/*_add_customer_profile/**`, `tests/users/customer-profile*.test.ts` |
-| C | `app/painel/colecoes/**` |
-| D | `app/painel/pedidos/**` |
-| E | `app/painel/carrinho/**`, `app/painel/checkout/**`, edições ADITIVAS: `components/cart/CartView.tsx` (prop `checkoutHref`), `components/checkout/CheckoutView.tsx` (prop `initialCustomer`) |
+| B            | `app/painel/conta/**`, `lib/data/profile.ts`, `prisma/schema.prisma` (só o modelo novo), `prisma/migrations/*_add_customer_profile/**`, `tests/users/customer-profile*.test.ts`                                                               |
+| C            | `app/painel/colecoes/**`                                                                                                                                                                                                                      |
+| D            | `app/painel/pedidos/**`                                                                                                                                                                                                                       |
+| E            | `app/painel/carrinho/**`, `app/painel/checkout/**`, edições ADITIVAS: `components/cart/CartView.tsx` (prop `checkoutHref`), `components/checkout/CheckoutView.tsx` (prop `initialCustomer`)                                                   |
 
 Regras: ninguém edita arquivo de outro dono; `git commit` só o orquestrador; cada um
 roda `npx tsc --noEmit`, `npx eslint <seus arquivos> --max-warnings 0`, prettier, e

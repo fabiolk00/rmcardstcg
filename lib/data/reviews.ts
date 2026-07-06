@@ -92,7 +92,14 @@ function normalizeReviewInput(input: ReviewInput): NormalizedReviewInput {
   }
   const title = rawTitle.length > 0 ? rawTitle : null;
 
-  return { productId: input.productId, userId: input.userId, authorName, rating: input.rating, title, body };
+  return {
+    productId: input.productId,
+    userId: input.userId,
+    authorName,
+    rating: input.rating,
+    title,
+    body,
+  };
 }
 
 /** P2002 (unique) — resubmit do MESMO usuario no MESMO produto colide aqui. */

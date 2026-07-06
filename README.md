@@ -462,17 +462,17 @@ pnpm dev
 
 ## Scripts
 
-| Script                         | Ação                                 |
-| ------------------------------ | ------------------------------------ |
-| `pnpm dev`                     | Servidor de desenvolvimento          |
-| `pnpm build`                   | `prisma generate` + `next build`     |
-| `pnpm start`                   | Servidor de produção                 |
-| `pnpm lint`                    | ESLint (`--max-warnings 0`)          |
-| `pnpm typecheck`               | `tsc --noEmit`                       |
-| `pnpm format` / `format:check` | Prettier (write / check)             |
-| `pnpm db:generate`             | Gera o Prisma Client                 |
-| `pnpm db:migrate`              | `prisma migrate dev`                 |
-| `pnpm db:studio`               | Prisma Studio                        |
+| Script                         | Ação                             |
+| ------------------------------ | -------------------------------- |
+| `pnpm dev`                     | Servidor de desenvolvimento      |
+| `pnpm build`                   | `prisma generate` + `next build` |
+| `pnpm start`                   | Servidor de produção             |
+| `pnpm lint`                    | ESLint (`--max-warnings 0`)      |
+| `pnpm typecheck`               | `tsc --noEmit`                   |
+| `pnpm format` / `format:check` | Prettier (write / check)         |
+| `pnpm db:generate`             | Gera o Prisma Client             |
+| `pnpm db:migrate`              | `prisma migrate dev`             |
+| `pnpm db:studio`               | Prisma Studio                    |
 
 ---
 

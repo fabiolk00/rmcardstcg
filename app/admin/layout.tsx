@@ -20,8 +20,7 @@ export default async function AdminLayout({ children }: Readonly<{ children: Rea
   if (clerkEnabled) {
     const user = await currentUser();
     if (!user) redirect("/entrar");
-    email =
-      user.primaryEmailAddress?.emailAddress ?? user.emailAddresses[0]?.emailAddress ?? email;
+    email = user.primaryEmailAddress?.emailAddress ?? user.emailAddresses[0]?.emailAddress ?? email;
     const role = (await getUserRole(user.id)) ?? (isAdminEmail(email) ? "admin" : "cliente");
     if (role !== "admin") redirect("/");
   } else if (process.env.NODE_ENV === "production") {

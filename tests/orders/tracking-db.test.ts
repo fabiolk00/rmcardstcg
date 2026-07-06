@@ -55,7 +55,9 @@ describe.skipIf(!TEST_DATABASE_URL)("rastreio do pedido (updateOrderTracking)", 
         subtotalCents: 1000,
         totalCents: 1000,
         paymentMethod: "PIX",
-        items: { create: [{ productId: pid, productName: `P ${tag}`, quantity: 1, unitPriceCents: 1000 }] },
+        items: {
+          create: [{ productId: pid, productName: `P ${tag}`, quantity: 1, unitPriceCents: 1000 }],
+        },
       },
     });
     return order.id as number;

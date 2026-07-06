@@ -79,9 +79,8 @@ describe("superFreteRequest — retry e erros (caixa-preta)", () => {
         return jsonResponse({ message: "Unauthorized" }, 401);
       }),
     );
-    const { superFreteRequest, SuperFreteError } = await import(
-      "../../lib/services/superfrete/client"
-    );
+    const { superFreteRequest, SuperFreteError } =
+      await import("../../lib/services/superfrete/client");
     let caught: unknown;
     try {
       await superFreteRequest("/api/v0/calculator", { method: "POST", body: "{}", retry: true });
@@ -102,9 +101,8 @@ describe("superFreteRequest — retry e erros (caixa-preta)", () => {
         return jsonResponse({ message: "Bad Request" }, 400);
       }),
     );
-    const { superFreteRequest, SuperFreteError } = await import(
-      "../../lib/services/superfrete/client"
-    );
+    const { superFreteRequest, SuperFreteError } =
+      await import("../../lib/services/superfrete/client");
     await expect(
       superFreteRequest("/api/v0/calculator", { method: "POST", body: "{}", retry: true }),
     ).rejects.toBeInstanceOf(SuperFreteError);
@@ -177,9 +175,8 @@ describe("superFreteRequest — retry e erros (caixa-preta)", () => {
         return jsonResponse({ message: "unavailable" }, 503);
       }),
     );
-    const { superFreteRequest, SuperFreteError } = await import(
-      "../../lib/services/superfrete/client"
-    );
+    const { superFreteRequest, SuperFreteError } =
+      await import("../../lib/services/superfrete/client");
     await expect(
       superFreteRequest("/api/v0/calculator", { method: "POST", body: "{}" }),
     ).rejects.toBeInstanceOf(SuperFreteError);
@@ -192,7 +189,8 @@ describe("superFreteRequest — retry e erros (caixa-preta)", () => {
       "fetch",
       vi.fn(async () => {
         calls += 1;
-        if (calls < 2) return jsonResponse({ message: "rate limited" }, 429, { "Retry-After": "1" });
+        if (calls < 2)
+          return jsonResponse({ message: "rate limited" }, 429, { "Retry-After": "1" });
         return jsonResponse(SAMPLE_QUOTE, 200);
       }),
     );
@@ -346,7 +344,13 @@ describe("quoteShipping — normalizacao de CEP e guards (caixa-preta)", () => {
       vi.fn(async () =>
         jsonResponse(
           [
-            { id: 2, name: "SEDEX", company: { name: "Correios" }, price: "39.90", delivery_time: 2 },
+            {
+              id: 2,
+              name: "SEDEX",
+              company: { name: "Correios" },
+              price: "39.90",
+              delivery_time: 2,
+            },
             { id: 1, name: "PAC", company: { name: "Correios" }, price: "23.50", delivery_time: 6 },
           ],
           200,
