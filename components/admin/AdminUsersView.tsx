@@ -145,9 +145,8 @@ export function AdminUsersView({
           <tbody>
             {paged.map((u) => {
               const isSelf = currentClerkUserId !== null && u.clerkUserId === currentClerkUserId;
-              const isAdmin = u.role === "admin";
               return (
-                <tr key={u.id} className={isAdmin ? styles.adminRow : undefined}>
+                <tr key={u.id}>
                   <td className={`${styles.left} ${styles.email}`}>
                     {u.email}
                     {isSelf && <span className={styles.youTag}>Você</span>}

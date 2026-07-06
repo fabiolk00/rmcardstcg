@@ -115,16 +115,6 @@
   background: var(--bg-soft);
 }
 
-/* Linha de admin: verde suave + barra a esquerda para varrer quem tem acesso ao painel. */
-.adminRow {
-  background: color-mix(in srgb, var(--green) 7%, var(--card));
-  box-shadow: inset 3px 0 0 var(--green);
-}
-
-.table tbody tr.adminRow:hover {
-  background: color-mix(in srgb, var(--green) 13%, var(--card));
-}
-
 .left {
   text-align: left;
 }
