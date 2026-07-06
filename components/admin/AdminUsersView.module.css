@@ -183,11 +183,6 @@
   box-shadow: var(--shadow-sm);
 }
 
-/* Pill "Admin" ativo: verde para reforcar o papel elevado. */
-.segOnAdmin {
-  color: var(--green-strong);
-}
-
 .seg button:disabled {
   cursor: not-allowed;
 }

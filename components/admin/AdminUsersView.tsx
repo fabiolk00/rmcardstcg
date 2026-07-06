@@ -167,11 +167,7 @@ export function AdminUsersView({
                         <button
                           key={r.value}
                           type="button"
-                          className={
-                            u.role === r.value
-                              ? `${styles.segOn} ${r.value === "admin" ? styles.segOnAdmin : ""}`
-                              : ""
-                          }
+                          className={u.role === r.value ? styles.segOn : ""}
                           onClick={() => handleSetRole(u, r.value)}
                           disabled={pending || isSelf}
                           aria-pressed={u.role === r.value}
