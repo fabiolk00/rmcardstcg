@@ -6,6 +6,8 @@ import { describe, expect, it } from "vitest";
  * INV-2 exige:
  *  (A) INBOUND webhook  (reais -> centavos): Math.round, NAO Math.trunc.
  *      Arquivo: app/api/webhooks/asaas/route.ts, linha da expressao `valueCents`.
+ *      NOTA: o valor pode vir normalizado antes do *100 (ex.: hardening IEEE-754
+ *      `parseFloat(payment.value.toFixed(2))`); o que importa e Math.round, nao trunc.
  *  (B) INBOUND reconcile (reais -> centavos): Math.round, NAO Math.trunc.
  *      Arquivo: app/api/internal/reconcile-orders/route.ts, linha `valueCents`.
  *  (C) OUTBOUND centsToReais (centavos -> reais): toFixed(2), NAO toFixed(1).
@@ -50,11 +52,11 @@ describe("INV-2-A: INBOUND webhook usa Math.round (nao Math.trunc)", () => {
     //   Math.round(payment.value * 100)   <-- CORRETO
     // Verificamos que Math.trunc nao aparece na expressao de valueCents.
     // A regex captura Math.trunc seguido de qualquer coisa ate * 100
-    expect(src).not.toMatch(/Math\.trunc\s*\(\s*payment\??\.\s*value\s*\*\s*100/);
+    expect(src).not.toMatch(/Math\.trunc\s*\(.*value.*\*\s*100/);
   });
 
   it("contem Math.round na conversao de value para centavos", () => {
-    expect(src).toMatch(/Math\.round\s*\(\s*payment\??\.\s*value\s*\*\s*100/);
+    expect(src).toMatch(/Math\.round\s*\(.*value.*\*\s*100/);
   });
 
   // Sonda comportamental: replica a expressao exata do webhook atual e
@@ -74,8 +76,8 @@ describe("INV-2-A: INBOUND webhook usa Math.round (nao Math.trunc)", () => {
     expect(resultErrado).toBe(28);
     // A sonda que detecta o defeito: se o codigo usar trunc, ira falhar aqui.
     // Lemos o fonte e extraimos a expressao para replicar dinamicamente:
-    const usaTrunc = /Math\.trunc\s*\(\s*payment\??\.\s*value\s*\*\s*100/.test(src);
-    const usaRound = /Math\.round\s*\(\s*payment\??\.\s*value\s*\*\s*100/.test(src);
+    const usaTrunc = /Math\.trunc\s*\(.*value.*\*\s*100/.test(src);
+    const usaRound = /Math\.round\s*\(.*value.*\*\s*100/.test(src);
     // Deve usar round, nao trunc:
     expect(usaTrunc).toBe(false);
     expect(usaRound).toBe(true);
@@ -88,7 +90,7 @@ describe("INV-2-A: INBOUND webhook usa Math.round (nao Math.trunc)", () => {
     const value = 19.99;
     expect(Math.round(value * 100)).toBe(1999);
     expect(Math.trunc(value * 100)).toBe(1998); // confirma divergencia
-    const usaTrunc = /Math\.trunc\s*\(\s*payment\??\.\s*value\s*\*\s*100/.test(src);
+    const usaTrunc = /Math\.trunc\s*\(.*value.*\*\s*100/.test(src);
     expect(usaTrunc).toBe(false);
   });
 });
@@ -101,11 +103,11 @@ describe("INV-2-B: INBOUND reconcile usa Math.round (nao Math.trunc)", () => {
   const src = readSrc("app/api/internal/reconcile-orders/route.ts");
 
   it("nao contem Math.trunc na conversao de payment.value para centavos", () => {
-    expect(src).not.toMatch(/Math\.trunc\s*\(\s*payment\s*\.\s*value\s*\*\s*100/);
+    expect(src).not.toMatch(/Math\.trunc\s*\(.*value.*\*\s*100/);
   });
 
   it("contem Math.round na conversao de payment.value para centavos", () => {
-    expect(src).toMatch(/Math\.round\s*\(\s*payment\s*\.\s*value\s*\*\s*100/);
+    expect(src).toMatch(/Math\.round\s*\(.*value.*\*\s*100/);
   });
 });
 
@@ -168,15 +170,15 @@ describe("INV-2-D: consistencia INBOUND — webhook e reconcile usam Math.round"
   const reconcile = readSrc("app/api/internal/reconcile-orders/route.ts");
 
   it("ambos os sites usam Math.round (nao Math.trunc) para conversao reais->centavos", () => {
-    const webhookUsaRound = /Math\.round\s*\(.*value\s*\*\s*100/.test(webhook);
-    const reconcileUsaRound = /Math\.round\s*\(.*value\s*\*\s*100/.test(reconcile);
+    const webhookUsaRound = /Math\.round\s*\(.*value.*\*\s*100/.test(webhook);
+    const reconcileUsaRound = /Math\.round\s*\(.*value.*\*\s*100/.test(reconcile);
     expect(webhookUsaRound).toBe(true);
     expect(reconcileUsaRound).toBe(true);
   });
 
   it("nenhum dos sites usa Math.trunc para conversao reais->centavos", () => {
-    const webhookUsaTrunc = /Math\.trunc\s*\(.*value\s*\*\s*100/.test(webhook);
-    const reconcileUsaTrunc = /Math\.trunc\s*\(.*value\s*\*\s*100/.test(reconcile);
+    const webhookUsaTrunc = /Math\.trunc\s*\(.*value.*\*\s*100/.test(webhook);
+    const reconcileUsaTrunc = /Math\.trunc\s*\(.*value.*\*\s*100/.test(reconcile);
     expect(webhookUsaTrunc).toBe(false);
     expect(reconcileUsaTrunc).toBe(false);
   });
