@@ -103,9 +103,13 @@
   cursor: pointer;
 }
 
-.segOn {
-  background: var(--card);
-  color: var(--ink);
+/* Filtro ATIVO: preto com texto branco para realce.
+   Seletor `.seg button.segOn` (0,0,2,1) vence a regra base `.seg button`
+   (0,0,1,1) — senao `background: transparent` sobrescreveria o preto. */
+.seg button.segOn {
+  background: var(--ink);
+  color: var(--on-ink);
+  font-weight: 700;
   box-shadow: var(--shadow-sm);
 }
 
