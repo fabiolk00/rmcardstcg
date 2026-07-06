@@ -4,6 +4,8 @@ import { getActiveProducts } from "@/lib/data/products";
 import { selectCarouselProducts } from "@/lib/data/carousel";
 import { ProductGrid } from "@/components/product/ProductGrid";
 import { HeroPokemon } from "@/components/home/HeroPokemon";
+import { CategoryIndex } from "@/components/home/CategoryIndex";
+import { Manifesto } from "@/components/home/Manifesto";
 import { Icon } from "@/components/ui/Icon";
 import styles from "./page.module.css";
 
@@ -22,8 +24,10 @@ export default async function LandingPage() {
   const featured = selectCarouselProducts(products);
 
   return (
-    <>
+    <div className={styles.landing}>
       <HeroPokemon />
+
+      <CategoryIndex />
 
       <section id="produtos" className={styles.products}>
         <div className={styles.sectionHead}>
@@ -37,6 +41,8 @@ export default async function LandingPage() {
         </div>
         <ProductGrid products={featured} />
       </section>
-    </>
+
+      <Manifesto />
+    </div>
   );
 }

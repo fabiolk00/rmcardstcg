@@ -1,0 +1,199 @@
+/* ===========================================================================
+   Índice editorial de categorias — handoff "Landing Ideias".
+   Faixa full-bleed sobre bg-soft: rompe o container central (100vw + margem
+   negativa) p/ pintar de ponta a ponta; a sobra do 100vw (barra de rolagem) é
+   cortada pelo `overflow-x: clip` do .shell (ver storefront.module.css).
+   Tokens espelham app/globals.css.
+   =========================================================================== */
+.section {
+  width: 100vw;
+  margin-inline: calc(50% - 50vw);
+  background: var(--bg-soft);
+  border-block: 1px solid var(--border);
+  padding-block: var(--space-8);
+}
+
+.head {
+  margin-bottom: var(--space-6);
+}
+
+.eyebrow {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.title {
+  margin: 0;
+  margin-top: var(--space-1);
+  font-size: clamp(24px, 5vw, 32px);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.05;
+}
+
+/* ---------- Grade assimétrica (desktop): 3 colunas, cards 01/04 ocupam 2 ---------- */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+}
+
+.card {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: var(--space-6);
+  min-height: 250px;
+  padding: var(--space-6);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--ink);
+  transition:
+    transform 200ms,
+    box-shadow 200ms,
+    border-color 200ms;
+}
+
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.wide {
+  grid-column: span 2;
+}
+
+/* Ícone gigante decorativo, sangrando pelo canto inferior direito do card. */
+.bgIcon {
+  position: absolute;
+  right: -32px;
+  bottom: -36px;
+  color: var(--border);
+  pointer-events: none;
+}
+
+.card:not(.wide) .bgIcon {
+  right: -28px;
+  bottom: -32px;
+}
+
+.cardTop {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tile {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: var(--r-sm);
+  background: var(--bg-soft);
+  color: var(--ink);
+}
+
+.num {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.cardMeta {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.cardTitle {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+
+.wide .cardTitle {
+  font-size: 40px;
+}
+
+.cardDesc {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+/* ---------- Tablet: grade 2×2 uniforme ---------- */
+@media (max-width: 920px) {
+  .grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .wide {
+    grid-column: auto;
+  }
+  .card {
+    min-height: 210px;
+    padding: var(--space-5);
+  }
+  .cardTitle,
+  .wide .cardTitle {
+    font-size: 26px;
+  }
+  .tile {
+    width: 48px;
+    height: 48px;
+  }
+  .tile svg {
+    width: 24px;
+    height: 24px;
+  }
+  .bgIcon svg {
+    width: 160px;
+    height: 160px;
+  }
+}
+
+/* ---------- Mobile: carrossel horizontal com snap ---------- */
+@media (max-width: 560px) {
+  .grid {
+    display: flex;
+    gap: var(--space-3);
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    padding-bottom: 4px;
+  }
+  .card {
+    flex: 0 0 auto;
+    width: 240px;
+    min-height: 190px;
+    scroll-snap-align: start;
+  }
+  .cardTitle,
+  .wide .cardTitle {
+    font-size: 22px;
+  }
+  .tile {
+    width: 44px;
+    height: 44px;
+  }
+  .tile svg {
+    width: 22px;
+    height: 22px;
+  }
+  .bgIcon svg {
+    width: 140px;
+    height: 140px;
+  }
+}

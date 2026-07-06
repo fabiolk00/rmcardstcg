@@ -1,3 +1,18 @@
+/* ===========================================================================
+   Home editorial (handoff "Landing Ideias").
+   O layout compartilhado embrulha as páginas em `.container.page`, que aplica
+   padding vertical de var(--space-8). A home gerencia o próprio ritmo: cancela
+   esse padding p/ o hero encostar sob o header e — consumindo também o
+   margin-top do footer (var(--space-9)) — cola a faixa em tinta (Manifesto) no
+   rodapé, sem respiro branco, fiel ao design. As faixas full-bleed
+   (CategoryIndex/Manifesto) rompem o container; a sobra horizontal do 100vw é
+   cortada pelo `overflow-x: clip` do .shell (storefront.module.css).
+   =========================================================================== */
+.landing {
+  margin-top: calc(-1 * var(--space-8));
+  margin-bottom: calc(-1 * (var(--space-8) + var(--space-9)));
+}
+
 /* ===== Secao de produtos ===== */
 .products {
   padding-block: var(--space-7) var(--space-9);

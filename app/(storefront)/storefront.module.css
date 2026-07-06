@@ -2,6 +2,11 @@
   display: flex;
   min-height: 100vh;
   flex-direction: column;
+  /* Faixas full-bleed da home (CategoryIndex/Manifesto) usam width:100vw, que
+     inclui a barra de rolagem e sangraria ~15px além da viewport. `clip` corta
+     essa sobra horizontal SEM criar um scroll-container — preserva o
+     `position: sticky` do Topbar (o que `overflow-x: hidden` quebraria). */
+  overflow-x: clip;
 }
 
 .main {
