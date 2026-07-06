@@ -2,6 +2,7 @@ import { prisma } from "../db";
 import { Prisma } from "../generated/prisma/client";
 import { AuditAction, AuditEntityType } from "../generated/prisma/enums";
 import type { ProductModel } from "../generated/prisma/models";
+import { cleanupReplacedImage } from "../services/supabase/orphans";
 import { writeAuditLog, type AuditActor } from "./audit";
 import { RELATED_LIMIT, selectRelatedProducts } from "./related";
 import { CATEGORIES } from "./types";
@@ -387,7 +388,7 @@ export async function updateProduct(
   // trims/coercoes). Ausente -> null (cai no baseline do servidor abaixo).
   const orig = original ? normalizeProductInput(original) : null;
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     // (1) BASELINE DO SERVIDOR: a linha atual. Serve p/ o `before` da auditoria e a
     // checagem de existencia. NAO e (mais) a referencia do diff de intencao: sob READ
     // COMMITTED, duas edicoes que NAO se sobrepoem no tempo leriam baselines diferentes
@@ -489,8 +490,19 @@ export async function updateProduct(
       after: auditSnapshot(product),
     });
 
-    return product;
+    // A troca de imagem (old -> new) já fica registrada no audit acima (imageUrl no
+    // before/after). Sinalizamos a URL antiga p/ o cleanup PÓS-COMMIT abaixo.
+    const replacedImageUrl = before.imageUrl !== product.imageUrl ? before.imageUrl : null;
+    return { product, replacedImageUrl };
   });
+
+  // PÓS-COMMIT (fora da transação — o Storage não é transacional com o Postgres):
+  // remove o objeto antigo do bucket quando a imagem mudou. Best-effort e nunca lança;
+  // uma falha aqui deixa um órfão que o reconcile varre depois — jamais corrompe o save.
+  if (result.replacedImageUrl) {
+    await cleanupReplacedImage(result.replacedImageUrl);
+  }
+  return result.product;
 }
 
 /**
