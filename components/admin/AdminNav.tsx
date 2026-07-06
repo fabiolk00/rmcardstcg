@@ -2,14 +2,19 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { REVIEWS_ENABLED } from "@/lib/config/features";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import styles from "./AdminNav.module.css";
 
+// Avaliacoes ocultas do frontend em 2026-07-06 (flag NEXT_PUBLIC_REVIEWS_ENABLED):
+// o item so aparece no menu quando a flag esta ligada (a rota tambem 404 quando off).
 const ITEMS: { href: string; label: string; icon: IconName }[] = [
   { href: "/admin/produtos", label: "Produtos", icon: "grid" },
   { href: "/admin/estoque", label: "Estoque baixo", icon: "box" },
   { href: "/admin/pedidos", label: "Pedidos", icon: "receipt" },
-  { href: "/admin/avaliacoes", label: "Avaliações", icon: "star" },
+  ...(REVIEWS_ENABLED
+    ? [{ href: "/admin/avaliacoes", label: "Avaliações", icon: "star" as IconName }]
+    : []),
   { href: "/admin/cupons", label: "Cupons", icon: "archive" },
   { href: "/admin/usuarios", label: "Usuários", icon: "user" },
 ];

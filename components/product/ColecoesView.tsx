@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { Product, Category } from "@/lib/data/types";
 import { CATEGORIES } from "@/lib/data/types";
+import { REVIEWS_ENABLED } from "@/lib/config/features";
 import { finalPriceCents } from "@/lib/data/pricing";
 import { ProductGrid } from "./ProductGrid";
 import { Pagination } from "@/components/ui/Pagination";
@@ -28,6 +29,11 @@ const SORTS = [
 
 type SortId = (typeof SORTS)[number]["id"];
 const SORT_IDS = SORTS.map((s) => s.id) as readonly SortId[];
+
+// "Melhor avaliados" so faz sentido com reviews visiveis. Com a flag off, some do
+// dropdown (o tipo/validacao de URL continua completo: um deep-link ?sort=rating
+// ainda ordena por rating, sem quebrar — apenas nao e oferecido).
+const VISIBLE_SORTS = SORTS.filter((s) => s.id !== "rating" || REVIEWS_ENABLED);
 
 // Validacao dos valores vindos da URL (entrada nao confiavel): so aceita o que existe.
 const isSortId = (v: string | null): v is SortId => v != null && SORT_IDS.includes(v as SortId);
@@ -171,7 +177,7 @@ export function ColecoesView({
           onChange={(e) => onSort(e.target.value as SortId)}
           aria-label="Ordenar produtos"
         >
-          {SORTS.map((s) => (
+          {VISIBLE_SORTS.map((s) => (
             <option key={s.id} value={s.id}>
               {s.label}
             </option>

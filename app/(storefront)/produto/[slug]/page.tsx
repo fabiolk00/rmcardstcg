@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 
+import { REVIEWS_ENABLED } from "@/lib/config/features";
 import { SITE_NAME, absoluteUrl } from "@/lib/config/site";
 import { finalPriceCents } from "@/lib/data/pricing";
 import { getProductBySlug, getRelatedProducts } from "@/lib/data/products";
@@ -86,7 +87,9 @@ function productJsonLd(product: Product): string {
       itemCondition: "https://schema.org/NewCondition",
     },
   };
-  if (product.reviewCount > 0) {
+  // aggregateRating so quando reviews estao visiveis — nao anunciar nota agregada
+  // de uma feature oculta (evita rich result incoerente com a pagina).
+  if (REVIEWS_ENABLED && product.reviewCount > 0) {
     data.aggregateRating = {
       "@type": "AggregateRating",
       ratingValue: product.rating.toFixed(1),
@@ -105,16 +108,18 @@ export default async function ProdutoPage({ params }: { params: Promise<{ slug: 
 
   // Tudo em paralelo (sem N+1): relacionados, agregado e 1a pagina de aprovadas.
   // O total exibido (Mostrando N de M) vem do groupBy do reviewStats — sem um
-  // count() redundante sobre o mesmo predicado.
+  // count() redundante sobre o mesmo predicado. Com reviews OCULTAS (flag off) nao
+  // toca no dominio de avaliacoes: pula os dois SELECTs.
   const [related, reviewStats, reviews] = await Promise.all([
     getRelatedProducts(product),
-    getReviewStats(product.id),
-    getApprovedReviews(product.id),
+    REVIEWS_ENABLED ? getReviewStats(product.id) : Promise.resolve(null),
+    REVIEWS_ENABLED ? getApprovedReviews(product.id) : Promise.resolve([]),
   ]);
 
   // Gating do formulario: com Clerk ativo, so autenticado avalia; mock-first libera.
+  // So resolve auth() se as reviews estao visiveis (form aparece).
   let canReview = true;
-  if (isClerkConfigured()) {
+  if (REVIEWS_ENABLED && isClerkConfigured()) {
     const { userId } = await auth();
     canReview = Boolean(userId);
   }
@@ -152,11 +157,16 @@ export default async function ProdutoPage({ params }: { params: Promise<{ slug: 
         </section>
       )}
 
-      <ReviewsSummary rating={product.rating} reviewCount={product.reviewCount}>
-        <ReviewStats stats={reviewStats} />
-        <ReviewForm slug={product.slug} canReview={canReview} />
-        <ReviewsList reviews={reviews} total={reviewStats.count} />
-      </ReviewsSummary>
+      {/* Avaliacoes ocultas do frontend em 2026-07-06 (flag NEXT_PUBLIC_REVIEWS_ENABLED).
+          Dados historicos preservados em public.reviews (auditoria). reviewStats e null
+          quando a flag esta off — o guard tambem satisfaz a narrowing do TS. */}
+      {REVIEWS_ENABLED && reviewStats && (
+        <ReviewsSummary rating={product.rating} reviewCount={product.reviewCount}>
+          <ReviewStats stats={reviewStats} />
+          <ReviewForm slug={product.slug} canReview={canReview} />
+          <ReviewsList reviews={reviews} total={reviewStats.count} />
+        </ReviewsSummary>
+      )}
 
       <RelatedProducts products={related} />
 

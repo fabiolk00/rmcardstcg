@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { Product } from "@/lib/data/types";
+import { REVIEWS_ENABLED } from "@/lib/config/features";
 import { finalPriceCents } from "@/lib/data/pricing";
 import { formatBRL } from "@/lib/utils/currency";
 import { AddToCartButton } from "./AddToCartButton";
@@ -32,11 +33,13 @@ export function ProductCard({ product }: { product: Product }) {
           <Link href={href}>{product.name}</Link>
         </h3>
 
-        <div className={styles.rating}>
-          <Stars rating={product.rating} size={13} className={styles.stars} />
-          <span className={styles.ratingValue}>{product.rating.toFixed(1)}</span>
-          <span className={styles.ratingCount}>· {product.reviewCount} avaliações</span>
-        </div>
+        {REVIEWS_ENABLED && (
+          <div className={styles.rating}>
+            <Stars rating={product.rating} size={13} className={styles.stars} />
+            <span className={styles.ratingValue}>{product.rating.toFixed(1)}</span>
+            <span className={styles.ratingCount}>· {product.reviewCount} avaliações</span>
+          </div>
+        )}
 
         <div className={styles.foot}>
           <div className={styles.priceBlock}>

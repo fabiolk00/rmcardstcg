@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useCart } from "@/lib/cart/CartContext";
+import { REVIEWS_ENABLED } from "@/lib/config/features";
 import { finalPriceCents } from "@/lib/data/pricing";
 import type { Product } from "@/lib/data/types";
 import { Icon } from "@/components/ui/Icon";
@@ -44,13 +45,15 @@ export function ProductInfo({ product }: { product: Product }) {
       <div className={styles.cat}>{product.category}</div>
       <h1 className={styles.name}>{product.name}</h1>
 
-      <div className={styles.rating}>
-        <Stars rating={product.rating} size={16} />
-        <span className={styles.ratingValue}>{product.rating.toFixed(1)}</span>
-        <span className={styles.ratingCount}>
-          {product.reviewCount} {product.reviewCount === 1 ? "avaliação" : "avaliações"}
-        </span>
-      </div>
+      {REVIEWS_ENABLED && (
+        <div className={styles.rating}>
+          <Stars rating={product.rating} size={16} />
+          <span className={styles.ratingValue}>{product.rating.toFixed(1)}</span>
+          <span className={styles.ratingCount}>
+            {product.reviewCount} {product.reviewCount === 1 ? "avaliação" : "avaliações"}
+          </span>
+        </div>
+      )}
 
       <div className={styles.priceRow}>
         {hasDiscount && (
