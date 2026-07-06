@@ -1,7 +1,6 @@
 "use server";
 
 import { auth } from "@clerk/nextjs/server";
-import { headers } from "next/headers";
 
 import { DEACTIVATED_ACCOUNT_ERROR, requireActiveUser } from "@/lib/auth/requireActiveUser";
 import { couponDiscountCents, couponErrorMessage } from "@/lib/cart/coupon";
@@ -24,6 +23,7 @@ import { isAsaasConfigured } from "@/lib/services/asaas/config";
 import { createCustomer, createPixCharge, getPixQrCode } from "@/lib/services/asaas/payments";
 import { isClerkConfigured } from "@/lib/services/clerk/config";
 import { sendOrderConfirmationEmail } from "@/lib/services/resend";
+import { clientRateLimitKey } from "@/lib/security/clientKey";
 import { checkRateLimit } from "@/lib/security/rateLimit";
 
 /**
@@ -123,22 +123,6 @@ async function fetchPix(paymentId: string): Promise<CheckoutPix | null> {
   }
 }
 
-/**
- * Chave de rate limit: usuario autenticado quando ha Clerk; senao o IP (best-effort
- * via x-forwarded-for). headers() so existe em escopo de request — fora dele (testes)
- * cai em "anon".
- */
-async function clientKey(userId: string): Promise<string> {
-  if (userId !== "guest") return `u:${userId}`;
-  try {
-    const ip = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim();
-    if (ip) return `ip:${ip}`;
-  } catch {
-    // fora de escopo de request (ex.: teste)
-  }
-  return "anon";
-}
-
 export type CouponPreview =
   | { ok: true; code: string; discountCents: number; finalTotalCents: number }
   | { ok: false; error: string };
@@ -167,7 +151,7 @@ export async function previewCoupon(input: {
   }
   const userId = activeCoupon.userId;
 
-  const limited = await checkRateLimit(`coupon-preview:${await clientKey(userId)}`, {
+  const limited = await checkRateLimit(`coupon-preview:${await clientRateLimitKey(userId)}`, {
     limit: 20,
     windowMs: 60_000,
   });
@@ -221,7 +205,7 @@ export async function quoteShippingAction(input: {
     const { userId: clerkId } = await auth();
     if (clerkId) userId = clerkId;
   }
-  const limited = await checkRateLimit(`shipping-quote:${await clientKey(userId)}`, {
+  const limited = await checkRateLimit(`shipping-quote:${await clientRateLimitKey(userId)}`, {
     limit: 30,
     windowMs: 60_000,
   });
@@ -308,7 +292,7 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
   // Rate limit DEPOIS do short-circuit idempotente (retries da MESMA checkoutKey ja
   // retornaram acima), p/ nao penalizar reenvio legitimo. Best-effort em memoria;
   // em producao, injete um store compartilhado (ver lib/security/rateLimit).
-  const limited = await checkRateLimit(`checkout:${await clientKey(userId)}`, {
+  const limited = await checkRateLimit(`checkout:${await clientRateLimitKey(userId)}`, {
     limit: 12,
     windowMs: 60_000,
   });

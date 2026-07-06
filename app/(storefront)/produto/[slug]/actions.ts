@@ -1,11 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { headers } from "next/headers";
 
 import { DEACTIVATED_ACCOUNT_ERROR, requireActiveUser } from "@/lib/auth/requireActiveUser";
 import { getProductBySlug } from "@/lib/data/products";
 import { submitReview } from "@/lib/data/reviews";
+import { clientRateLimitKey } from "@/lib/security/clientKey";
 import { checkRateLimit } from "@/lib/security/rateLimit";
 import { sendReviewModerationEmail } from "@/lib/services/resend";
 
@@ -19,17 +19,6 @@ import { sendReviewModerationEmail } from "@/lib/services/resend";
  */
 
 export type SubmitReviewActionResult = { ok: true } | { ok: false; error: string };
-
-async function clientKey(userId: string): Promise<string> {
-  if (userId !== "guest") return `u:${userId}`;
-  try {
-    const ip = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim();
-    if (ip) return `ip:${ip}`;
-  } catch {
-    // fora de escopo de request
-  }
-  return "anon";
-}
 
 export async function submitReviewAction(input: {
   slug: string;
@@ -48,7 +37,7 @@ export async function submitReviewAction(input: {
   }
   const userId = active.userId;
 
-  const limited = await checkRateLimit(`review-submit:${await clientKey(userId)}`, {
+  const limited = await checkRateLimit(`review-submit:${await clientRateLimitKey(userId)}`, {
     limit: 5,
     windowMs: 60_000,
   });

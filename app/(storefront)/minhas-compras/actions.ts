@@ -1,11 +1,10 @@
 "use server";
 
-import { headers } from "next/headers";
-
 import { DEACTIVATED_ACCOUNT_ERROR, requireActiveUser } from "@/lib/auth/requireActiveUser";
 import { getOrderAsaasRefs, getOrderForUser } from "@/lib/data/orders";
 import { isAsaasConfigured } from "@/lib/services/asaas/config";
 import { getPixQrCode } from "@/lib/services/asaas/payments";
+import { clientRateLimitKey } from "@/lib/security/clientKey";
 import { checkRateLimit } from "@/lib/security/rateLimit";
 
 /**
@@ -27,18 +26,6 @@ export type OrderPixResult =
   // erro de fluxo (auth/posse/limite) — mensagem amigavel para a UI.
   | { ok: false; reason: "error"; error: string };
 
-/** Chave de rate limit: usuario quando ha Clerk; senao o IP (best-effort). */
-async function clientKey(userId: string): Promise<string> {
-  if (userId !== "guest") return `u:${userId}`;
-  try {
-    const ip = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim();
-    if (ip) return `ip:${ip}`;
-  } catch {
-    // fora de escopo de request
-  }
-  return "anon";
-}
-
 export async function getOrderPix(orderId: string): Promise<OrderPixResult> {
   // Login + espelho ATIVO (sessao de usuario soft-deleted nao re-deriva PIX).
   const active = await requireActiveUser();
@@ -49,7 +36,7 @@ export async function getOrderPix(orderId: string): Promise<OrderPixResult> {
   }
   const userId = active.userId;
 
-  const limited = await checkRateLimit(`order-pix:${await clientKey(userId)}`, {
+  const limited = await checkRateLimit(`order-pix:${await clientRateLimitKey(userId)}`, {
     limit: 20,
     windowMs: 60_000,
   });
