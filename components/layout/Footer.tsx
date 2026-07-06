@@ -10,9 +10,11 @@ const lojaLinks: { label: string; cat?: string }[] = [
   { label: "Promoções" },
 ];
 
-// Itens institucionais sem pagina propria no MVP: texto, nao link (evita link morto).
-const atendimento = ["Central de ajuda", "Trocas e devoluções", "Política de privacidade"];
-const institucional = ["Sobre nós", "Programa de pontos", "Compre & venda", "Trabalhe conosco"];
+// Paginas legais (rotas em app/(storefront)).
+const atendimento: { label: string; href: string }[] = [
+  { label: "Política de privacidade", href: "/politica-de-privacidade" },
+  { label: "Termos de uso", href: "/termos-de-uso" },
+];
 
 export function Footer() {
   return (
@@ -47,18 +49,9 @@ export function Footer() {
         <div className={styles.col}>
           <h4>Atendimento</h4>
           {atendimento.map((l) => (
-            <span key={l} className={styles.muted}>
-              {l}
-            </span>
-          ))}
-        </div>
-
-        <div className={styles.col}>
-          <h4>RM Cards</h4>
-          {institucional.map((l) => (
-            <span key={l} className={styles.muted}>
-              {l}
-            </span>
+            <Link key={l.href} href={l.href}>
+              {l.label}
+            </Link>
           ))}
         </div>
       </div>
