@@ -667,8 +667,27 @@ export async function updateOrderShippingStatus(
       }
 
       // Cancelar envio libera/repoe estoque (alinhado ao refund do webhook).
+      let paymentAfter = existing.paymentStatus as PaymentStatus;
       if (to === "cancelled") {
         await reconcileStockForPaymentStatus(tx, orderId, "cancelled", existing);
+        // Cancelar o ENVIO de um pedido ainda PENDENTE de pagamento tambem CANCELA o
+        // pagamento na MESMA tx. Sem isto a reserva acaba de ser liberada mas o PIX
+        // segue pagavel: um webhook 'paid' posterior faz a transicao LEGAL
+        // pending->paid, porem o CAS de 'paid' nao acha stock_reserved=true (ja
+        // liberado) e NAO baixa => pedido PAGO sem baixa de estoque, e a unidade
+        // liberada pode ser revendida = oversell. Espelha cancelOrderAndReleaseStock
+        // (cron), que acopla os dois flips: com payment='cancelled' (terminal), o
+        // pending->paid posterior vira invalid_transition e e rejeitado. CAS
+        // WHERE payment_status='pending' para nao sobrescrever um pagamento concorrente
+        // (o row ja esta lockado por este UPDATE, entao um webhook paralelo serializa e
+        // rele 'cancelled' => cancelled->paid invalido).
+        if (existing.paymentStatus === "pending") {
+          const cancelledPayment = await tx.order.updateMany({
+            where: { id: orderId, paymentStatus: "pending" },
+            data: { paymentStatus: "cancelled" },
+          });
+          if (cancelledPayment.count > 0) paymentAfter = "cancelled";
+        }
       }
 
       await writeAuditLog(tx, {
@@ -677,7 +696,7 @@ export async function updateOrderShippingStatus(
         entityType: AuditEntityType.order,
         entityId: String(orderId),
         before: orderAuditSnapshot(existing),
-        after: orderAuditSnapshot({ ...existing, shippingStatus: to }),
+        after: orderAuditSnapshot({ ...existing, shippingStatus: to, paymentStatus: paymentAfter }),
         requestId: ctx?.requestId ?? null,
         ip: ctx?.ip ?? null,
       });

@@ -239,8 +239,13 @@ test("pedido.shipping.cancel-reconciles-stock: cancelar pedido pendente estorna 
     );
     expect(ord.rowCount).toBe(1);
     expect(ord.rows[0].shipping_status, "shipping_status deve virar 'cancelled'").toBe("cancelled");
-    // payment_status nao e tocado pela maquina de envio (segue pending).
-    expect(ord.rows[0].payment_status, "payment_status inalterado (pending)").toBe("pending");
+    // Cancelar o envio de um pedido PENDENTE tambem cancela o pagamento na MESMA tx
+    // (acopla os dois flips, como cancelOrderAndReleaseStock) — fecha o oversell
+    // "pago sem baixa" que um pending->paid posterior causaria (ver
+    // shipping-cancel-blocks-late-pay.spec.ts).
+    expect(ord.rows[0].payment_status, "payment_status cancelado junto com o envio").toBe(
+      "cancelled",
+    );
 
     // --- assert 2: conciliacao de estoque (estorno). releaseStock aplicado:
     //     products.reserved -= QTY; products.stock INTOCADO; Order.stockReserved=false.
@@ -310,21 +315,23 @@ test("pedido.shipping.cancel-reconciles-stock: cancelar pedido pendente estorna 
     expect(a.entity_type).toBe("order");
     expect(a.entity_id).toBe(entityId);
 
-    // before/after sao snapshots do dominio (camelCase). before.shippingStatus=pending,
-    // after.shippingStatus=cancelled; paymentStatus identico nos dois (delta limpo: so
-    // o envio mudou — a conciliacao de estoque nao altera payment_status).
+    // before/after sao snapshots do dominio (camelCase). before: shipping=pending,
+    // payment=pending; after: shipping=cancelled, payment=cancelled — cancelar o envio
+    // de um pedido pendente acopla o cancelamento do pagamento na MESMA tx, entao o
+    // snapshot after reflete os DOIS flips.
     expect(a.before, "before deve ser snapshot (nao-null)").toBeTruthy();
     expect(a.after, "after deve ser snapshot (nao-null)").toBeTruthy();
     expect(a.before!.shippingStatus, "before.shippingStatus deve refletir 'pending'").toBe(
       "pending",
     );
+    expect(a.before!.paymentStatus, "before.paymentStatus deve refletir 'pending'").toBe("pending");
     expect(a.after!.shippingStatus, "after.shippingStatus deve refletir 'cancelled'").toBe(
       "cancelled",
     );
     expect(
       a.after!.paymentStatus,
-      "paymentStatus identico nos dois snapshots (so envio mudou)",
-    ).toBe(a.before!.paymentStatus);
+      "after.paymentStatus deve refletir 'cancelled' (acoplado ao cancelamento do envio)",
+    ).toBe("cancelled");
   } finally {
     await client.end();
   }
