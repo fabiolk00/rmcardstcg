@@ -307,6 +307,28 @@ model WebhookEvent {
   @@map("webhook_events")
 }
 
+model RateLimitHit {
+  // Contador de JANELA FIXA do RateLimitStore COMPARTILHADO (injetado no boot em
+  // prod via setRateLimitStore, ver instrumentation.ts). Uma linha por
+  // (key, window_start): cada hit e um UPSERT atomico
+  // (INSERT .. ON CONFLICT DO UPDATE hit_count+1 RETURNING) — 1 round-trip; os
+  // incrementos seguintes sao HOT updates (hit_count NAO e indexado). NAO e dado
+  // de dominio (sem *Cents). Podado por pg_cron em prod (funcao/agendamento vivem
+  // SO na migration 20260706120000). `prisma db push` materializa tabela + PK
+  // composta + indice de expiresAt; o CHECK(hit_count>=1) vai no
+  // test-schema-supplement.sql, e fillfactor/autovacuum ficam SO na migration
+  // (push nao expressa CHECK nem storage params). A @@id composta e exatamente o
+  // alvo do ON CONFLICT do upsert.
+  key         String   @db.Text
+  windowStart DateTime @map("window_start") @db.Timestamptz(6)
+  hitCount    Int      @default(1) @map("hit_count")
+  expiresAt   DateTime @map("expires_at") @db.Timestamptz(6)
+
+  @@id([key, windowStart])
+  @@index([expiresAt])
+  @@map("rate_limit_hits")
+}
+
 model Coupon {
   // Cupom de desconto. type='percent' usa percentOff; type='fixed' usa valueCents
   // (CHECK no DB garante a coerencia). code e unico case-insensitive (indice em

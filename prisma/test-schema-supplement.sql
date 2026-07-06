@@ -60,3 +60,10 @@ ALTER TABLE "coupon_redemptions" ADD  CONSTRAINT "coupon_redemptions_discount_ce
 -- source: prisma/migrations/20260615130000_add_reviews/migration.sql
 ALTER TABLE "reviews" DROP CONSTRAINT IF EXISTS "reviews_rating_chk";
 ALTER TABLE "reviews" ADD  CONSTRAINT "reviews_rating_chk" CHECK ("rating" BETWEEN 1 AND 5);
+
+-- == rate_limit_hits: contador de janela positivo (CHECK que o push omite) =====
+-- source: prisma/migrations/20260706120000_add_rate_limit_hits/migration.sql
+-- (NAO inclui pg_cron nem storage params — o PG efemero nao tem pg_cron e vive
+--  segundos; ambos ficam so na migration.)
+ALTER TABLE "rate_limit_hits" DROP CONSTRAINT IF EXISTS "rate_limit_hits_hit_count_pos_chk";
+ALTER TABLE "rate_limit_hits" ADD  CONSTRAINT "rate_limit_hits_hit_count_pos_chk" CHECK ("hit_count" >= 1);
