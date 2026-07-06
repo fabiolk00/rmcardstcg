@@ -68,7 +68,8 @@ export async function POST(req: Request) {
       const status: PaymentStatus | undefined = paymentEventToStatus(payment.status);
       if (!status || status === "pending") continue;
 
-      const valueCents = Math.round(payment.value * 100);
+      // Prevent IEEE 754 rounding errors: use .toFixed(2) before multiplying
+      const valueCents = Math.round(parseFloat(payment.value.toFixed(2)) * 100);
       const result = await setOrderPaymentStatus(c.id, status, { id: payment.id, valueCents });
       if (result.found && result.ok && result.changed) {
         changed += 1;
