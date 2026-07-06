@@ -145,8 +145,9 @@ export function AdminUsersView({
           <tbody>
             {paged.map((u) => {
               const isSelf = currentClerkUserId !== null && u.clerkUserId === currentClerkUserId;
+              const isAdmin = u.role === "admin";
               return (
-                <tr key={u.id}>
+                <tr key={u.id} className={isAdmin ? styles.adminRow : undefined}>
                   <td className={`${styles.left} ${styles.email}`}>
                     {u.email}
                     {isSelf && <span className={styles.youTag}>Você</span>}
@@ -166,7 +167,11 @@ export function AdminUsersView({
                         <button
                           key={r.value}
                           type="button"
-                          className={u.role === r.value ? styles.segOn : ""}
+                          className={
+                            u.role === r.value
+                              ? `${styles.segOn} ${r.value === "admin" ? styles.segOnAdmin : ""}`
+                              : ""
+                          }
                           onClick={() => handleSetRole(u, r.value)}
                           disabled={pending || isSelf}
                           aria-pressed={u.role === r.value}
