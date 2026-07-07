@@ -844,21 +844,160 @@
 }
 
 /* ===========================================================================
-   Responsivo — em ≤880px empilha numa coluna e OCULTA o palco inteiro
-   (personagens + efeitos + pokébolas): sobra só texto + CTAs + métricas.
+   Responsivo — em ≤880px empilha numa coluna com o TRIO COMPACTO do handoff
+   "Landing Ideias" (artboard 2a, 390px): palco fixo 358×260 entre o parágrafo
+   e os CTAs, só glow + personagens + sombras (pokébolas/órbitas/sparks/efeitos
+   elementais AUSENTES no artboard mobile), flutuação de amplitude menor.
+   A ordem badge → h1 → p → palco → CTAs → métricas vem de display:contents no
+   .copy + `order` nos itens (o DOM não muda; no desktop nada disso se aplica).
    =========================================================================== */
 @media (max-width: 880px) {
   .grid {
     grid-template-columns: 1fr;
     min-height: 0;
-    gap: var(--space-6);
+    /* Ritmo vertical: o gap interno do .copy (--space-5) vira o gap do grid,
+       já que display:contents dissolve o flex do .copy. */
+    gap: var(--space-5);
     padding-block: var(--space-7);
   }
-  .stats {
-    gap: var(--space-4);
+  .copy {
+    display: contents;
+  }
+  .eyebrow {
+    order: 1;
+  }
+  .title {
+    order: 2;
+    max-width: 520px; /* preserva o cap que era do .copy */
+  }
+  .lede {
+    order: 3;
+    max-width: 520px;
   }
   .stageWrap {
+    order: 4;
+  }
+  .ctas {
+    order: 5;
+  }
+  .stats {
+    order: 6;
+    gap: var(--space-4);
+  }
+
+  /* ----- palco compacto (handoff mobile: 358×260, sem perspective) ----- */
+  .stage {
+    width: min(358px, 100%);
+    height: 260px;
+    perspective: none;
+  }
+  /* Efeitos ausentes no artboard mobile do handoff. */
+  .balls,
+  .halo,
+  .spark,
+  .fx {
     display: none;
+  }
+
+  .glow {
+    top: 46%;
+    width: 260px;
+    height: 260px;
+  }
+
+  .charLeft {
+    bottom: 26px;
+    left: 4px;
+    width: 96px;
+  }
+  .charLeft .art {
+    width: 96px;
+    height: 96px;
+  }
+  .charLeft .img {
+    top: 0;
+    left: 0;
+    width: 96px;
+    height: 96px;
+  }
+  .charLeft .shadow {
+    bottom: -14px;
+    width: 72px;
+    height: 12px;
+    filter: blur(7px);
+  }
+
+  .charCenter {
+    bottom: 40px;
+    width: 200px;
+    z-index: 2;
+  }
+  .charCenter .art {
+    width: 200px;
+    height: 200px;
+  }
+  .charCenter .img {
+    top: 0;
+    left: 0;
+    width: 200px;
+    height: 200px;
+  }
+  .charCenter .shadow {
+    bottom: -20px;
+    width: 140px;
+    height: 16px;
+    filter: blur(9px);
+  }
+
+  .charRight {
+    bottom: 30px;
+    right: 4px;
+    width: 104px;
+  }
+  .charRight .art {
+    width: 104px;
+    height: 104px;
+  }
+  .charRight .img {
+    top: 0;
+    left: 0;
+    width: 104px;
+    height: 104px;
+  }
+  .charRight .shadow {
+    bottom: -14px;
+    width: 78px;
+    height: 12px;
+    filter: blur(7px);
+  }
+
+  /* Flutuação suavizada do handoff mobile (sem rotação, amplitude menor);
+     durações/delays herdam do desktop (6.4s/5.8s/7s · 0.4s/0s/1.1s). */
+  .charLeft .bob,
+  .charRight .bob {
+    animation-name: rm-bob-sm;
+  }
+  .charCenter .bob {
+    animation-name: rm-bob-2-sm;
+  }
+}
+
+@keyframes rm-bob-sm {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-12px);
+  }
+}
+@keyframes rm-bob-2-sm {
+  0%,
+  100% {
+    transform: translateY(-4px);
+  }
+  50% {
+    transform: translateY(-16px);
   }
 }
 

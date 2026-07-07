@@ -114,7 +114,8 @@ export function HeroPokemon({ motion = "equilibrado", characters }: HeroPokemonP
           </div>
         </div>
 
-        {/* ===== Coluna direita: palco animado (decorativo, oculto em ≤880px) ===== */}
+        {/* ===== Coluna direita: palco animado (decorativo; em ≤880px vira o trio
+            compacto do handoff — pokébolas/órbitas/efeitos somem via CSS) ===== */}
         <div className={styles.stageWrap} aria-hidden="true">
           <div className={styles.stage}>
             {/* pokébolas caindo do céu, atrás de tudo */}
