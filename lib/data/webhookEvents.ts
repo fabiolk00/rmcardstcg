@@ -14,6 +14,12 @@ import { Prisma } from "../generated/prisma/client";
 export const ASAAS_PROVIDER = "asaas";
 /** provider canonico do Clerk. */
 export const CLERK_PROVIDER = "clerk";
+/**
+ * provider dos ALERTAS da reconciliacao. A rejeicao de correlacao no reconcile
+ * (ex.: value_mismatch) reincide a cada ciclo do cron; o ledger deduplica o
+ * alerta admin (1x por (cobranca, motivo)) sem precisar de tabela nova.
+ */
+export const RECONCILE_ALERT_PROVIDER = "reconcile-alert";
 
 export type RecordWebhookEventInput = {
   provider: string;

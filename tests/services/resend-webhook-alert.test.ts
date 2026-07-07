@@ -97,3 +97,49 @@ describe("sendWebhookRejectionAlertEmail — alerta admin mock-first", () => {
     await expect(sendWebhookRejectionAlertEmail(ALERT)).resolves.toBeUndefined();
   });
 });
+
+describe("sendWebhookMissedAlertEmail — webhook perdido detectado pela reconciliacao", () => {
+  const MISSED = { orderId: 7, paymentId: "pay_lost", status: "paid" };
+
+  beforeEach(() => {
+    sendMock.mockClear();
+    sendMock.mockResolvedValue({ error: null });
+    process.env.RESEND_API_KEY = "re_test_key";
+    process.env.RESEND_FROM_EMAIL = "loja@rmcards.test";
+    process.env.ADMIN_EMAILS = "admin1@rmcards.test";
+  });
+
+  afterEach(() => {
+    delete process.env.RESEND_API_KEY;
+    delete process.env.RESEND_FROM_EMAIL;
+    delete process.env.ADMIN_EMAILS;
+    vi.resetModules();
+  });
+
+  it("sem config Resend e no-op (mock-first)", async () => {
+    delete process.env.RESEND_API_KEY;
+    const { sendWebhookMissedAlertEmail } = await importService();
+    await sendWebhookMissedAlertEmail(MISSED);
+    expect(sendMock).not.toHaveBeenCalled();
+  });
+
+  it("configurado: envia com pedido, cobranca e status aplicado", async () => {
+    const { sendWebhookMissedAlertEmail } = await importService();
+    await sendWebhookMissedAlertEmail(MISSED);
+
+    expect(sendMock).toHaveBeenCalledTimes(1);
+    const [payload] = sendMock.mock.calls[0] as unknown as [
+      { to: string[]; subject: string; text: string },
+    ];
+    expect(payload.to).toEqual(["admin1@rmcards.test"]);
+    expect(payload.subject).toContain("pedido #7");
+    expect(payload.text).toContain("pay_lost");
+    expect(payload.text).toContain('"paid"');
+  });
+
+  it("erro do Resend e engolido — a promise resolve", async () => {
+    sendMock.mockRejectedValueOnce(new Error("boom"));
+    const { sendWebhookMissedAlertEmail } = await importService();
+    await expect(sendWebhookMissedAlertEmail(MISSED)).resolves.toBeUndefined();
+  });
+});

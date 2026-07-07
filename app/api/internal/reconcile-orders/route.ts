@@ -2,12 +2,22 @@ import { timingSafeEqual } from "node:crypto";
 
 import { NextResponse } from "next/server";
 
+import { prisma } from "@/lib/db";
 import { setOrderPaymentStatus } from "@/lib/data/orders";
 import { getPendingOrdersForReconciliation } from "@/lib/data/reconciliation";
 import type { PaymentStatus } from "@/lib/data/types";
+import {
+  RECONCILE_ALERT_PROVIDER,
+  markWebhookEventProcessed,
+  recordWebhookEvent,
+} from "@/lib/data/webhookEvents";
 import { isAsaasConfigured } from "@/lib/services/asaas/config";
 import { getPayment, paymentEventToStatus } from "@/lib/services/asaas/payments";
-import { sendPaymentConfirmationEmail } from "@/lib/services/resend";
+import {
+  sendPaymentConfirmationEmail,
+  sendWebhookMissedAlertEmail,
+  sendWebhookRejectionAlertEmail,
+} from "@/lib/services/resend";
 
 // Prisma (driver adapter pg) exige runtime Node — nunca Edge.
 export const runtime = "nodejs";
@@ -73,6 +83,18 @@ export async function POST(req: Request) {
       const result = await setOrderPaymentStatus(c.id, status, { id: payment.id, valueCents });
       if (result.found && result.ok && result.changed) {
         changed += 1;
+        // O pedido ficou pending >30min com status terminal no Asaas: o webhook
+        // foi perdido/atrasado. Corrigimos aqui, mas o admin precisa investigar a
+        // causa (fila pausada, URL/token). 1 alerta por pedido — estados terminais
+        // nao reincidem. try/catch: e-mail nunca derruba o lote.
+        try {
+          await sendWebhookMissedAlertEmail({ orderId: c.id, paymentId: payment.id, status });
+        } catch (mailErr) {
+          console.error(
+            "[reconcile] falha ao alertar webhook perdido:",
+            mailErr instanceof Error ? mailErr.message : mailErr,
+          );
+        }
         // Espelha o efeito do webhook: e-mail de confirmacao em pagamento novo.
         // setOrderPaymentStatus ja devolve o pedido completo (mesma leitura),
         // sem getOrderById extra.
@@ -85,6 +107,36 @@ export async function POST(req: Request) {
               mailErr instanceof Error ? mailErr.message : mailErr,
             );
           }
+        }
+      } else if (result.found && !result.ok) {
+        // Rejeicao de correlacao na reconciliacao (ex.: value_mismatch): o pedido
+        // continua pending e este ramo REINCIDE a cada ciclo do cron — o ledger
+        // webhook_events (provider proprio) deduplica o alerta para 1x por
+        // (cobranca, motivo). O warn continua a cada ciclo, de proposito.
+        console.warn(
+          `[reconcile] pedido #${c.id} rejeitado pela verificacao: ${result.reason}.`,
+        );
+        const alertId = `${payment.id}|${result.reason}`;
+        const { firstTime } = await recordWebhookEvent(prisma, {
+          provider: RECONCILE_ALERT_PROVIDER,
+          eventId: alertId,
+          type: "rejection_alert",
+        });
+        if (firstTime) {
+          try {
+            await sendWebhookRejectionAlertEmail({
+              orderId: c.id,
+              paymentId: payment.id,
+              event: "RECONCILE",
+              reason: result.reason,
+            });
+          } catch (mailErr) {
+            console.error(
+              "[reconcile] falha ao alertar rejeicao:",
+              mailErr instanceof Error ? mailErr.message : mailErr,
+            );
+          }
+          await markWebhookEventProcessed(prisma, RECONCILE_ALERT_PROVIDER, alertId);
         }
       }
     } catch (err) {

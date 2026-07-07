@@ -146,3 +146,49 @@ export async function sendWebhookRejectionAlertEmail(input: WebhookRejectionAler
     );
   }
 }
+
+/**
+ * Alerta o(s) admin(s) quando a RECONCILIACAO corrige um pedido que o webhook
+ * deveria ter atualizado: o pedido ficou 'pending' por mais de 30min enquanto o
+ * Asaas ja tinha status terminal — o webhook foi perdido ou esta atrasado
+ * (fila pausada, URL/token errados, outage). O pedido em si foi corrigido; o
+ * alerta e para investigar a CAUSA antes que outros webhooks se percam.
+ *
+ * 1 alerta por pedido: estados de pagamento terminais nao reincidem, entao o
+ * mesmo pedido nunca e "corrigido" duas vezes. Mock-first e tolerante a falha,
+ * como os demais e-mails.
+ */
+export async function sendWebhookMissedAlertEmail(input: {
+  orderId: number;
+  paymentId: string;
+  /** Status aplicado pela reconciliacao (paid | cancelled). */
+  status: string;
+}): Promise<void> {
+  if (!isResendConfigured()) return;
+  const admins = adminRecipients();
+  if (admins.length === 0) return;
+
+  try {
+    const { apiKey, from } = getResendConfig();
+    const { error } = await new Resend(apiKey).emails.send({
+      from,
+      to: admins,
+      subject: `Webhook do Asaas perdido — pedido #${input.orderId} corrigido pela reconciliação`,
+      text:
+        `A reconciliação corrigiu o pedido #${input.orderId} para "${input.status}" ` +
+        `consultando o Asaas diretamente — o webhook desse evento nunca chegou (ou chegou e falhou).\n\n` +
+        `Cobrança (Asaas): ${input.paymentId}\n\n` +
+        `O pedido está correto, mas investigue a causa no painel do Asaas ` +
+        `(Integrações > Webhooks): fila pausada, URL/token incorretos ou instabilidade. ` +
+        `Webhooks perdidos atrasam a confirmação dos próximos pedidos em até 30min.`,
+    });
+    if (error) {
+      console.error("[resend] falha ao alertar webhook perdido:", error.message);
+    }
+  } catch (err) {
+    console.error(
+      "[resend] erro ao alertar webhook perdido:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
