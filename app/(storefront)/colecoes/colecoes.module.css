@@ -57,6 +57,13 @@
   letter-spacing: -0.02em;
 }
 
+/* Estrela da avaliação: dourada como na faixa "Garantia RM Cards" (Manifesto),
+   com respiro entre o número e a estrela. */
+.star {
+  color: var(--gold);
+  margin-left: 4px;
+}
+
 .statL {
   margin-top: 2px;
   font-size: 11.5px;

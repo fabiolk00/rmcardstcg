@@ -66,6 +66,8 @@
 
 .star {
   color: var(--gold);
+  /* Respiro entre o número e a estrela (mesmo espacamento do hero/coleções). */
+  margin-left: 4px;
 }
 
 .statLabel {

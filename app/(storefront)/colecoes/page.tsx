@@ -61,7 +61,12 @@ export default async function ColecoesPage({
             <span className={styles.statL}>Categorias</span>
           </div>
           <div className={styles.stat}>
-            <span className={styles.statV}>{avgRating}★</span>
+            <span className={styles.statV}>
+              {avgRating}
+              <span aria-hidden="true" className={styles.star}>
+                ★
+              </span>
+            </span>
             <span className={styles.statL}>Avaliação média</span>
           </div>
           <div className={styles.stat}>

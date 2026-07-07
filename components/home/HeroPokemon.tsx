@@ -95,7 +95,9 @@ export function HeroPokemon({ motion = "equilibrado", characters }: HeroPokemonP
             <div className={styles.stat}>
               <span className={`${styles.statValue} tnum`}>
                 4.9
-                <span aria-hidden="true">★</span>
+                <span aria-hidden="true" className={styles.star}>
+                  ★
+                </span>
               </span>
               <span className={styles.statLabel}>Avaliação média</span>
             </div>
