@@ -221,6 +221,22 @@ type WebhookReplayArgs = {
   payment: PaymentRef;
   payload?: unknown;
 };
+// SIMULACAO EM VOLUME (op createOrdersBatch): cria N pedidos via
+// createOrderWithReservation de PRODUCAO (checkout real: pedido + itens + reserva
+// atomica na MESMA tx, idempotencia por checkoutKey), SEQUENCIALMENTE em UM unico
+// processo tsx — mesmo racional de moneyPropertyBatch: N spawns de processo nao
+// cabem no timeout do harness; o lote preserva as MESMAS funcoes de producao por
+// pedido. Devolve por pedido so o essencial ({ ok, reused, orderId } | ok:false),
+// p/ a stdout nao inflar com N pedidos completos.
+type CreateOrdersBatchArgs = { orders: CreateOrderInput[] };
+// SIMULACAO EM VOLUME (op processAsaasWebhookBatch): processa N entregas de webhook
+// SEQUENCIALMENTE em UM unico processo, cada uma na SUA prisma.$transaction com o
+// MESMO miolo do route (asaasWebhookTx — record + guard + efeito + mark-processed).
+// failBeforeMark=true injeta a falha transitoria da op processAsaasWebhookFailing
+// naquela entrega (rollback total -> desfecho { failed:true }), permitindo misturar
+// entregas boas, duplicadas e com 500 no MESMO plano de simulacao. Devolve o array
+// de desfechos na ordem das entregas.
+type WebhookBatchArgs = { deliveries: (WebhookReplayArgs & { failBeforeMark?: boolean })[] };
 // Espelha O MESMO CORACAO DO HANDLER de webhook do Asaas (route.ts L136-156) PORÉM
 // com uma FALHA TRANSITORIA injetada DENTRO da prisma.$transaction, APOS o efeito de
 // estoque (applyPaymentStatusTx) mas ANTES de markWebhookEventProcessed. Isto modela
@@ -381,6 +397,44 @@ class TransientWebhookFailure extends Error {
     this.name = "TransientWebhookFailure";
     this.result = { failed: true };
   }
+}
+
+/**
+ * MIOLO COMPARTILHADO do handler de webhook do Asaas (route.ts L136-156), usado
+ * pelas ops processAsaasWebhook, processAsaasWebhookFailing e
+ * processAsaasWebhookBatch: UMA prisma.$transaction com record + guard de
+ * idempotencia + applyPaymentStatusTx + mark-processed (funcoes de PRODUCAO, sem
+ * mock). failBeforeMark=true lanca TransientWebhookFailure APOS o efeito e ANTES
+ * do mark-processed (rollback total — o 500 transitorio do route).
+ */
+async function asaasWebhookTx(
+  wh: WebhookReplayArgs,
+  failBeforeMark: boolean,
+): Promise<
+  | { duplicate: true }
+  | { duplicate: false; result: Awaited<ReturnType<typeof applyPaymentStatusTx>> }
+> {
+  return prisma.$transaction(
+    async (tx) => {
+      const { firstTime } = await recordWebhookEvent(tx, {
+        provider: ASAAS_PROVIDER,
+        eventId: wh.eventId,
+        type: wh.type,
+        payload: (wh.payload ?? null) as never,
+      });
+      if (!firstTime && (await isWebhookEventProcessed(tx, ASAAS_PROVIDER, wh.eventId))) {
+        return { duplicate: true as const };
+      }
+      const applied = await applyPaymentStatusTx(tx, wh.orderId, wh.status, wh.payment);
+      if (failBeforeMark) {
+        // Falha transitoria ANTES do mark-processed -> rollback de TUDO (500 do route).
+        throw new TransientWebhookFailure();
+      }
+      await markWebhookEventProcessed(tx, ASAAS_PROVIDER, wh.eventId);
+      return { duplicate: false as const, result: applied };
+    },
+    { timeout: 15000, maxWait: 5000 },
+  );
 }
 
 async function main(): Promise<void> {
@@ -636,23 +690,7 @@ async function main(): Promise<void> {
         // ramo que decide entre no-op (duplicate) e processar. As funcoes sao de
         // PRODUCAO, sem mock. Devolve o MESMO `outcome` do route.
         const wh = payload as WebhookReplayArgs;
-        result = await prisma.$transaction(
-          async (tx) => {
-            const { firstTime } = await recordWebhookEvent(tx, {
-              provider: ASAAS_PROVIDER,
-              eventId: wh.eventId,
-              type: wh.type,
-              payload: (wh.payload ?? null) as never,
-            });
-            if (!firstTime && (await isWebhookEventProcessed(tx, ASAAS_PROVIDER, wh.eventId))) {
-              return { duplicate: true as const };
-            }
-            const applied = await applyPaymentStatusTx(tx, wh.orderId, wh.status, wh.payment);
-            await markWebhookEventProcessed(tx, ASAAS_PROVIDER, wh.eventId);
-            return { duplicate: false as const, result: applied };
-          },
-          { timeout: 15000, maxWait: 5000 },
-        );
+        result = await asaasWebhookTx(wh, false);
         break;
       }
       case "processAsaasWebhookFailing": {
@@ -666,23 +704,47 @@ async function main(): Promise<void> {
         // chamadas de PRODUCAO sao identicas a processAsaasWebhook (sem mock); so o throw
         // (falha de infra simulada) e adicional.
         const wh = payload as WebhookTransientFailArgs;
-        result = await prisma.$transaction(
-          async (tx) => {
-            const { firstTime } = await recordWebhookEvent(tx, {
-              provider: ASAAS_PROVIDER,
-              eventId: wh.eventId,
-              type: wh.type,
-              payload: (wh.payload ?? null) as never,
-            });
-            if (!firstTime && (await isWebhookEventProcessed(tx, ASAAS_PROVIDER, wh.eventId))) {
-              return { duplicate: true as const };
+        result = await asaasWebhookTx(wh, true);
+        break;
+      }
+      case "createOrdersBatch": {
+        // Lote de checkouts de PRODUCAO em UM processo (ver CreateOrdersBatchArgs):
+        // cada pedido roda a MESMA createOrderWithReservation do checkout, na sua
+        // propria transacao. Sem estoque -> { ok:false } naquele item do lote (nao
+        // derruba os demais). Devolve so o essencial p/ a spec correlacionar.
+        const { orders } = payload as CreateOrdersBatchArgs;
+        const created: unknown[] = [];
+        for (const input of orders) {
+          const r = await createOrderWithReservation(input);
+          created.push(
+            r.ok
+              ? // Order.id do dominio e "#<n>" (toOrder); o lote devolve o id NUMERICO da linha.
+                { ok: true, reused: r.reused, orderId: Number(r.order.id.replace(/\D/g, "")) }
+              : { ok: false, reason: r.reason, productId: r.productId },
+          );
+        }
+        result = created;
+        break;
+      }
+      case "processAsaasWebhookBatch": {
+        // Lote de entregas de webhook em UM processo (ver WebhookBatchArgs): cada
+        // entrega roda o MESMO miolo do route (asaasWebhookTx) na sua propria
+        // transacao; failBeforeMark injeta o 500 transitorio SO naquela entrega
+        // ({ failed:true } apos o rollback), sem derrubar o lote.
+        const { deliveries } = payload as WebhookBatchArgs;
+        const outcomes: unknown[] = [];
+        for (const d of deliveries) {
+          try {
+            outcomes.push(await asaasWebhookTx(d, Boolean(d.failBeforeMark)));
+          } catch (err) {
+            if (err instanceof TransientWebhookFailure) {
+              outcomes.push(err.result);
+            } else {
+              throw err;
             }
-            await applyPaymentStatusTx(tx, wh.orderId, wh.status, wh.payment);
-            // Falha transitoria ANTES do mark-processed -> rollback de TUDO (500 do route).
-            throw new TransientWebhookFailure();
-          },
-          { timeout: 15000, maxWait: 5000 },
-        );
+          }
+        }
+        result = outcomes;
         break;
       }
       case "updateOrderShippingStatus": {
