@@ -11,7 +11,10 @@ import {
   markWebhookEventProcessed,
   recordWebhookEvent,
 } from "@/lib/data/webhookEvents";
-import { sendPaymentConfirmationEmail } from "@/lib/services/resend";
+import {
+  sendPaymentConfirmationEmail,
+  sendWebhookRejectionAlertEmail,
+} from "@/lib/services/resend";
 
 // Prisma (driver adapter pg) exige runtime Node — nunca Edge.
 export const runtime = "nodejs";
@@ -166,12 +169,43 @@ export async function POST(req: Request) {
     const { result } = outcome;
     if (!result.found) {
       console.warn(`[asaas-webhook] pedido #${orderId} nao encontrado (evento ${event}).`);
+      // Alerta admin FORA da transacao: o evento foi confirmado/deduplicado, o
+      // Asaas nao reenvia — sem alerta a cobranca orfa some no console.warn.
+      // try/catch como no e-mail de confirmacao: alerta nunca vira 500/reenvio.
+      try {
+        await sendWebhookRejectionAlertEmail({
+          orderId: null,
+          paymentId,
+          event: event ?? "",
+          reason: "order_not_found",
+        });
+      } catch (mailErr) {
+        console.error(
+          "[asaas-webhook] falha ao alertar rejeicao:",
+          mailErr instanceof Error ? mailErr.message : mailErr,
+        );
+      }
       return NextResponse.json({ received: true, matched: false });
     }
     if (!result.ok) {
       console.warn(
         `[asaas-webhook] evento ${event} rejeitado p/ pedido #${orderId}: ${result.reason}.`,
       );
+      // Idem: rejeicao de correlacao (valor/cobranca/transicao) e terminal para
+      // este evento; o admin precisa saber que o pedido pode ter ficado 'pending'.
+      try {
+        await sendWebhookRejectionAlertEmail({
+          orderId,
+          paymentId,
+          event: event ?? "",
+          reason: result.reason,
+        });
+      } catch (mailErr) {
+        console.error(
+          "[asaas-webhook] falha ao alertar rejeicao:",
+          mailErr instanceof Error ? mailErr.message : mailErr,
+        );
+      }
       return NextResponse.json({ received: true, verified: false });
     }
     if (!result.changed) {

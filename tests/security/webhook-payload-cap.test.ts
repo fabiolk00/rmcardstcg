@@ -18,6 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // trocamos o servico por um stub no-op — mantendo a coleta sem DB nem React.
 vi.mock("@/lib/services/resend", () => ({
   sendPaymentConfirmationEmail: vi.fn(async () => {}),
+  sendWebhookRejectionAlertEmail: vi.fn(async () => {}),
 }));
 
 const TOKEN = "test-asaas-webhook-token";
