@@ -33,6 +33,7 @@
  * vencem o .env (pk_live, travada no dominio de producao).
  */
 import { spawnSync } from "node:child_process";
+import { rmSync } from "node:fs";
 
 import { startEphemeralPostgres } from "../tests/helpers/ephemeral-pg";
 
@@ -66,6 +67,14 @@ async function main(): Promise<number> {
     console.log("[harness] seed (prisma/seed.ts)...");
     code = run("pnpm", ["tsx", "prisma/seed.ts"]);
     if (code !== 0) return code;
+
+    // Rodada interrompida (Ctrl+C / kill no meio do next dev) pode deixar o cache
+    // .next corrompido — o webServer seguinte morre com "Cannot find module
+    // '@clerk/nextjs'" e estoura o timeout de 120s. Limpar ANTES de subir garante
+    // boot reproduzivel ao custo de um rebuild do dev (~10-20s). Nao rode o
+    // harness com um `next dev` de desenvolvimento aberto: ambos usam .next.
+    console.log("[harness] limpando .next (cache pode estar corrompido de run interrompido)...");
+    rmSync(".next", { recursive: true, force: true });
 
     const passthrough = process.argv.slice(2);
     console.log(`[harness] playwright test (config harness) ${passthrough.join(" ")}...`);
