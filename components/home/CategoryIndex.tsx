@@ -1,12 +1,14 @@
 import Link from "next/link";
+import Image from "next/image";
 import { HOME_CATEGORIES, collectionHref } from "@/lib/data/homeCategories";
 import { Icon } from "@/components/ui/Icon";
 import styles from "./CategoryIndex.module.css";
 
-// Índice editorial de categorias (handoff "Landing Ideias"). Grade assimétrica no
-// desktop (cards 01/04 ocupam 2 colunas), 2×2 no tablet e carrossel horizontal no
-// mobile. Cada card leva ao catálogo filtrado pela categoria real (?cat=), então o
-// filtro de /colecoes continua funcionando — nossa funcionalidade sobre o layout novo.
+// Índice editorial de categorias (handoff "Landing Ideias", visual 1c: arte oficial
+// de Pokémon colorida como marca d'água). Grade assimétrica no desktop (cards 01/04
+// ocupam 2 colunas), 2×2 no tablet e carrossel horizontal no mobile. Cada card leva
+// ao catálogo filtrado pela categoria real (?cat=), então o filtro de /colecoes
+// continua funcionando — nossa funcionalidade sobre o layout novo.
 export function CategoryIndex() {
   return (
     <section className={styles.section} aria-labelledby="categorias-heading">
@@ -25,9 +27,14 @@ export function CategoryIndex() {
               href={collectionHref(c.category)}
               className={`${styles.card} ${c.wide ? styles.wide : ""}`}
             >
-              <span className={styles.bgIcon} aria-hidden="true">
-                <Icon name={c.icon} size={c.wide ? 210 : 180} />
-              </span>
+              <Image
+                src={c.art}
+                alt=""
+                width={230}
+                height={230}
+                className={styles.art}
+                aria-hidden="true"
+              />
 
               <span className={styles.cardTop}>
                 <span className={styles.tile}>

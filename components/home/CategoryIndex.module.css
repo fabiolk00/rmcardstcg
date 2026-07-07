@@ -71,16 +71,20 @@
   grid-column: span 2;
 }
 
-/* Ícone gigante decorativo, sangrando pelo canto inferior direito do card. */
-.bgIcon {
+/* Arte colorida como marca d'água, sangrando pelo canto inferior direito do card. */
+.art {
   position: absolute;
   right: -32px;
   bottom: -36px;
-  color: var(--border);
+  width: 230px;
+  height: 230px;
+  object-fit: contain;
   pointer-events: none;
 }
 
-.card:not(.wide) .bgIcon {
+.card:not(.wide) .art {
+  width: 200px;
+  height: 200px;
   right: -28px;
   bottom: -32px;
 }
@@ -159,9 +163,12 @@
     width: 24px;
     height: 24px;
   }
-  .bgIcon svg {
-    width: 160px;
-    height: 160px;
+  .art,
+  .card:not(.wide) .art {
+    width: 175px;
+    height: 175px;
+    right: -26px;
+    bottom: -30px;
   }
 }
 
@@ -192,8 +199,11 @@
     width: 22px;
     height: 22px;
   }
-  .bgIcon svg {
-    width: 140px;
-    height: 140px;
+  .art,
+  .card:not(.wide) .art {
+    width: 150px;
+    height: 150px;
+    right: -24px;
+    bottom: -28px;
   }
 }

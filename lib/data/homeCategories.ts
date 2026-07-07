@@ -15,6 +15,8 @@ export interface HomeCategory {
   index: string;
   /** Ícone do design system (components/ui/Icon). */
   icon: IconName;
+  /** Arte oficial de Pokémon usada como marca d'água colorida do card. */
+  art: string;
   title: string;
   description: string;
   /** Categoria real do catálogo — alimenta o filtro em /colecoes?cat=. */
@@ -27,6 +29,7 @@ export const HOME_CATEGORIES: readonly HomeCategory[] = [
   {
     index: "01",
     icon: "box",
+    art: "/categories/snorlax.png",
     title: "Booster Boxes",
     description: "Caixas lacradas de 36 packs",
     category: "Booster Box",
@@ -35,6 +38,7 @@ export const HOME_CATEGORIES: readonly HomeCategory[] = [
   {
     index: "02",
     icon: "archive",
+    art: "/categories/gengar.png",
     title: "Elite Trainer Boxes",
     description: "Packs, sleeves e acessórios",
     category: "Elite Trainer Box",
@@ -42,6 +46,7 @@ export const HOME_CATEGORIES: readonly HomeCategory[] = [
   {
     index: "03",
     icon: "card",
+    art: "/categories/mewtwo.png",
     title: "Cartas avulsas",
     description: "Singles raras e promos",
     category: "Single Card",
@@ -49,6 +54,7 @@ export const HOME_CATEGORIES: readonly HomeCategory[] = [
   {
     index: "04",
     icon: "sleeves",
+    art: "/categories/eevee.png",
     title: "Acessórios",
     description: "Sleeves, playmats e deck boxes",
     category: "Acessórios",

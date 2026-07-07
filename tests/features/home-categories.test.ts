@@ -1,3 +1,6 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { HOME_CATEGORIES, collectionHref } from "@/lib/data/homeCategories";
@@ -28,6 +31,16 @@ describe("HOME_CATEGORIES", () => {
   it("não repete categorias entre os cards", () => {
     const cats = HOME_CATEGORIES.map((c) => c.category);
     expect(new Set(cats).size).toBe(cats.length);
+  });
+
+  // A marca d'água colorida só aparece se o PNG existir de fato em public/ — um
+  // path digitado errado (ou asset esquecido no commit) viraria um <img> quebrado
+  // silencioso na home. O teste falha aqui antes.
+  it("toda arte aponta para um PNG que existe em public/", () => {
+    for (const c of HOME_CATEGORIES) {
+      expect(c.art).toMatch(/^\/categories\/[a-z-]+\.png$/);
+      expect(existsSync(join(process.cwd(), "public", c.art))).toBe(true);
+    }
   });
 });
 

@@ -10,7 +10,9 @@ test.beforeEach(async ({ page }, testInfo) => {
   page.on("pageerror", (e) => console.log(`[pageerror][${testInfo.title}] ${e.message}`));
 });
 
-test("home mostra o índice de categorias e o manifesto sobre o nosso header", async ({ page }) => {
+test("home mostra o índice de categorias e o manifesto sobre o nosso header", async ({
+  page,
+}, testInfo) => {
   await page.goto("/");
 
   // NOSSO header foi preservado (Topbar), não o do handoff: o link "Coleções"
@@ -23,6 +25,19 @@ test("home mostra o índice de categorias e o manifesto sobre o nosso header", a
   for (const label of ["Booster Boxes", "Elite Trainer Boxes", "Cartas avulsas", "Acessórios"]) {
     await expect(categorias.getByRole("link", { name: new RegExp(label) })).toBeVisible();
   }
+
+  // Visual 1c do handoff: a marca d'água de cada card é a arte oficial de Pokémon
+  // colorida — 4 imagens realmente decodificadas (naturalWidth > 0), não <img>
+  // quebrado apontando para asset inexistente.
+  const artes = categorias.locator('img[src*="categories"]');
+  await expect(artes).toHaveCount(4);
+  for (const arte of await artes.all()) {
+    expect(
+      await arte.evaluate((el) => (el as HTMLImageElement).naturalWidth),
+      "arte da categoria deve decodificar (naturalWidth > 0)",
+    ).toBeGreaterThan(0);
+  }
+  await categorias.screenshot({ path: testInfo.outputPath("categorias-visual.png") });
 
   // Faixa nova: manifesto em tinta.
   await expect(
