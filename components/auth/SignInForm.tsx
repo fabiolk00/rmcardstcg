@@ -75,7 +75,12 @@ export function SignInForm({ redirectUrl }: { redirectUrl: string }) {
       return;
     }
     // needs_second_factor / needs_client_trust / etc.: este app nao tem UI de MFA.
-    setError("Sua conta exige uma verificação extra que ainda não está disponível por aqui. Fale com o suporte.");
+    // Log TEMPORARIO de diagnostico — remover apos decidir A (desligar no Clerk) ou
+    // B (construir UI de 2o fator). Distingue qual verificacao a instancia exige.
+    console.log("[signIn] status que bloqueia o login:", signIn.status);
+    setError(
+      `Sua conta exige uma verificação extra (${signIn.status}) que ainda não está disponível por aqui. Fale com o suporte.`,
+    );
     setBusy(false);
   }
 
