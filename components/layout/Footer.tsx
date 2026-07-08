@@ -58,7 +58,7 @@ export function Footer() {
 
       <div className={`container ${styles.bottom}`}>
         <span>© 2026 RM Cards · Pokémon TCG</span>
-        <span>Pagamentos · PIX · Visa · Master · Boleto</span>
+        <span>Pagamentos · PIX · Cartão</span>
       </div>
     </footer>
   );

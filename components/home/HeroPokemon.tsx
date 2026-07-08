@@ -103,7 +103,7 @@ export function HeroPokemon({ motion = "equilibrado", characters }: HeroPokemonP
             </div>
             <span className={styles.statDivider} aria-hidden="true" />
             <div className={styles.stat}>
-              <span className={`${styles.statValue} tnum`}>48h</span>
+              <span className={`${styles.statValue} tnum`}>24h</span>
               <span className={styles.statLabel}>Envio médio</span>
             </div>
             <span className={styles.statDivider} aria-hidden="true" />

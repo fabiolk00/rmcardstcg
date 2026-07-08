@@ -70,7 +70,7 @@ export default async function ColecoesPage({
             <span className={styles.statL}>Avaliação média</span>
           </div>
           <div className={styles.stat}>
-            <span className={styles.statV}>48h</span>
+            <span className={styles.statV}>24h</span>
             <span className={styles.statL}>Entrega expressa</span>
           </div>
         </div>

@@ -7,7 +7,7 @@ import styles from "./Manifesto.module.css";
 // métricas + CTA para o catálogo. Full-bleed, encosta no rodapé (ver page.module.css).
 const STATS: { value: string; star?: boolean; label: string }[] = [
   { value: "4.9", star: true, label: "Avaliação média" },
-  { value: "48h", label: "Envio médio" },
+  { value: "24h", label: "Envio médio" },
   { value: "100%", label: "Originais lacradas" },
 ];
 

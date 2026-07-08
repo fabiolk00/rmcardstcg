@@ -34,12 +34,17 @@ export function SignInForm({ redirectUrl }: { redirectUrl: string }) {
     if (!ready) return;
     setError("");
     setBusy(true);
-    const { error: err } = await signIn.sso({
-      strategy: "oauth_google",
-      redirectUrl,
-      redirectCallbackUrl: `${window.location.origin}/sso-callback`,
-    });
-    if (err) {
+    try {
+      const { error: err } = await signIn.sso({
+        strategy: "oauth_google",
+        redirectUrl,
+        redirectCallbackUrl: `${window.location.origin}/sso-callback`,
+      });
+      if (err) {
+        setError(clerkError(err));
+        setBusy(false);
+      }
+    } catch (err) {
       setError(clerkError(err));
       setBusy(false);
     }
@@ -50,15 +55,22 @@ export function SignInForm({ redirectUrl }: { redirectUrl: string }) {
     if (!ready) return;
     setError("");
     setBusy(true);
-    const { error: err } = await signIn.password({ identifier: email, password });
-    if (err) {
+    try {
+      const { error: err } = await signIn.password({ identifier: email, password });
+      if (err) {
+        setError(clerkError(err));
+        setBusy(false);
+        return;
+      }
+      const { error: finErr } = await signIn.finalize({ navigate: () => router.push(redirectUrl) });
+      if (finErr) {
+        setError(clerkError(finErr));
+        setBusy(false);
+      }
+    } catch (err) {
+      // Sem try/catch, um throw (ex.: challenge anti-bot sem alvo) deixava o botao
+      // travado em "Entrando..." pra sempre, sem mensagem. Agora sempre solta.
       setError(clerkError(err));
-      setBusy(false);
-      return;
-    }
-    const { error: finErr } = await signIn.finalize({ navigate: () => router.push(redirectUrl) });
-    if (finErr) {
-      setError(clerkError(finErr));
       setBusy(false);
     }
   }
@@ -68,20 +80,25 @@ export function SignInForm({ redirectUrl }: { redirectUrl: string }) {
     if (!ready) return;
     setError("");
     setBusy(true);
-    const created = await signIn.create({ identifier: email });
-    if (created.error) {
-      setError(clerkError(created.error));
+    try {
+      const created = await signIn.create({ identifier: email });
+      if (created.error) {
+        setError(clerkError(created.error));
+        setBusy(false);
+        return;
+      }
+      const sent = await signIn.resetPasswordEmailCode.sendCode();
+      if (sent.error) {
+        setError(clerkError(sent.error));
+        setBusy(false);
+        return;
+      }
       setBusy(false);
-      return;
-    }
-    const sent = await signIn.resetPasswordEmailCode.sendCode();
-    if (sent.error) {
-      setError(clerkError(sent.error));
+      setStep("resetConfirm");
+    } catch (err) {
+      setError(clerkError(err));
       setBusy(false);
-      return;
     }
-    setBusy(false);
-    setStep("resetConfirm");
   }
 
   async function handleResetConfirm(e: React.FormEvent) {
@@ -89,21 +106,26 @@ export function SignInForm({ redirectUrl }: { redirectUrl: string }) {
     if (!ready) return;
     setError("");
     setBusy(true);
-    const verified = await signIn.resetPasswordEmailCode.verifyCode({ code });
-    if (verified.error) {
-      setError(clerkError(verified.error));
-      setBusy(false);
-      return;
-    }
-    const submitted = await signIn.resetPasswordEmailCode.submitPassword({ password: newPassword });
-    if (submitted.error) {
-      setError(clerkError(submitted.error));
-      setBusy(false);
-      return;
-    }
-    const { error: finErr } = await signIn.finalize({ navigate: () => router.push(redirectUrl) });
-    if (finErr) {
-      setError(clerkError(finErr));
+    try {
+      const verified = await signIn.resetPasswordEmailCode.verifyCode({ code });
+      if (verified.error) {
+        setError(clerkError(verified.error));
+        setBusy(false);
+        return;
+      }
+      const submitted = await signIn.resetPasswordEmailCode.submitPassword({ password: newPassword });
+      if (submitted.error) {
+        setError(clerkError(submitted.error));
+        setBusy(false);
+        return;
+      }
+      const { error: finErr } = await signIn.finalize({ navigate: () => router.push(redirectUrl) });
+      if (finErr) {
+        setError(clerkError(finErr));
+        setBusy(false);
+      }
+    } catch (err) {
+      setError(clerkError(err));
       setBusy(false);
     }
   }
@@ -183,6 +205,10 @@ export function SignInForm({ redirectUrl }: { redirectUrl: string }) {
             </div>
           </>
         )}
+
+        {/* Mesmo alvo anti-bot do fluxo de login: signIn.create() (reset) tambem
+            pode disparar o challenge na instancia de producao. */}
+        <div id="clerk-captcha" className={styles.captcha} />
 
         <button className={styles.submit} type="submit" disabled={!ready}>
           {busy ? "Aguarde…" : step === "resetRequest" ? "Enviar código" : "Redefinir senha"}
@@ -271,6 +297,12 @@ export function SignInForm({ redirectUrl }: { redirectUrl: string }) {
       >
         Esqueceu sua senha?
       </button>
+
+      {/* Alvo do Smart CAPTCHA do Clerk (protecao anti-bot). Sem ele, quando a
+          instancia de PRODUCAO dispara o challenge, o signIn.password() fica
+          pendente pra sempre e o botao trava em "Entrando..." (em dev/localhost
+          a protecao e ignorada, por isso so quebra remoto). Espelha o SignUpForm. */}
+      <div id="clerk-captcha" className={styles.captcha} />
 
       <button className={styles.submit} type="submit" disabled={!ready}>
         <Icon name="arrow" size={16} />
