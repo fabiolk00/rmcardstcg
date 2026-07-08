@@ -50,6 +50,35 @@ export function SignInForm({ redirectUrl }: { redirectUrl: string }) {
     }
   }
 
+  // Depois que um fator e verificado sem erro, o signIn.status decide o proximo
+  // passo. finalize() SO funciona com status 'complete' (cria a sessao); chamar
+  // fora disso lanca "cannot finalize sign-in without created session". Este
+  // resolver roteia cada status em vez de finalizar as cegas.
+  async function finishSignIn() {
+    if (signIn.status === "complete") {
+      const { error: finErr } = await signIn.finalize({ navigate: () => router.push(redirectUrl) });
+      if (finErr) {
+        setError(clerkError(finErr));
+        setBusy(false);
+      }
+      return;
+    }
+    // Ja havia uma sessao ativa para esta conta — nao cria outra; segue ao destino.
+    if (signIn.existingSession) {
+      router.push(redirectUrl);
+      return;
+    }
+    if (signIn.status === "needs_new_password") {
+      setStep("resetRequest");
+      setError("Por segurança, redefina sua senha para continuar.");
+      setBusy(false);
+      return;
+    }
+    // needs_second_factor / needs_client_trust / etc.: este app nao tem UI de MFA.
+    setError("Sua conta exige uma verificação extra que ainda não está disponível por aqui. Fale com o suporte.");
+    setBusy(false);
+  }
+
   async function handleSignIn(e: React.FormEvent) {
     e.preventDefault();
     if (!ready) return;
@@ -62,11 +91,7 @@ export function SignInForm({ redirectUrl }: { redirectUrl: string }) {
         setBusy(false);
         return;
       }
-      const { error: finErr } = await signIn.finalize({ navigate: () => router.push(redirectUrl) });
-      if (finErr) {
-        setError(clerkError(finErr));
-        setBusy(false);
-      }
+      await finishSignIn();
     } catch (err) {
       // Sem try/catch, um throw (ex.: challenge anti-bot sem alvo) deixava o botao
       // travado em "Entrando..." pra sempre, sem mensagem. Agora sempre solta.
@@ -119,11 +144,7 @@ export function SignInForm({ redirectUrl }: { redirectUrl: string }) {
         setBusy(false);
         return;
       }
-      const { error: finErr } = await signIn.finalize({ navigate: () => router.push(redirectUrl) });
-      if (finErr) {
-        setError(clerkError(finErr));
-        setBusy(false);
-      }
+      await finishSignIn();
     } catch (err) {
       setError(clerkError(err));
       setBusy(false);
