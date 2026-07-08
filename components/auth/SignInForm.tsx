@@ -9,7 +9,7 @@ import { GoogleIcon } from "./GoogleIcon";
 import { clerkError } from "./clerkError";
 import styles from "./AuthForm.module.css";
 
-type Step = "signIn" | "resetRequest" | "resetConfirm";
+type Step = "signIn" | "resetRequest" | "resetConfirm" | "deviceTrust";
 
 // Fluxo de login custom usando a API de signals do Clerk (useSignIn -> signIn
 // future resource). Senha + Google + "esqueci a senha" (codigo por e-mail -> nova
@@ -24,6 +24,8 @@ export function SignInForm({ redirectUrl }: { redirectUrl: string }) {
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  // Canal do codigo de confirmacao de dispositivo (Client Trust). E-mail por padrao.
+  const [trustChannel, setTrustChannel] = useState<"email" | "phone">("email");
   const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -74,14 +76,59 @@ export function SignInForm({ redirectUrl }: { redirectUrl: string }) {
       setBusy(false);
       return;
     }
-    // needs_second_factor / needs_client_trust / etc.: este app nao tem UI de MFA.
-    // Log TEMPORARIO de diagnostico — remover apos decidir A (desligar no Clerk) ou
-    // B (construir UI de 2o fator). Distingue qual verificacao a instancia exige.
-    console.log("[signIn] status que bloqueia o login:", signIn.status);
-    setError(
-      `Sua conta exige uma verificação extra (${signIn.status}) que ainda não está disponível por aqui. Fale com o suporte.`,
-    );
+    // needs_client_trust (dispositivo novo, ligado por padrao em apps pos-14/11/2025)
+    // e needs_second_factor: o Clerk exige um codigo de verificacao antes de criar a
+    // sessao. Sem este passo o finalize() estourava e o botao travava. Dispara o
+    // codigo e leva o usuario pra tela de confirmacao.
+    if (signIn.status === "needs_client_trust" || signIn.status === "needs_second_factor") {
+      await startDeviceVerification();
+      return;
+    }
+    // needs_identifier / needs_first_factor nao deveriam ocorrer apos senha verificada.
+    setError("Não foi possível concluir o login agora. Tente novamente.");
     setBusy(false);
+  }
+
+  // Envia o codigo de confirmacao de dispositivo pelo fator suportado (e-mail de
+  // preferencia; telefone se for o unico) e abre a tela de confirmacao.
+  async function startDeviceVerification() {
+    const factors = signIn.supportedSecondFactors ?? [];
+    const hasEmail = factors.some((f) => f.strategy === "email_code");
+    const hasPhone = factors.some((f) => f.strategy === "phone_code");
+    const channel: "email" | "phone" = hasEmail || !hasPhone ? "email" : "phone";
+    const sent = channel === "email" ? await signIn.mfa.sendEmailCode() : await signIn.mfa.sendPhoneCode();
+    if (sent.error) {
+      setError(clerkError(sent.error));
+      setBusy(false);
+      return;
+    }
+    setTrustChannel(channel);
+    setCode("");
+    setBusy(false);
+    setStep("deviceTrust");
+  }
+
+  async function handleDeviceTrust(e: React.FormEvent) {
+    e.preventDefault();
+    if (!ready) return;
+    setError("");
+    setBusy(true);
+    try {
+      const verified =
+        trustChannel === "email"
+          ? await signIn.mfa.verifyEmailCode({ code })
+          : await signIn.mfa.verifyPhoneCode({ code });
+      if (verified.error) {
+        setError(clerkError(verified.error));
+        setBusy(false);
+        return;
+      }
+      // Fator confirmado -> status vira 'complete' -> finishSignIn finaliza a sessao.
+      await finishSignIn();
+    } catch (err) {
+      setError(clerkError(err));
+      setBusy(false);
+    }
   }
 
   async function handleSignIn(e: React.FormEvent) {
@@ -154,6 +201,54 @@ export function SignInForm({ redirectUrl }: { redirectUrl: string }) {
       setError(clerkError(err));
       setBusy(false);
     }
+  }
+
+  if (step === "deviceTrust") {
+    return (
+      <form className={styles.form} onSubmit={handleDeviceTrust}>
+        <h1 className={styles.heading}>Confirme este dispositivo</h1>
+        <p className={styles.subheading}>
+          {trustChannel === "email"
+            ? "Enviamos um código para o seu e-mail. Digite-o para concluir o login neste dispositivo."
+            : "Enviamos um código por SMS. Digite-o para concluir o login neste dispositivo."}
+        </p>
+
+        {error && <p className={styles.error}>{error}</p>}
+
+        <div className={styles.field}>
+          <label className={styles.label} htmlFor="trust-code">
+            Código de verificação
+          </label>
+          <input
+            id="trust-code"
+            className={styles.input}
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            placeholder="Digite o código"
+            value={code}
+            onChange={(ev) => setCode(ev.target.value)}
+            required
+          />
+        </div>
+
+        <button className={styles.submit} type="submit" disabled={!ready}>
+          <Icon name="arrow" size={16} />
+          {busy ? "Confirmando…" : "Confirmar e entrar"}
+        </button>
+
+        <button
+          type="button"
+          className={styles.back}
+          onClick={() => {
+            setStep("signIn");
+            setError("");
+            setCode("");
+          }}
+        >
+          Voltar para o login
+        </button>
+      </form>
+    );
   }
 
   if (step === "resetRequest" || step === "resetConfirm") {
