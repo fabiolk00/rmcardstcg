@@ -1,6 +1,7 @@
 import { unstable_cache } from "next/cache";
 
 import { redirectClienteToPainel } from "@/lib/auth/resolveViewer";
+import { FEATURED_AVG_RATING } from "@/lib/config/site";
 import { getActiveProducts } from "@/lib/data/products";
 import { CATEGORIES, type Category } from "@/lib/data/types";
 import { ColecoesView } from "@/components/product/ColecoesView";
@@ -37,11 +38,6 @@ export default async function ColecoesPage({
   const products = await getCachedActiveProducts();
   const initialCategory = resolveCategory(cat);
 
-  const avgRating =
-    products.length > 0
-      ? (products.reduce((sum, p) => sum + p.rating, 0) / products.length).toFixed(1)
-      : "0.0";
-
   return (
     <>
       <section className={styles.hero}>
@@ -62,7 +58,7 @@ export default async function ColecoesPage({
           </div>
           <div className={styles.stat}>
             <span className={styles.statV}>
-              {avgRating}
+              {FEATURED_AVG_RATING}
               <span aria-hidden="true" className={styles.star}>
                 ★
               </span>

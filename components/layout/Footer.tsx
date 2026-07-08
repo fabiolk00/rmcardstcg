@@ -7,7 +7,6 @@ const lojaLinks: { label: string; cat?: string }[] = [
   { label: "Elite Trainer Boxes", cat: "Elite Trainer Box" },
   { label: "Cartas avulsas", cat: "Single Card" },
   { label: "Acessórios", cat: "Acessórios" },
-  { label: "Promoções" },
 ];
 
 // Paginas legais (rotas em app/(storefront)).

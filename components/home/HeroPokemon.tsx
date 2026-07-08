@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Icon } from "@/components/ui/Icon";
+import { FEATURED_AVG_RATING } from "@/lib/config/site";
 import styles from "./HeroPokemon.module.css";
 
 export type HeroMotion = "calmo" | "equilibrado" | "energetico";
@@ -62,15 +63,10 @@ export function HeroPokemon({ motion = "equilibrado", characters }: HeroPokemonP
   };
 
   return (
-    <section className={styles.hero} data-motion={motion} aria-label="Coleção em destaque">
+    <section className={styles.hero} data-motion={motion} aria-label="Banner principal">
       <div className={styles.grid}>
         {/* ===== Coluna esquerda: texto + CTAs + métricas ===== */}
         <div className={styles.copy}>
-          <div className={styles.eyebrow}>
-            <span className={styles.eyebrowDot} aria-hidden="true" />
-            <span className={styles.eyebrowText}>Coleção em destaque · pronta-entrega</span>
-          </div>
-
           <h1 className={styles.title}>{"Gotta collect 'em all."}</h1>
 
           <p className={styles.lede}>
@@ -94,7 +90,7 @@ export function HeroPokemon({ motion = "equilibrado", characters }: HeroPokemonP
           <div className={styles.stats}>
             <div className={styles.stat}>
               <span className={`${styles.statValue} tnum`}>
-                4.9
+                {FEATURED_AVG_RATING}
                 <span aria-hidden="true" className={styles.star}>
                   ★
                 </span>

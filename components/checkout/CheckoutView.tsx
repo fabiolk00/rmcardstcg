@@ -11,6 +11,7 @@ import {
 } from "@/app/(storefront)/carrinho/actions";
 import { useCart } from "@/lib/cart/CartContext";
 import { cartTotals } from "@/lib/cart/totals";
+import { isPaymentButtonDisabled, paymentButtonState } from "@/lib/cart/paymentButton";
 import type { ShippingOption } from "@/lib/services/superfrete/quote";
 import { finalPriceCents } from "@/lib/data/pricing";
 import { formatBRL } from "@/lib/utils/currency";
@@ -136,6 +137,13 @@ export function CheckoutView({ initialCustomer }: { initialCustomer?: Partial<Fo
     shippingForDisplay == null
       ? null
       : Math.max(shippingForDisplay, totals.merchandiseCents + shippingForDisplay - couponDiscount);
+  // Botao de pagar: so libera quando frete calculado E termos aceitos.
+  const btnState = paymentButtonState({
+    submitting,
+    shippingReady,
+    hasTotal: displayTotalCents != null,
+    accepted,
+  });
   const set = (key: keyof Form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm((f) => ({ ...f, [key]: e.target.value }));
 
@@ -362,13 +370,19 @@ export function CheckoutView({ initialCustomer }: { initialCustomer?: Partial<Fo
           </p>
         )}
 
-        <button type="submit" className={styles.submit} disabled={submitting || !shippingReady}>
-          {submitting ? (
+        <button
+          type="submit"
+          className={styles.submit}
+          disabled={isPaymentButtonDisabled(btnState)}
+        >
+          {btnState === "submitting" ? (
             <SpinnerLabel>Gerando PIX…</SpinnerLabel>
-          ) : shippingReady && displayTotalCents != null ? (
-            `Pagar ${formatBRL(displayTotalCents)} via PIX`
-          ) : (
+          ) : btnState === "needShipping" ? (
             "Calcule o frete para continuar"
+          ) : btnState === "needTerms" ? (
+            "Aceite os termos para continuar"
+          ) : (
+            `Pagar ${formatBRL(displayTotalCents ?? 0)} via PIX`
           )}
         </button>
         <Link href="/carrinho" className={styles.back}>
