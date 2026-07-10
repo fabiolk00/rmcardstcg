@@ -1,7 +1,7 @@
 import { currentUser } from "@clerk/nextjs/server";
 
+import { effectiveRole } from "@/lib/auth/effectiveRole";
 import { isClerkConfigured } from "@/lib/services/clerk/config";
-import { isAdminEmail } from "@/lib/services/clerk/roles";
 
 import { Prisma } from "../generated/prisma/client";
 import type { AuditAction, AuditEntityType } from "../generated/prisma/enums";
@@ -40,7 +40,10 @@ export async function getAuditActor(): Promise<AuditActor> {
   }
   const email =
     user.primaryEmailAddress?.emailAddress ?? user.emailAddresses[0]?.emailAddress ?? null;
-  const role = (await getUserRole(user.id)) ?? (isAdminEmail(email) ? "admin" : "cliente");
+  const decision = effectiveRole(await getUserRole(user.id), email);
+  // Ator so precisa saber SE e admin (o guard checa role === 'admin'). "unverified"
+  // vira null (honesto: nao confirmado) — nunca "cliente" fabricado.
+  const role: Role | null = decision.role === "admin" ? "admin" : decision.role === "cliente" ? "cliente" : null;
   return { clerkUserId: user.id, email, role };
 }
 

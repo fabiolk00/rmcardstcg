@@ -1,9 +1,9 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 
+import { effectiveRole } from "@/lib/auth/effectiveRole";
 import { getUserRole, isUserSoftDeleted } from "@/lib/data/users";
 import { isClerkConfigured } from "@/lib/services/clerk/config";
-import { isAdminEmail } from "@/lib/services/clerk/roles";
 
 /**
  * Papel EFETIVO do visitante para roteamento de vitrine -> painel.
@@ -40,7 +40,13 @@ export async function resolveViewer(): Promise<Viewer> {
     const user = await currentUser();
     const email =
       user?.primaryEmailAddress?.emailAddress ?? user?.emailAddresses[0]?.emailAddress ?? null;
-    return isAdminEmail(email) ? { kind: "admin", userId } : { kind: "cliente", userId };
+    const decision = effectiveRole(null, email);
+    if (decision.role === "admin") return { kind: "admin", userId };
+    if (decision.role === "cliente") return { kind: "cliente", userId };
+    // "unverified" (e-mail nao resolveu): trata como anon — a vitrine so redireciona
+    // "cliente" ao painel, entao anon aqui mantem o usuario na vitrine publica sem
+    // colapsar um estado indeterminado num papel confirmado.
+    return { kind: "anon" };
   } catch (err) {
     console.error(
       "[auth] resolveViewer falhou (segue como anon):",

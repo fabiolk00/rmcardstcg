@@ -4,9 +4,9 @@ import { redirect } from "next/navigation";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { AdminProfileCard } from "@/components/admin/AdminProfileCard";
 import { AdminProfileMenu } from "@/components/admin/AdminProfileMenu";
+import { effectiveRole } from "@/lib/auth/effectiveRole";
 import { getUserRole } from "@/lib/data/users";
 import { isClerkConfigured } from "@/lib/services/clerk/config";
-import { isAdminEmail } from "@/lib/services/clerk/roles";
 import styles from "./admin.module.css";
 
 // Acesso a /admin: login (middleware) + ROLE admin (F9). A role vem da tabela
@@ -20,9 +20,29 @@ export default async function AdminLayout({ children }: Readonly<{ children: Rea
   if (clerkEnabled) {
     const user = await currentUser();
     if (!user) redirect("/entrar");
-    email = user.primaryEmailAddress?.emailAddress ?? user.emailAddresses[0]?.emailAddress ?? email;
-    const role = (await getUserRole(user.id)) ?? (isAdminEmail(email) ? "admin" : "cliente");
-    if (role !== "admin") redirect("/");
+    const resolvedEmail =
+      user.primaryEmailAddress?.emailAddress ?? user.emailAddresses[0]?.emailAddress ?? null;
+    email = resolvedEmail ?? email;
+    const decision = effectiveRole(await getUserRole(user.id), resolvedEmail);
+
+    // "unverified": sessao viva, mas nao deu pra confirmar a role (espelho sem sync
+    // E currentUser sem e-mail — tipico de re-handshake pos-idle). NAO rebaixa: manda
+    // re-autenticar, que restabelece o estado em vez de exibir "voce virou cliente".
+    if (decision.role === "unverified") {
+      console.warn("[auth] /admin: role nao confirmada (unverified) — re-autenticando", {
+        clerkUserId: user.id,
+      });
+      redirect("/entrar");
+    }
+    if (decision.role !== "admin") redirect("/");
+    // Admin sustentado SO pelo fallback ADMIN_EMAILS (espelho sem role admin): estado
+    // fragil que precede o rebaixamento. Logar para diagnosticar em producao.
+    if (decision.source === "allowlist") {
+      console.warn("[auth] /admin: acesso admin apenas via ADMIN_EMAILS (espelho sem role admin)", {
+        clerkUserId: user.id,
+        email,
+      });
+    }
   } else if (process.env.NODE_ENV === "production") {
     // Fail-closed: sem Clerk configurado, /admin nunca fica aberto em producao
     // (mock-first aberto vale so para dev). Configure as chaves Clerk no deploy.

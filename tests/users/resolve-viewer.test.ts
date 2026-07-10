@@ -119,6 +119,18 @@ describe("resolveViewer", () => {
     expect(await resolveViewer()).toEqual({ kind: "cliente", userId: "u5" });
   });
 
+  it("role null + nao-deletado + SEM e-mail (currentUser vazio) => anon (nao fabrica cliente)", async () => {
+    isClerkConfiguredMock.mockReturnValue(true);
+    authMock.mockResolvedValue({ userId: "u7" });
+    getUserRoleMock.mockResolvedValue(null);
+    isUserSoftDeletedMock.mockResolvedValue(false);
+    currentUserMock.mockResolvedValue({ primaryEmailAddress: null, emailAddresses: [] });
+    const { resolveViewer } = await load();
+    expect(await resolveViewer()).toEqual({ kind: "anon" });
+    // e-mail null curto-circuita a allowlist: isAdminEmail nem e consultado.
+    expect(isAdminEmailMock).not.toHaveBeenCalled();
+  });
+
   it("leitura de role falhando => anon (vitrine nunca cai pelo roteamento)", async () => {
     isClerkConfiguredMock.mockReturnValue(true);
     authMock.mockResolvedValue({ userId: "u6" });
