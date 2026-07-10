@@ -67,3 +67,22 @@ ALTER TABLE "reviews" ADD  CONSTRAINT "reviews_rating_chk" CHECK ("rating" BETWE
 --  segundos; ambos ficam so na migration.)
 ALTER TABLE "rate_limit_hits" DROP CONSTRAINT IF EXISTS "rate_limit_hits_hit_count_pos_chk";
 ALTER TABLE "rate_limit_hits" ADD  CONSTRAINT "rate_limit_hits_hit_count_pos_chk" CHECK ("hit_count" >= 1);
+
+-- == categories: seed do conjunto canonico (DADO que o push NAO materializa) ====
+-- source: prisma/migrations/20260710120000_seed_categories/migration.sql
+-- Desde o acoplamento por nome (2026-07-10) createProduct/updateProduct VALIDAM a
+-- categoria contra a tabela `categories`. O seed vive numa MIGRATION (nao no
+-- schema.prisma), entao `prisma db push` nao o executa — sem isto, todo teste que
+-- cria produto via createProduct falharia no banco efemero. Idempotente.
+INSERT INTO "categories" ("id", "name", "updated_at")
+VALUES
+  (gen_random_uuid(), 'Booster Box', now()),
+  (gen_random_uuid(), 'Elite Trainer Box', now()),
+  (gen_random_uuid(), 'Booster Pack', now()),
+  (gen_random_uuid(), 'Blister Triplo', now()),
+  (gen_random_uuid(), 'Blister Quadruplo', now()),
+  (gen_random_uuid(), 'Coleção Especial', now()),
+  (gen_random_uuid(), 'Tin', now()),
+  (gen_random_uuid(), 'Acessórios', now()),
+  (gen_random_uuid(), 'Single Card', now())
+ON CONFLICT ("name") DO NOTHING;

@@ -1,7 +1,6 @@
 import { unstable_cache } from "next/cache";
 
 import { getActiveProducts } from "@/lib/data/products";
-import { CATEGORIES, type Category } from "@/lib/data/types";
 import { ColecoesView } from "@/components/product/ColecoesView";
 import styles from "./colecoes.module.css";
 
@@ -16,12 +15,6 @@ const getCachedActiveProducts = unstable_cache(() => getActiveProducts(), ["acti
   tags: ["products"],
 });
 
-function resolveCategory(raw: string | undefined): "all" | Category {
-  if (!raw) return "all";
-  const match = CATEGORIES.find((c) => c.toLowerCase() === raw.toLowerCase());
-  return match ?? "all";
-}
-
 export default async function PainelColecoesPage({
   searchParams,
 }: {
@@ -30,7 +23,6 @@ export default async function PainelColecoesPage({
   const { cat } = await searchParams;
   // Erro de leitura do catalogo NAO e engolido: propaga para o error boundary padrao.
   const products = await getCachedActiveProducts();
-  const initialCategory = resolveCategory(cat);
 
   return (
     <div>
@@ -46,7 +38,7 @@ export default async function PainelColecoesPage({
           <div className={styles.emptySub}>Volte em breve — novos produtos chegam logo.</div>
         </div>
       ) : (
-        <ColecoesView products={products} initialCategory={initialCategory} />
+        <ColecoesView products={products} initialCategory={cat ?? "all"} />
       )}
     </div>
   );

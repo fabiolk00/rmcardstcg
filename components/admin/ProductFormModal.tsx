@@ -2,15 +2,14 @@
 
 import { useRef, useState } from "react";
 import Image from "next/image";
-import type { Product, Category } from "@/lib/data/types";
-import { CATEGORIES } from "@/lib/data/types";
+import type { Product } from "@/lib/data/types";
 import { finalPriceCents } from "@/lib/data/pricing";
 import { formatBRL } from "@/lib/utils/currency";
 import { Modal } from "@/components/ui/Modal";
 import { Icon } from "@/components/ui/Icon";
 import { Spinner, SpinnerLabel } from "@/components/ui/Spinner";
 import { uploadProductImageAction } from "@/app/admin/produtos/actions";
-import { CATEGORY_PACKAGE } from "@/lib/services/superfrete/dimensions";
+import { packageDefaults } from "@/lib/services/superfrete/dimensions";
 import styles from "./ProductFormModal.module.css";
 
 const DESC_MAX = 300;
@@ -22,7 +21,7 @@ const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 /** Payload cru enviado ao servidor (a validacao/slug definitivos sao no server). */
 export type ProductFormPayload = {
   name: string;
-  category: Category;
+  category: string;
   sku: string;
   priceCents: number;
   discountPct: number;
@@ -40,6 +39,8 @@ export type ProductFormPayload = {
 
 type Props = {
   product: Product;
+  /** Categorias da tabela (fonte de verdade) — opcoes do dropdown de categoria. */
+  categories: string[];
   /**
    * Persistencia delegada ao pai (server action). Retorna erro p/ exibir, ou null em
    * sucesso. `original` carrega os valores editaveis que o form CARREGOU (client
@@ -53,7 +54,7 @@ type Props = {
   onClose: () => void;
 };
 
-export function ProductFormModal({ product, onSave, onClose }: Props) {
+export function ProductFormModal({ product, categories, onSave, onClose }: Props) {
   const isNew = product.id === "";
   // Snapshot dos campos editaveis no momento em que o form abriu (o modal remonta por
   // edicao, entao este lazy-init captura exatamente o produto sendo editado). Enviado
@@ -76,7 +77,9 @@ export function ProductFormModal({ product, onSave, onClose }: Props) {
     heightCm: product.heightCm,
   }));
   const [name, setName] = useState(product.name);
-  const [category, setCategory] = useState<Category>(product.category);
+  // Produto novo (sem categoria) cai na 1a categoria disponivel; edicao mantem a atual
+  // (mesmo que ela nao esteja mais na lista — nao troca silenciosamente a categoria).
+  const [category, setCategory] = useState<string>(product.category || categories[0] || "");
   const [sku, setSku] = useState(product.sku);
   const [description, setDescription] = useState(product.description);
   const [priceReais, setPriceReais] = useState(isNew ? "" : (product.priceCents / 100).toFixed(2));
@@ -98,7 +101,7 @@ export function ProductFormModal({ product, onSave, onClose }: Props) {
   const priceCents = Math.round((parseFloat(priceReais.replace(",", ".")) || 0) * 100);
   const stockNum = Math.max(0, Math.trunc(Number(stock) || 0));
   const toInt = (s: string) => Math.max(0, Math.trunc(Number(s) || 0));
-  const pkgDefault = CATEGORY_PACKAGE[category];
+  const pkgDefault = packageDefaults(category);
   const final = finalPriceCents({ priceCents, discountPct });
   const descOver = description.length > DESC_MAX;
   const hasCustomImage = imageUrl.trim() !== "" && imageUrl !== PLACEHOLDER_IMAGE;
@@ -201,9 +204,14 @@ export function ProductFormModal({ product, onSave, onClose }: Props) {
             id="pf-cat"
             className={styles.select}
             value={category}
-            onChange={(e) => setCategory(e.target.value as Category)}
+            onChange={(e) => setCategory(e.target.value)}
           >
-            {CATEGORIES.map((c) => (
+            {/* Inclui a categoria atual mesmo se ela nao estiver mais na lista da tabela
+                (ex.: produto legado), para nao trocar a categoria por acidente ao salvar. */}
+            {(categories.includes(category) || category === ""
+              ? categories
+              : [category, ...categories]
+            ).map((c) => (
               <option key={c} value={c}>
                 {c}
               </option>

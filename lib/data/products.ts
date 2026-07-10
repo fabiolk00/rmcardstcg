@@ -4,9 +4,9 @@ import { AuditAction, AuditEntityType } from "../generated/prisma/enums";
 import type { ProductModel } from "../generated/prisma/models";
 import { cleanupReplacedImage } from "../services/supabase/orphans";
 import { writeAuditLog, type AuditActor } from "./audit";
+import { categoryExists } from "./categories";
 import { RELATED_LIMIT, selectRelatedProducts } from "./related";
-import { CATEGORIES } from "./types";
-import type { Category, Product } from "./types";
+import type { Product } from "./types";
 
 /**
  * Camada de dados de produtos — Postgres via Prisma (lib/db).
@@ -22,7 +22,7 @@ function toProduct(row: ProductModel): Product {
     id: row.id,
     slug: row.slug,
     name: row.name,
-    category: row.category as Category,
+    category: row.category,
     sku: row.sku,
     priceCents: row.priceCents,
     discountPct: row.discountPct,
@@ -189,7 +189,7 @@ export type ProductInput = {
 
 type NormalizedProductInput = {
   name: string;
-  category: Category;
+  category: string;
   sku: string;
   priceCents: number;
   discountPct: number;
@@ -217,10 +217,10 @@ function normalizeProductInput(input: ProductInput): NormalizedProductInput {
   const sku = input.sku?.trim() ?? "";
   if (sku === "") throw new ProductValidationError("O SKU é obrigatório.");
 
-  if (!CATEGORIES.includes(input.category as Category)) {
-    throw new ProductValidationError("Categoria inválida.");
-  }
-  const category = input.category as Category;
+  // Forma (nao-vazia) aqui; a EXISTENCIA na tabela `categories` (acoplamento por
+  // nome) e checada no server dentro da transacao — ver categoryExists no create/update.
+  const category = input.category?.trim() ?? "";
+  if (category === "") throw new ProductValidationError("A categoria é obrigatória.");
 
   if (!Number.isInteger(input.priceCents) || input.priceCents < 0) {
     throw new ProductValidationError("Preço inválido (deve ser inteiro de centavos >= 0).");
@@ -325,6 +325,11 @@ export async function createProduct(actor: AuditActor, input: ProductInput): Pro
   const data = normalizeProductInput(input);
 
   return prisma.$transaction(async (tx) => {
+    // Acoplamento por nome: a categoria precisa existir na tabela `categories`.
+    if (!(await categoryExists(data.category, tx))) {
+      throw new ProductValidationError(`Categoria "${data.category}" não existe.`);
+    }
+
     const skuClash = await tx.product.findFirst({
       where: { sku: { equals: data.sku, mode: "insensitive" } },
       select: { id: true },
@@ -404,7 +409,7 @@ export async function updateProduct(
     // p/ comparar like-for-like com `data` sem atrito de tipos (ProductModel vs input).
     const cmp: NormalizedProductInput = orig ?? {
       name: baseline.name,
-      category: baseline.category as Category,
+      category: baseline.category,
       sku: baseline.sku,
       priceCents: baseline.priceCents,
       discountPct: baseline.discountPct,
@@ -476,6 +481,11 @@ export async function updateProduct(
       if (skuClash) {
         throw new ProductValidationError(`Já existe um produto com o SKU "${data.sku}".`);
       }
+    }
+
+    // Categoria (se este editor a mudou): precisa existir na tabela `categories`.
+    if (updateData.category !== undefined && !(await categoryExists(data.category, tx))) {
+      throw new ProductValidationError(`Categoria "${data.category}" não existe.`);
     }
 
     const row = await tx.product.update({ where: { id }, data: updateData });

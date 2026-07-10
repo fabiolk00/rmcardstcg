@@ -36,8 +36,21 @@ export const CATEGORY_PACKAGE: Record<Category, PackageDims> = {
   "Single Card": { weightGrams: 50, lengthCm: 13, widthCm: 9, heightCm: 2 },
 };
 
+/**
+ * Fallback para categoria FORA do conjunto canonico (o admin pode criar novas na
+ * tabela `categories`, que nao tem default de frete). Medida media conservadora —
+ * garante que um produto de categoria nova ainda cote frete coerente ate o admin
+ * preencher a medida do proprio produto. Nunca undefined: protege a cotacao.
+ */
+const FALLBACK_PACKAGE: PackageDims = { weightGrams: 500, lengthCm: 25, widthCm: 20, heightCm: 10 };
+
+/** Default de pacote para uma categoria (canonica -> mapa; desconhecida -> fallback). */
+export function packageDefaults(category: string): PackageDims {
+  return CATEGORY_PACKAGE[category as Category] ?? FALLBACK_PACKAGE;
+}
+
 type ProductDims = {
-  category: Category;
+  category: string;
   weightGrams: number;
   lengthCm: number;
   widthCm: number;
@@ -51,7 +64,7 @@ type ProductDims = {
  * difere do padrao.
  */
 export function effectivePackage(p: ProductDims): PackageDims {
-  const def = CATEGORY_PACKAGE[p.category];
+  const def = packageDefaults(p.category);
   return {
     weightGrams: p.weightGrams > 0 ? p.weightGrams : def.weightGrams,
     lengthCm: p.lengthCm > 0 ? p.lengthCm : def.lengthCm,

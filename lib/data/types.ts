@@ -8,6 +8,15 @@
  * - Preco final e DERIVADO (finalPriceCents), nunca salvo.
  */
 
+/**
+ * Conjunto CANONICO de categorias. Desde o acoplamento por nome (2026-07-10) a
+ * FONTE DE VERDADE das categorias atribuiveis a produto e a tabela `categories`
+ * (lib/data/categories) — o admin pode criar novas alem destas. Este union/const
+ * permanece como o conjunto de PRIMEIRA CLASSE: alimenta o seed da tabela, os
+ * defaults de frete por categoria (superfrete/dimensions) e a curadoria da home
+ * (homeCategories). Por isso Product.category e `string` (qualquer nome da tabela),
+ * nao este union restrito.
+ */
 export type Category =
   | "Booster Box"
   | "Elite Trainer Box"
@@ -37,7 +46,9 @@ export interface Product {
   /** Unico; usado em URL e deep-link (produto/[slug]). */
   slug: string;
   name: string;
-  category: Category;
+  /** Nome da categoria (fonte de verdade: tabela `categories`). String livre — nao
+   * mais restrito ao union Category, que agora e so o conjunto canonico/seed. */
+  category: string;
   /** Unico. */
   sku: string;
   /** Preco base em centavos. */

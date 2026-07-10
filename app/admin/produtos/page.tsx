@@ -1,3 +1,4 @@
+import { getCategoryNames } from "@/lib/data/categories";
 import { getProducts } from "@/lib/data/products";
 import { AdminProductsView } from "@/components/admin/AdminProductsView";
 
@@ -5,6 +6,7 @@ import { AdminProductsView } from "@/components/admin/AdminProductsView";
 export const dynamic = "force-dynamic";
 
 export default async function AdminProdutosPage() {
-  const products = await getProducts();
-  return <AdminProductsView products={products} />;
+  // Categorias da tabela (fonte de verdade): alimentam o dropdown do form e o filtro.
+  const [products, categories] = await Promise.all([getProducts(), getCategoryNames()]);
+  return <AdminProductsView products={products} categories={categories} />;
 }

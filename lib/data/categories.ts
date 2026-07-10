@@ -7,11 +7,16 @@ import { writeAuditLog, type AuditActor } from "./audit";
 /**
  * Camada de dados de categoria — Postgres via Prisma (lib/db).
  *
- * Catalogo informativo (nome/descricao) DESACOPLADO de Product.category (que
- * continua String validada contra CATEGORIES em lib/data/types.ts — nao ha FK
- * nem qualquer leitura cruzada aqui). Espelha lib/data/coupons.ts: mutacoes de
- * admin gravam audit_log na MESMA transacao (invariante 3).
+ * FONTE DE VERDADE das categorias atribuiveis a produto (acoplamento POR NOME,
+ * 2026-07-10). Nao ha FK: Product.category continua String, mas agora e VALIDADA
+ * contra esta tabela (categoryExists) no create/update de produto. Consequencias:
+ *  - renomear uma categoria faz CASCADE em products.category (mesma transacao);
+ *  - excluir uma categoria EM USO por produtos e BLOQUEADO (guarda abaixo).
+ * Espelha lib/data/coupons.ts: mutacoes de admin gravam audit_log na MESMA transacao.
  */
+
+/** Cliente do banco: o singleton global OU um TransactionClient (para validar dentro da tx do produto). */
+type DbClient = Prisma.TransactionClient | typeof prisma;
 
 /** Tipo de dominio da categoria (camelCase). */
 export type Category = {
@@ -56,6 +61,25 @@ export async function getCategories(): Promise<Category[]> {
 export async function getCategoryById(id: string): Promise<Category | null> {
   const row = await prisma.category.findUnique({ where: { id } });
   return row ? toCategory(row) : null;
+}
+
+/** Nomes das categorias em ordem alfabetica — alimenta o form/filtro do admin. */
+export async function getCategoryNames(): Promise<string[]> {
+  const rows = await prisma.category.findMany({ orderBy: { name: "asc" }, select: { name: true } });
+  return rows.map((r) => r.name);
+}
+
+/**
+ * true se existe uma categoria com este nome (case-insensitive). Aceita um `db`
+ * opcional (o `tx` do produto) para validar DENTRO da transacao do create/update.
+ * Este e o acoplamento por nome: produto so aceita categoria que exista na tabela.
+ */
+export async function categoryExists(name: string, db: DbClient = prisma): Promise<boolean> {
+  const row = await db.category.findFirst({
+    where: { name: { equals: name, mode: "insensitive" } },
+    select: { id: true },
+  });
+  return row !== null;
 }
 
 // ============================================================================
@@ -174,6 +198,18 @@ export async function updateCategory(
     const before = toCategory(existing);
     const row = await tx.category.update({ where: { id }, data });
     const after = toCategory(row);
+
+    // CASCADE (acoplamento por nome): produtos referenciam a categoria pelo NOME.
+    // Ao renomear, atualiza products.category na MESMA transacao — senao os produtos
+    // ficariam apontando para um nome que nao existe mais (categoria orfa) e sumiriam
+    // dos filtros. Nome inalterado => updateMany com where sem match (no-op barato).
+    if (before.name !== after.name) {
+      await tx.product.updateMany({
+        where: { category: before.name },
+        data: { category: after.name },
+      });
+    }
+
     await writeAuditLog(tx, {
       actor,
       action: AuditAction.category_update,
@@ -193,14 +229,19 @@ export async function updateCategory(
 export type CategoryDeleteResult = { ok: true; id: string } | { ok: false; error: string };
 
 /**
- * Exclui uma categoria PERMANENTEMENTE. Catalogo desacoplado (sem FK apontando
- * para categories) — hard delete simples, sem guarda de "em uso". Grava
- * audit_log (category_delete, before=snapshot, after=null) na MESMA transacao.
+ * Exclui uma categoria PERMANENTEMENTE. Acoplamento por nome: BLOQUEIA se algum
+ * produto ainda usa a categoria (evita produto orfao apontando para nome inexistente).
+ * A contagem roda na MESMA transacao do delete (SELECT count + DELETE serializados),
+ * fechando a corrida "conta 0, produto novo entra, deleta". Grava audit_log
+ * (category_delete, before=snapshot, after=null) na MESMA transacao.
  */
 export async function deleteCategory(actor: AuditActor, id: string): Promise<CategoryDeleteResult> {
   const outcome = await prisma.$transaction(async (tx) => {
     const existing = await tx.category.findUnique({ where: { id } });
-    if (!existing) return "not_found" as const;
+    if (!existing) return { kind: "not_found" as const };
+
+    const inUse = await tx.product.count({ where: { category: existing.name } });
+    if (inUse > 0) return { kind: "in_use" as const, count: inUse };
 
     const before = toCategory(existing);
     await tx.category.delete({ where: { id } });
@@ -212,9 +253,16 @@ export async function deleteCategory(actor: AuditActor, id: string): Promise<Cat
       before: categorySnapshot(before),
       after: null,
     });
-    return "ok" as const;
+    return { kind: "ok" as const };
   });
 
-  if (outcome === "not_found") return { ok: false, error: "Categoria não encontrada." };
+  if (outcome.kind === "not_found") return { ok: false, error: "Categoria não encontrada." };
+  if (outcome.kind === "in_use") {
+    const n = outcome.count;
+    return {
+      ok: false,
+      error: `${n} produto${n > 1 ? "s usam" : " usa"} esta categoria. Reatribua ${n > 1 ? "os produtos" : "o produto"} antes de excluir.`,
+    };
+  }
   return { ok: true, id };
 }

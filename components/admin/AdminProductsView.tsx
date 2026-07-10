@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import type { Product } from "@/lib/data/types";
-import { CATEGORIES } from "@/lib/data/types";
 import { productStatusActions, type ProductStatusKind } from "@/lib/data/product-status";
 import { finalPriceCents } from "@/lib/data/pricing";
 import { formatBRL } from "@/lib/utils/currency";
@@ -21,12 +20,12 @@ import styles from "./AdminProductsView.module.css";
 const PER_PAGE = 8;
 type StatusFilter = "all" | "active" | "inactive";
 
-function blankProduct(): Product {
+function blankProduct(defaultCategory: string): Product {
   return {
     id: "",
     slug: "",
     name: "",
-    category: "Booster Box",
+    category: defaultCategory,
     sku: "",
     priceCents: 0,
     discountPct: 0,
@@ -47,7 +46,13 @@ function blankProduct(): Product {
   };
 }
 
-export function AdminProductsView({ products: initialProducts }: { products: Product[] }) {
+export function AdminProductsView({
+  products: initialProducts,
+  categories,
+}: {
+  products: Product[];
+  categories: string[];
+}) {
   // Mutacoes em estado de cliente (efemeras no mock). Persistencia real no F10.
   const [products, setProducts] = useState<Product[]>(initialProducts);
   const [query, setQuery] = useState("");
@@ -186,7 +191,11 @@ export function AdminProductsView({ products: initialProducts }: { products: Pro
             {counts.active} ativos · {counts.inactive} inativos · {counts.total} no total
           </p>
         </div>
-        <button type="button" className={styles.newBtn} onClick={() => setEditing(blankProduct())}>
+        <button
+          type="button"
+          className={styles.newBtn}
+          onClick={() => setEditing(blankProduct(categories[0] ?? ""))}
+        >
           <Icon name="plus" size={15} /> Novo Produto
         </button>
       </div>
@@ -223,7 +232,7 @@ export function AdminProductsView({ products: initialProducts }: { products: Pro
       </div>
 
       <div className={styles.chips} role="group" aria-label="Filtrar por categoria">
-        {CATEGORIES.map((c) => (
+        {categories.map((c) => (
           <button
             key={c}
             type="button"
@@ -381,7 +390,12 @@ export function AdminProductsView({ products: initialProducts }: { products: Pro
       <Pagination page={page} total={filtered.length} perPage={PER_PAGE} onChange={setPage} />
 
       {editing && (
-        <ProductFormModal product={editing} onClose={() => setEditing(null)} onSave={handleSave} />
+        <ProductFormModal
+          product={editing}
+          categories={categories}
+          onClose={() => setEditing(null)}
+          onSave={handleSave}
+        />
       )}
       {confirmInactivate && (
         <InactivateModal

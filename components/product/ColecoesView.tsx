@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import type { Product, Category } from "@/lib/data/types";
-import { CATEGORIES } from "@/lib/data/types";
+import type { Product } from "@/lib/data/types";
 import { REVIEWS_ENABLED } from "@/lib/config/features";
 import { finalPriceCents } from "@/lib/data/pricing";
 import { ProductGrid } from "./ProductGrid";
@@ -12,12 +11,6 @@ import { Icon } from "@/components/ui/Icon";
 import styles from "./ColecoesView.module.css";
 
 const PER_PAGE = 12;
-
-type ChipId = "all" | Category;
-const CHIPS: { id: ChipId; label: string }[] = [
-  { id: "all", label: "Todos" },
-  ...CATEGORIES.map((c) => ({ id: c, label: c })),
-];
 
 const SORTS = [
   { id: "relevance", label: "Mais relevantes" },
@@ -37,8 +30,6 @@ const VISIBLE_SORTS = SORTS.filter((s) => s.id !== "rating" || REVIEWS_ENABLED);
 
 // Validacao dos valores vindos da URL (entrada nao confiavel): so aceita o que existe.
 const isSortId = (v: string | null): v is SortId => v != null && SORT_IDS.includes(v as SortId);
-const isChipId = (v: string | null): v is ChipId =>
-  v === "all" || CATEGORIES.includes(v as Category);
 
 // Marcas combinantes (acentos) U+0300–U+036F, montadas por codigo p/ manter o fonte ASCII.
 const COMBINING_MARKS = new RegExp(
@@ -57,16 +48,32 @@ export function ColecoesView({
   initialCategory = "all",
 }: {
   products: Product[];
-  initialCategory?: ChipId;
+  /** Categoria inicial (?cat= cru): resolvida contra as categorias PRESENTES no catalogo. */
+  initialCategory?: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
+  // Categorias sao DERIVADAS dos proprios produtos (fonte de verdade: o catalogo ativo).
+  // Assim os chips refletem exatamente o que existe — sem lista fixa e sem chip morto.
+  const categoryList = useMemo(
+    () =>
+      Array.from(new Set(products.map((p) => p.category))).sort((a, b) => a.localeCompare(b, "pt-BR")),
+    [products],
+  );
+  const chips = useMemo(
+    () => [{ id: "all", label: "Todos" }, ...categoryList.map((c) => ({ id: c, label: c }))],
+    [categoryList],
+  );
+
   // Estado inicial lido da URL (busca compartilhavel / sobrevive ao refresh); cai no
-  // default quando o parametro esta ausente ou invalido. `cat` ja vem resolvido do
-  // servidor (?cat=) via initialCategory.
-  const [cat, setCat] = useState<ChipId>(initialCategory);
+  // default quando o parametro esta ausente ou nao existe no catalogo. Match case-insensitive.
+  const [cat, setCat] = useState<string>(() => {
+    if (!initialCategory || initialCategory === "all") return "all";
+    const match = categoryList.find((c) => c.toLowerCase() === initialCategory.toLowerCase());
+    return match ?? "all";
+  });
   const [sort, setSort] = useState<SortId>(() => {
     const s = searchParams.get("sort");
     return isSortId(s) ? s : "relevance";
@@ -80,7 +87,7 @@ export function ColecoesView({
 
   // Mudar filtro/busca volta pra pagina 1. Feito nos handlers (nao em effect) p/ nao
   // apagar o ?page= da URL inicial no primeiro render.
-  const onChip = (v: ChipId) => {
+  const onChip = (v: string) => {
     setCat(v);
     setPage(1);
   };
@@ -114,14 +121,14 @@ export function ColecoesView({
   // Contagem por categoria refletindo a busca ativa (ignora a categoria selecionada).
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: 0 };
-    CATEGORIES.forEach((category) => (c[category] = 0));
+    categoryList.forEach((category) => (c[category] = 0));
     for (const p of products) {
       if (query.trim() && !matches(p, query)) continue;
       c.all += 1;
-      c[p.category] += 1;
+      c[p.category] = (c[p.category] ?? 0) + 1;
     }
     return c;
-  }, [products, query]);
+  }, [products, query, categoryList]);
 
   const filtered = useMemo(() => {
     let list = products;
@@ -151,7 +158,7 @@ export function ColecoesView({
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const safePage = Math.min(page, totalPages);
   const pageItems = filtered.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE);
-  const activeChip = CHIPS.find((c) => c.id === cat);
+  const activeChip = chips.find((c) => c.id === cat);
 
   const handlePage = (p: number) => {
     setPage(p);
@@ -195,7 +202,7 @@ export function ColecoesView({
       </div>
 
       <div className={styles.filters} role="group" aria-label="Filtrar por categoria">
-        {CHIPS.map((c) => (
+        {chips.map((c) => (
           <button
             key={c.id}
             type="button"

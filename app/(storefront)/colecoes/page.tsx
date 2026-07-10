@@ -3,7 +3,6 @@ import { unstable_cache } from "next/cache";
 import { redirectClienteToPainel } from "@/lib/auth/resolveViewer";
 import { FEATURED_AVG_RATING } from "@/lib/config/site";
 import { getActiveProducts } from "@/lib/data/products";
-import { CATEGORIES, type Category } from "@/lib/data/types";
 import { ColecoesView } from "@/components/product/ColecoesView";
 import styles from "./colecoes.module.css";
 
@@ -18,12 +17,6 @@ const getCachedActiveProducts = unstable_cache(() => getActiveProducts(), ["acti
   tags: ["products"],
 });
 
-function resolveCategory(raw: string | undefined): "all" | Category {
-  if (!raw) return "all";
-  const match = CATEGORIES.find((c) => c.toLowerCase() === raw.toLowerCase());
-  return match ?? "all";
-}
-
 export default async function ColecoesPage({
   searchParams,
 }: {
@@ -36,7 +29,8 @@ export default async function ColecoesPage({
   );
 
   const products = await getCachedActiveProducts();
-  const initialCategory = resolveCategory(cat);
+  // Categorias exibidas no catalogo = as presentes nos produtos ativos (fonte de verdade).
+  const categoryCount = new Set(products.map((p) => p.category)).size;
 
   return (
     <>
@@ -53,7 +47,7 @@ export default async function ColecoesPage({
             <span className={styles.statL}>Produtos no catálogo</span>
           </div>
           <div className={styles.stat}>
-            <span className={styles.statV}>{CATEGORIES.length}</span>
+            <span className={styles.statV}>{categoryCount}</span>
             <span className={styles.statL}>Categorias</span>
           </div>
           <div className={styles.stat}>
@@ -72,7 +66,7 @@ export default async function ColecoesPage({
         </div>
       </section>
 
-      <ColecoesView products={products} initialCategory={initialCategory} />
+      <ColecoesView products={products} initialCategory={cat ?? "all"} />
     </>
   );
 }

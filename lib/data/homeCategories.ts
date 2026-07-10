@@ -63,6 +63,6 @@ export const HOME_CATEGORIES: readonly HomeCategory[] = [
 ] as const;
 
 /** Link para a coleção filtrada por categoria (mesma convenção do Footer). */
-export function collectionHref(category?: Category): string {
+export function collectionHref(category?: string): string {
   return category ? `/colecoes?cat=${encodeURIComponent(category)}` : "/colecoes";
 }
