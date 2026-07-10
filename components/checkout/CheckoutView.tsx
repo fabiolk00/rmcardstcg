@@ -84,6 +84,9 @@ export function CheckoutView({ initialCustomer }: { initialCustomer?: Partial<Fo
   const [submitting, setSubmitting] = useState(false);
   // Consentimento LGPD (Termos + Privacidade). Trava o submit; re-validado no server.
   const [accepted, setAccepted] = useState(false);
+  // Forma de pagamento (pix | card à vista). O server RE-decide billingType/dueDate
+  // a partir deste slug; o default "pix" preserva o comportamento anterior.
+  const [payMethod, setPayMethod] = useState<"pix" | "card">("pix");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Extract<CheckoutResult, { ok: true }> | null>(null);
   const [copied, setCopied] = useState(false);
@@ -193,6 +196,7 @@ export function CheckoutView({ initialCustomer }: { initialCustomer?: Partial<Fo
       acceptedTerms: accepted,
       couponCode: coupon.trim() || undefined,
       shippingServiceCode: shipFree ? undefined : (chosenOption?.serviceCode ?? undefined),
+      paymentMethod: payMethod,
     });
     setSubmitting(false);
 
@@ -334,6 +338,40 @@ export function CheckoutView({ initialCustomer }: { initialCustomer?: Partial<Fo
           </Field>
         </div>
 
+        <h2 className={styles.sectionTitle}>Forma de pagamento</h2>
+        <div className={styles.payOpts} role="radiogroup" aria-label="Forma de pagamento">
+          <label className={`${styles.payOpt} ${payMethod === "pix" ? styles.payOptSelected : ""}`}>
+            <input
+              type="radio"
+              name="payment-method"
+              value="pix"
+              checked={payMethod === "pix"}
+              onChange={() => setPayMethod("pix")}
+            />
+            <span className={styles.payText}>
+              <span className={styles.payName}>PIX</span>
+              <span className={styles.payHint}>Aprovação na hora via QR Code ou copia-e-cola.</span>
+            </span>
+          </label>
+          <label
+            className={`${styles.payOpt} ${payMethod === "card" ? styles.payOptSelected : ""}`}
+          >
+            <input
+              type="radio"
+              name="payment-method"
+              value="card"
+              checked={payMethod === "card"}
+              onChange={() => setPayMethod("card")}
+            />
+            <span className={styles.payText}>
+              <span className={styles.payName}>Cartão de crédito</span>
+              <span className={styles.payHint}>
+                À vista, em fatura segura do Asaas — a loja não guarda os dados do cartão.
+              </span>
+            </span>
+          </label>
+        </div>
+
         <label className={styles.consent}>
           <input
             type="checkbox"
@@ -376,13 +414,13 @@ export function CheckoutView({ initialCustomer }: { initialCustomer?: Partial<Fo
           disabled={isPaymentButtonDisabled(btnState)}
         >
           {btnState === "submitting" ? (
-            <SpinnerLabel>Gerando PIX…</SpinnerLabel>
+            <SpinnerLabel>Processando…</SpinnerLabel>
           ) : btnState === "needShipping" ? (
             "Calcule o frete para continuar"
           ) : btnState === "needTerms" ? (
             "Aceite os termos para continuar"
           ) : (
-            `Pagar ${formatBRL(displayTotalCents ?? 0)} via PIX`
+            `Pagar ${formatBRL(displayTotalCents ?? 0)} ${payMethod === "card" ? "no cartão" : "via PIX"}`
           )}
         </button>
         <Link href="/carrinho" className={styles.back}>
@@ -610,7 +648,7 @@ function SuccessPanel({
 
       {!pix && !invoiceUrl && (
         <p className={styles.successSub}>
-          Pagamento PIX será habilitado em breve. Acompanhe o status em Minhas Compras.
+          Pagamento será habilitado em breve. Acompanhe o status em Minhas Compras.
         </p>
       )}
 

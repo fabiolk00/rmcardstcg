@@ -111,3 +111,20 @@
   color: var(--ink-3);
   cursor: progress;
 }
+
+.invoiceLink {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  min-height: 46px;
+  padding: 0 var(--space-6);
+  border-radius: var(--r-pill);
+  background: var(--ink);
+  color: var(--on-ink);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.invoiceLink:hover {
+  background: var(--ink-hover);
+}

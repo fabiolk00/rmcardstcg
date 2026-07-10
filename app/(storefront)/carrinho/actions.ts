@@ -20,7 +20,12 @@ import { getProductsByIds } from "@/lib/data/products";
 import type { Order, OrderItem } from "@/lib/data/types";
 import { AsaasError } from "@/lib/services/asaas/client";
 import { isAsaasConfigured } from "@/lib/services/asaas/config";
-import { createCustomer, createPixCharge, getPixQrCode } from "@/lib/services/asaas/payments";
+import { createCharge, createCustomer, getPayment, getPixQrCode } from "@/lib/services/asaas/payments";
+import {
+  dueDateForMethod,
+  normalizePaymentMethod,
+  paymentBillingType,
+} from "@/lib/payments/method";
 import { isClerkConfigured } from "@/lib/services/clerk/config";
 import { sendOrderConfirmationEmail } from "@/lib/services/resend";
 import { clientRateLimitKey } from "@/lib/security/clientKey";
@@ -28,19 +33,17 @@ import { checkRateLimit } from "@/lib/security/rateLimit";
 
 /**
  * Server action de checkout — cria o pedido (pending) + reserva de estoque e a
- * cobranca PIX no Asaas, de forma IDEMPOTENTE.
+ * cobranca (PIX ou cartao a vista) no Asaas, de forma IDEMPOTENTE.
  *
  * Idempotencia (invariante 2): o cliente envia uma checkoutKey estavel por
  * tentativa. findOrderByCheckoutKey ANTES de qualquer write; se ja existe, reusa
- * o MESMO pedido e a MESMA cobranca Asaas (so re-deriva o QR), sem criar
+ * o MESMO pedido e a MESMA cobranca Asaas (so re-deriva o QR/fatura), sem criar
  * customer/payment de novo. Reserva de estoque atomica (invariante 1) dentro da
  * transacao de createOrderWithReservation.
  *
  * Mock-first: sem chave do Asaas o pedido e criado mesmo assim (pix: null). Precos
  * e totais sao SEMPRE recalculados no servidor a partir do banco.
  */
-
-const PIX_DUE_DAYS = 3;
 
 export type CheckoutCustomer = {
   name: string;
@@ -76,6 +79,12 @@ export type CheckoutInput = {
    * no servidor (nunca confia no preco do client) — fecha "exibido == cobrado".
    */
   shippingServiceCode?: number;
+  /**
+   * Metodo de pagamento escolhido ("pix" | "card"). O server NORMALIZA e re-decide
+   * billingType/dueDate a partir do slug (nunca confia no client); ausente/invalido
+   * cai em "pix" (retrocompativel — o checkout era PIX-only).
+   */
+  paymentMethod?: string;
 };
 
 export type CheckoutPix = {
@@ -88,7 +97,7 @@ export type CheckoutResult =
   | {
       ok: true;
       orderId: string;
-      /** null quando o Asaas nao esta configurado (dev sem chave). */
+      /** null quando o Asaas nao esta configurado (dev sem chave) ou o metodo e cartao. */
       pix: CheckoutPix | null;
       invoiceUrl: string | null;
     }
@@ -96,16 +105,9 @@ export type CheckoutResult =
 
 const onlyDigits = (s: string) => s.replace(/\D/g, "");
 
-/** Vencimento da cobranca PIX (hoje + N dias) como Date — fonte do due_date. */
-function pixDueDateObject(): Date {
-  const d = new Date();
-  d.setDate(d.getDate() + PIX_DUE_DAYS);
-  return d;
-}
-
-/** Vencimento da cobranca PIX no formato YYYY-MM-DD (exigido pelo Asaas). */
-function pixDueDate(): string {
-  return pixDueDateObject().toISOString().slice(0, 10);
+/** Vencimento (YYYY-MM-DD, exigido pelo Asaas) a partir do Date do due_date. */
+function dueDateStr(d: Date): string {
+  return d.toISOString().slice(0, 10);
 }
 
 /** Erro de redencao de cupom — sinaliza rollback da transacao do checkout. */
@@ -125,6 +127,17 @@ async function fetchPix(paymentId: string): Promise<CheckoutPix | null> {
       "[checkout] QR PIX indisponivel (cadastre uma chave PIX no Asaas):",
       qrErr instanceof Error ? qrErr.message : qrErr,
     );
+    return null;
+  }
+}
+
+/** Best-effort: URL da fatura hospedada (cartao) de uma cobranca; null se indisponivel. */
+async function fetchInvoiceUrl(paymentId: string): Promise<string | null> {
+  try {
+    const payment = await getPayment(paymentId);
+    return payment.invoiceUrl ?? null;
+  } catch (err) {
+    console.warn("[checkout] invoiceUrl indisponivel:", err instanceof Error ? err.message : err);
     return null;
   }
 }
@@ -298,7 +311,7 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
   const userId = activeUser.userId;
 
   // IDEMPOTENCIA: se esta chave ja gerou um pedido, reaproveita-o (nunca recria
-  // pedido nem cobranca Asaas — so re-deriva o PIX da cobranca existente).
+  // pedido nem cobranca Asaas — so re-deriva o PIX/fatura da cobranca existente).
   const prior = await findOrderByCheckoutKey(input.checkoutKey);
   if (prior) return resultForExistingOrder(prior);
 
@@ -417,6 +430,14 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
     totals.merchandiseCents + shippingCents - appliedCouponDiscountCents,
   );
 
+  // Metodo de pagamento (pix | card) NORMALIZADO no server. Deriva billingType e o
+  // vencimento (pix: +1d; card: +3d — janela maior p/ o fluxo customer-paced da
+  // fatura hospedada, ver lib/payments/method). O due_date alimenta o pg_cron de
+  // expiracao; billingType decide a forma de cobranca no Asaas.
+  const paymentMethod = normalizePaymentMethod(input.paymentMethod);
+  const billingType = paymentBillingType(paymentMethod);
+  const dueAt = dueDateForMethod(paymentMethod);
+
   // Cria o pedido pendente, reserva o estoque E redime o cupom na MESMA transacao
   // (atomicidade + idempotencia). Corrida de chave (duplo-clique) que perca o
   // INSERT e tratada como reaproveitamento. Redencao que falhe faz rollback total.
@@ -442,8 +463,8 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
       shippingService,
       shippingDays,
       totalCents: finalTotalCents,
-      paymentMethod: "PIX",
-      dueDate: pixDueDateObject(),
+      paymentMethod,
+      dueDate: dueAt,
     },
     appliedCouponId
       ? async (tx, orderId) => {
@@ -474,7 +495,7 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
     return { ok: false, error: `Estoque insuficiente para "${name ?? "um item"}".` };
   }
 
-  // Pedido reaproveitado por corrida de chave: re-deriva o PIX, nao recria cobranca.
+  // Pedido reaproveitado por corrida de chave: re-deriva o PIX/fatura, nao recria cobranca.
   if (created.reused) return resultForExistingOrder(created.order);
 
   const order = created.order;
@@ -497,11 +518,12 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
       cpfCnpj: input.customer.cpfCnpj ? onlyDigits(input.customer.cpfCnpj) : undefined,
     });
 
-    const payment = await createPixCharge({
+    const payment = await createCharge({
       customerId: customer.id,
+      billingType,
       valueCents: order.totalCents,
       externalReference,
-      dueDate: pixDueDate(),
+      dueDate: dueDateStr(dueAt),
       description: `Pedido ${order.id} — RM Cards`,
     });
 
@@ -517,6 +539,11 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
       );
     }
 
+    // Cartao: sem QR PIX — a fatura hospedada (invoiceUrl) e o meio de pagamento.
+    // Evita um round-trip a /pixQrCode (que erraria) por cobranca de cartao.
+    if (paymentMethod === "card") {
+      return { ok: true, orderId: order.id, pix: null, invoiceUrl: payment.invoiceUrl };
+    }
     const pix = await fetchPix(payment.id);
     return { ok: true, orderId: order.id, pix, invoiceUrl: payment.invoiceUrl };
   } catch (err) {
@@ -524,7 +551,7 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
     // com a MESMA checkoutKey cai no curto-circuito de idempotencia.
     const message =
       err instanceof AsaasError
-        ? `Não foi possível gerar o PIX: ${err.message}`
+        ? `Não foi possível gerar a cobrança: ${err.message}`
         : "Não foi possível gerar a cobrança. Tente novamente.";
     console.error(
       "[checkout] falha ao criar cobranca Asaas:",
@@ -536,18 +563,24 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
 
 /**
  * CheckoutResult para um pedido que JA existe (retry idempotente). Reaproveita a
- * cobranca Asaas ja criada (re-deriva so o QR); se ainda nao ha cobranca vinculada
- * (1a tentativa falhou antes do setOrderAsaasRefs), tenta cria-la uma vez.
+ * cobranca Asaas ja criada (re-deriva so o QR/fatura); se ainda nao ha cobranca
+ * vinculada (1a tentativa falhou antes do setOrderAsaasRefs), tenta cria-la uma vez.
  */
 async function resultForExistingOrder(order: Order): Promise<CheckoutResult> {
   if (!isAsaasConfigured()) {
     return { ok: true, orderId: order.id, pix: null, invoiceUrl: null };
   }
 
+  // Metodo do pedido ja gravado: decide se re-derivamos o QR (pix) ou a fatura (card).
+  const method = normalizePaymentMethod(order.paymentMethod);
   const externalReference = order.id.replace(/^#/, "");
   const refs = await getOrderAsaasRefs(Number(externalReference));
 
   if (refs?.paymentId) {
+    if (method === "card") {
+      const invoiceUrl = await fetchInvoiceUrl(refs.paymentId);
+      return { ok: true, orderId: order.id, pix: null, invoiceUrl };
+    }
     const pix = await fetchPix(refs.paymentId);
     return { ok: true, orderId: order.id, pix, invoiceUrl: null };
   }
@@ -558,11 +591,12 @@ async function resultForExistingOrder(order: Order): Promise<CheckoutResult> {
       email: order.customerEmail,
       mobilePhone: onlyDigits(order.customerPhone),
     });
-    const payment = await createPixCharge({
+    const payment = await createCharge({
       customerId: customer.id,
+      billingType: paymentBillingType(method),
       valueCents: order.totalCents,
       externalReference,
-      dueDate: pixDueDate(),
+      dueDate: dueDateStr(dueDateForMethod(method)),
       description: `Pedido ${order.id} — RM Cards`,
     });
     try {
@@ -576,6 +610,9 @@ async function resultForExistingOrder(order: Order): Promise<CheckoutResult> {
         refErr instanceof Error ? refErr.message : refErr,
       );
     }
+    if (method === "card") {
+      return { ok: true, orderId: order.id, pix: null, invoiceUrl: payment.invoiceUrl };
+    }
     const pix = await fetchPix(payment.id);
     return { ok: true, orderId: order.id, pix, invoiceUrl: payment.invoiceUrl };
   } catch (err) {
@@ -585,7 +622,7 @@ async function resultForExistingOrder(order: Order): Promise<CheckoutResult> {
     );
     const message =
       err instanceof AsaasError
-        ? `Não foi possível gerar o PIX: ${err.message}`
+        ? `Não foi possível gerar a cobrança: ${err.message}`
         : "Não foi possível gerar a cobrança. Tente novamente.";
     return { ok: false, error: message };
   }

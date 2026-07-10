@@ -4,8 +4,10 @@ import { notFound, redirect } from "next/navigation";
 import { requireActiveUser } from "@/lib/auth/requireActiveUser";
 import { carrierLabel, carrierTrackingUrl } from "@/lib/data/carriers";
 import { getOrderForUser } from "@/lib/data/orders";
+import { normalizePaymentMethod, paymentMethodLabel } from "@/lib/payments/method";
 import { formatBRL } from "@/lib/utils/currency";
 import { Icon } from "@/components/ui/Icon";
+import { OrderCardPaymentSection } from "@/components/orders/OrderCardPaymentSection";
 import { OrderPaymentSection } from "@/components/orders/OrderPaymentSection";
 import { PAYMENT_LABEL, SHIPPING_LABEL } from "../labels";
 import styles from "./order-detail.module.css";
@@ -40,6 +42,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   const numericId = order.id.replace(/^#/, "");
   const itemsCount = order.items.reduce((sum, i) => sum + i.quantity, 0);
   const trackingUrl = carrierTrackingUrl(order.shippingCarrier, order.trackingCode);
+  const method = normalizePaymentMethod(order.paymentMethod);
 
   return (
     <section className={styles.wrap}>
@@ -51,7 +54,9 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       <header className={styles.head}>
         <div>
           <h1 className={styles.title}>Pedido {order.id}</h1>
-          <p className={styles.date}>{formatDateTime(order.createdAt)}</p>
+          <p className={styles.date}>
+            {formatDateTime(order.createdAt)} · {paymentMethodLabel(order.paymentMethod)}
+          </p>
         </div>
         <div className={styles.badges}>
           <span className={`${styles.pill} ${styles[`pay_${order.paymentStatus}`]}`}>
@@ -66,10 +71,21 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       {order.paymentStatus === "pending" && (
         <div className={styles.section}>
           <h2 className={styles.sectionTitle}>Pagamento pendente</h2>
-          <p className={styles.sectionSub}>
-            Pague via PIX para confirmar seu pedido. O QR Code abaixo é o mesmo da sua cobrança.
-          </p>
-          <OrderPaymentSection orderId={numericId} />
+          {method === "card" ? (
+            <>
+              <p className={styles.sectionSub}>
+                Conclua o pagamento no cartão pela fatura segura do Asaas — a mesma da sua cobrança.
+              </p>
+              <OrderCardPaymentSection orderId={numericId} />
+            </>
+          ) : (
+            <>
+              <p className={styles.sectionSub}>
+                Pague via PIX para confirmar seu pedido. O QR Code abaixo é o mesmo da sua cobrança.
+              </p>
+              <OrderPaymentSection orderId={numericId} />
+            </>
+          )}
         </div>
       )}
 

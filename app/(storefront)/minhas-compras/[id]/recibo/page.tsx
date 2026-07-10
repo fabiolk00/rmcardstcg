@@ -5,6 +5,7 @@ import { requireActiveUser } from "@/lib/auth/requireActiveUser";
 import { SITE_NAME } from "@/lib/config/site";
 import { carrierLabel } from "@/lib/data/carriers";
 import { getOrderForUser } from "@/lib/data/orders";
+import { paymentMethodLabel } from "@/lib/payments/method";
 import { formatBRL } from "@/lib/utils/currency";
 import { Icon } from "@/components/ui/Icon";
 import { PrintButton } from "@/components/orders/PrintButton";
@@ -67,6 +68,10 @@ export default async function ReciboPage({ params }: { params: Promise<{ id: str
           <div>
             <dt>Pagamento</dt>
             <dd>{PAYMENT_LABEL[order.paymentStatus]}</dd>
+          </div>
+          <div>
+            <dt>Forma de pgto</dt>
+            <dd>{paymentMethodLabel(order.paymentMethod)}</dd>
           </div>
           <div>
             <dt>Envio</dt>

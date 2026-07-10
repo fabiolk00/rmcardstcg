@@ -58,10 +58,9 @@ const sections: LegalSection[] = [
     heading: "5. Pagamentos e Processamento",
     blocks: [
       "Todos os pagamentos são processados pela Asaas, plataforma certificada PCI-DSS. A empresa não armazena informações completas de cartão. Você autoriza a cobrança ao confirmar o pedido.",
-      "Métodos aceitos: cartão de crédito (parcelado), débito, PIX, boleto e outros conforme disponível.",
+      "Métodos aceitos: PIX e cartão de crédito à vista. Outros métodos poderão ser disponibilizados futuramente.",
       "Validade das transações: pedidos são processados em tempo real. Se houver recusa, será notificado para tentar novamente.",
-      "Boletos vencidos: boletos têm validade de 3 dias úteis. Após vencimento, será necessário gerar nova cobrança.",
-      "Parcelamento: cartão permite parcelamento até 12x (conforme limite da bandeira). Juros, se houver, estarão explícitos no checkout.",
+      "Cartão de crédito: a cobrança é feita à vista (sem parcelamento nesta versão). Caso o parcelamento seja disponibilizado, as condições estarão explícitas no checkout.",
       "Chargeback: em caso de chargeback indevido, a empresa poderá suspender a conta e iniciar procedimento legal.",
     ],
   },

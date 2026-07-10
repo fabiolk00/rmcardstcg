@@ -9,15 +9,9 @@ export function formatCep(cep: string): string {
   return digits.length === 8 ? `${digits.slice(0, 5)}-${digits.slice(5)}` : cep;
 }
 
-/** Rotulo humano do metodo de pagamento ("pix" -> "PIX"; desconhecido passa como veio). */
-export function paymentMethodLabel(method: string): string {
-  const labels: Record<string, string> = {
-    pix: "PIX",
-    boleto: "Boleto",
-    card: "Cartão de crédito",
-  };
-  return labels[method] ?? method;
-}
+// Rotulo do metodo de pagamento — fonte unica no dominio de pagamento (usado
+// tambem pelo checkout e telas de pedido), re-exportado aqui para o template.
+export { paymentMethodLabel } from "@/lib/payments/method";
 
 /**
  * Rotulo da linha de frete: "Frete", "Frete (SEDEX)" ou "Frete (SEDEX — 2 a 4

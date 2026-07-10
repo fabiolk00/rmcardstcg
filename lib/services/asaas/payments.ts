@@ -1,12 +1,18 @@
 import { asaasFetch } from "./client";
 
 /**
- * Servico de cobrancas do Asaas — o que o checkout precisa para gerar um PIX.
+ * Servico de cobrancas do Asaas — o que o checkout precisa para gerar a cobranca
+ * (PIX ou cartao a vista).
  *
- * Fluxo: createCustomer (o Asaas cobra sempre um "customer") -> createPixCharge
- * (POST /payments com billingType PIX e externalReference = id do nosso pedido)
- * -> getPixQrCode (copia-e-cola + imagem do QR). O externalReference e o elo que
- * o webhook (app/api/webhooks/asaas) usa para achar o pedido de volta.
+ * Fluxo: createCustomer (o Asaas cobra sempre um "customer") -> createCharge
+ * (POST /payments com billingType PIX|CREDIT_CARD e externalReference = id do nosso
+ * pedido) -> getPixQrCode (copia-e-cola + imagem do QR, so no PIX) OU invoiceUrl
+ * (fatura hospedada, usada no cartao). O externalReference e o elo que o webhook
+ * (app/api/webhooks/asaas) usa para achar o pedido de volta.
+ *
+ * A VISTA: a cobranca de cartao NAO usa installmentCount — e uma cobranca unica
+ * pelo valor total, entao o evento de confirmacao traz value == total e a
+ * verificacao de valor do webhook continua valida SEM alteracao.
  *
  * Dinheiro: nosso dominio usa centavos (Int); o Asaas usa reais (decimal). A
  * conversao centavos -> reais acontece so na fronteira, aqui.
@@ -29,8 +35,15 @@ export type AsaasCustomer = {
   email: string | null;
 };
 
-export type CreatePixChargeInput = {
+export type CreateChargeInput = {
   customerId: string;
+  /**
+   * Forma de cobranca no Asaas. PIX gera QR copia-e-cola; CREDIT_CARD gera uma
+   * fatura hospedada (invoiceUrl) onde o cliente informa o cartao — a loja nunca
+   * toca no dado do cartao. A VISTA: cobranca unica pelo valor total (sem
+   * installmentCount), entao o evento de confirmacao traz value == total.
+   */
+  billingType: "PIX" | "CREDIT_CARD";
   /** Valor total em centavos (convertido para reais aqui). */
   valueCents: number;
   /** Id do nosso pedido (ex.: "10421") — elo com o webhook. */
@@ -39,6 +52,9 @@ export type CreatePixChargeInput = {
   dueDate: string;
   description?: string;
 };
+
+/** @deprecated use CreateChargeInput (billingType). Mantido p/ compat de chamadas. */
+export type CreatePixChargeInput = Omit<CreateChargeInput, "billingType">;
 
 export type AsaasPayment = {
   id: string;
@@ -72,19 +88,29 @@ export async function createCustomer(input: AsaasCustomerInput): Promise<AsaasCu
   });
 }
 
-/** Cria uma cobranca PIX com externalReference apontando para o pedido. */
-export async function createPixCharge(input: CreatePixChargeInput): Promise<AsaasPayment> {
+/**
+ * Cria uma cobranca no Asaas (PIX ou cartao a vista) com externalReference
+ * apontando para o pedido. Cobranca UNICA pelo valor total — sem parcelamento —,
+ * o que mantem a verificacao de valor do webhook (value == total) valida para os
+ * dois metodos, sem tocar na maquina de estados.
+ */
+export async function createCharge(input: CreateChargeInput): Promise<AsaasPayment> {
   return asaasFetch<AsaasPayment>("/payments", {
     method: "POST",
     body: JSON.stringify({
       customer: input.customerId,
-      billingType: "PIX",
+      billingType: input.billingType,
       value: centsToReais(input.valueCents),
       dueDate: input.dueDate,
       externalReference: input.externalReference,
       description: input.description,
     }),
   });
+}
+
+/** @deprecated use createCharge({ billingType: "PIX", ... }). Wrapper de compat. */
+export async function createPixCharge(input: CreatePixChargeInput): Promise<AsaasPayment> {
+  return createCharge({ ...input, billingType: "PIX" });
 }
 
 /** Busca o QR Code PIX (copia-e-cola + imagem) de uma cobranca. */

@@ -18,6 +18,9 @@ describe("orderEmailFormat — helpers puros do e-mail transacional", () => {
     expect(paymentMethodLabel("boleto")).toBe("Boleto");
     expect(paymentMethodLabel("card")).toBe("Cartão de crédito");
     expect(paymentMethodLabel("berries")).toBe("berries");
+    // Registro legado "PIX" (caixa alta, gravado por acaso antes da padronizacao)
+    // segue exibindo certo pelo passthrough — nao regride ao adicionar o cartao.
+    expect(paymentMethodLabel("PIX")).toBe("PIX");
   });
 
   it("shippingLabel: monta 'Frete', 'Frete (serviço)' e 'Frete (serviço — prazo)'", () => {

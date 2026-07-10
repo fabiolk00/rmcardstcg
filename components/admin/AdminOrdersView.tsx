@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import type { Order, PaymentStatus, ShippingStatus } from "@/lib/data/types";
+import { paymentMethodLabel } from "@/lib/payments/method";
 import { formatBRL } from "@/lib/utils/currency";
 import { Icon } from "@/components/ui/Icon";
 import { Pagination } from "@/components/ui/Pagination";
@@ -206,8 +207,13 @@ export function AdminOrdersView({ orders: initialOrders }: { orders: Order[] }) 
                     {formatBRL(o.totalCents)}
                   </td>
                   <td className={styles.left}>
-                    <span className={`${styles.pill} ${payClass(o.paymentStatus)}`}>
-                      {PAY_LABEL[o.paymentStatus]}
+                    <span className={styles.customer}>
+                      <span className={`${styles.pill} ${payClass(o.paymentStatus)}`}>
+                        {PAY_LABEL[o.paymentStatus]}
+                      </span>
+                      <span className={styles.customerSub}>
+                        {paymentMethodLabel(o.paymentMethod)}
+                      </span>
                     </span>
                   </td>
                   <td className={styles.left}>

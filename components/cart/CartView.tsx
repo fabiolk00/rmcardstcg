@@ -125,7 +125,7 @@ export function CartView({ checkoutHref = "/checkout" }: { checkoutHref?: string
         <Link href={checkoutHref} className={styles.checkout}>
           Finalizar compra
         </Link>
-        <p className={styles.checkoutHint}>Pagamento via PIX.</p>
+        <p className={styles.checkoutHint}>Pagamento via PIX ou cartão de crédito.</p>
         <Link href="/colecoes" className={styles.continue}>
           Continuar comprando
         </Link>
