@@ -11,7 +11,7 @@ import styles from "./AdminNav.module.css";
 const ITEMS: { href: string; label: string; icon: IconName }[] = [
   { href: "/admin/produtos", label: "Produtos", icon: "grid" },
   { href: "/admin/categorias", label: "Categorias", icon: "layers" },
-  { href: "/admin/estoque", label: "Estoque baixo", icon: "box" },
+  { href: "/admin/estoque", label: "Estoque Baixo", icon: "box" },
   { href: "/admin/pedidos", label: "Pedidos", icon: "receipt" },
   ...(REVIEWS_ENABLED
     ? [{ href: "/admin/avaliacoes", label: "Avaliações", icon: "star" as IconName }]

@@ -15,8 +15,9 @@ type Props = {
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-// Modal reusavel: fecha por X, Esc e clique no overlay; trava o scroll do body;
-// move o foco para dentro, prende o Tab no conteudo e devolve o foco ao fechar.
+// Modal reusavel: fecha por X e Esc (NAO fecha ao clicar no overlay, para
+// evitar fechamento acidental em formularios/acoes criticas); trava o scroll do
+// body; move o foco para dentro, prende o Tab no conteudo e devolve o foco ao fechar.
 export function Modal({ title, sub, onClose, children, footer }: Props) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -55,14 +56,13 @@ export function Modal({ title, sub, onClose, children, footer }: Props) {
   }, [onClose]);
 
   return (
-    <div className={styles.scrim} role="presentation" onClick={onClose}>
+    <div className={styles.scrim} role="presentation">
       <div
         ref={ref}
         className={styles.modal}
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
-        onClick={(e) => e.stopPropagation()}
       >
         <div className={styles.head}>
           <div>
