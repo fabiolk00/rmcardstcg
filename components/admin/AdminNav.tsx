@@ -10,6 +10,7 @@ import styles from "./AdminNav.module.css";
 // o item so aparece no menu quando a flag esta ligada (a rota tambem 404 quando off).
 const ITEMS: { href: string; label: string; icon: IconName }[] = [
   { href: "/admin/produtos", label: "Produtos", icon: "grid" },
+  { href: "/admin/categorias", label: "Categorias", icon: "layers" },
   { href: "/admin/estoque", label: "Estoque baixo", icon: "box" },
   { href: "/admin/pedidos", label: "Pedidos", icon: "receipt" },
   ...(REVIEWS_ENABLED

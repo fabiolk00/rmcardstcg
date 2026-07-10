@@ -42,6 +42,7 @@ enum AuditEntityType {
   coupon
   user
   review
+  category
 }
 
 enum AuditAction {
@@ -59,6 +60,9 @@ enum AuditAction {
   coupon_update                @map("coupon.update")
   coupon_deactivate            @map("coupon.deactivate")
   coupon_delete                @map("coupon.delete")
+  category_create              @map("category.create")
+  category_update              @map("category.update")
+  category_delete              @map("category.delete")
   user_role_update             @map("user.role_update")
   review_approve               @map("review.approve")
   review_reject                @map("review.reject")
@@ -113,7 +117,7 @@ model Product {
   isActive    Boolean  @default(true) @map("is_active")
   // Exibir no carrossel "Em destaque" da landing (controle do admin). Opt-in:
   // default false — nenhum produto entra no carrossel ate ser marcado.
-  isLanding  Boolean  @default(false) @map("is_landing")
+  isLanding   Boolean  @default(false) @map("is_landing")
   badge       String?
   imageUrl    String   @map("image_url")
   description String
@@ -136,52 +140,52 @@ model Product {
 
 model Order {
   // Numero sequencial legivel; o dominio expoe como "#" + id (ex.: "#10421").
-  id             Int            @id @default(autoincrement())
+  id                  Int            @id @default(autoincrement())
   // Referencia ao usuario Clerk.
-  userId         String         @map("clerk_user_id")
-  customerName   String         @map("customer_name")
-  customerEmail  String         @map("customer_email")
-  customerPhone  String         @map("customer_phone")
+  userId              String         @map("clerk_user_id")
+  customerName        String         @map("customer_name")
+  customerEmail       String         @map("customer_email")
+  customerPhone       String         @map("customer_phone")
   // Snapshot do endereco de entrega (achatado; remontado em objeto no F10).
-  addressCep     String         @map("address_cep")
-  addressStreet  String         @map("address_street")
-  addressCity    String         @map("address_city")
-  addressState   String         @map("address_state")
-  subtotalCents  Int            @map("subtotal_cents")
-  discountCents  Int            @default(0) @map("discount_cents")
-  shippingCents  Int            @default(0) @map("shipping_cents")
+  addressCep          String         @map("address_cep")
+  addressStreet       String         @map("address_street")
+  addressCity         String         @map("address_city")
+  addressState        String         @map("address_state")
+  subtotalCents       Int            @map("subtotal_cents")
+  discountCents       Int            @default(0) @map("discount_cents")
+  shippingCents       Int            @default(0) @map("shipping_cents")
   // total = subtotal - desconto + frete.
-  totalCents     Int            @map("total_cents")
-  shippingService String?       @map("shipping_service")
-  shippingDays   String?        @map("shipping_days")
-  paymentStatus  PaymentStatus  @default(pending) @map("payment_status")
-  paymentMethod  String         @map("payment_method")
-  shippingStatus ShippingStatus @default(pending) @map("shipping_status")
+  totalCents          Int            @map("total_cents")
+  shippingService     String?        @map("shipping_service")
+  shippingDays        String?        @map("shipping_days")
+  paymentStatus       PaymentStatus  @default(pending) @map("payment_status")
+  paymentMethod       String         @map("payment_method")
+  shippingStatus      ShippingStatus @default(pending) @map("shipping_status")
   // Rastreio do envio (admin preenche ao despachar). carrier = id do transportador
   // (lib/data/carriers); trackingCode = codigo do objeto. Ambos nullable (legado/sem envio).
-  trackingCode    String?       @map("tracking_code")
-  shippingCarrier String?       @map("shipping_carrier")
-  internalNote   String?        @map("internal_note")
+  trackingCode        String?        @map("tracking_code")
+  shippingCarrier     String?        @map("shipping_carrier")
+  internalNote        String?        @map("internal_note")
   // Correlacao com o Asaas: a cobranca/cliente desta venda. O webhook so muda o
   // status se o payment.id do evento bater com asaasPaymentId (anti-replay).
-  asaasPaymentId  String?       @unique @map("asaas_payment_id")
-  asaasCustomerId String?       @map("asaas_customer_id")
+  asaasPaymentId      String?        @unique @map("asaas_payment_id")
+  asaasCustomerId     String?        @map("asaas_customer_id")
   // Idempotencia de checkout: chave estavel por tentativa (unique). Recriar o
   // mesmo carrinho reaproveita o pedido em vez de gerar cobranca duplicada.
-  checkoutKey         String? @unique @map("checkout_key")
+  checkoutKey         String?        @unique @map("checkout_key")
   // Cupom aplicado. ATENCAO: discountCents (acima) = desconto de PRODUTO;
   // couponDiscountCents = desconto de CUPOM. total = subtotal - discountCents
   // - couponDiscountCents + frete.
-  couponCode          String? @map("coupon_code")
-  couponDiscountCents Int     @default(0) @map("coupon_discount_cents")
+  couponCode          String?        @map("coupon_code")
+  couponDiscountCents Int            @default(0) @map("coupon_discount_cents")
   // Marcas idempotentes do ciclo de reserva de estoque (invariante 1):
   // reservado no checkout; baixado de stock (committed) na confirmacao do pagamento.
-  stockReserved       Boolean @default(false) @map("stock_reserved")
-  stockCommitted      Boolean @default(false) @map("stock_committed")
+  stockReserved       Boolean        @default(false) @map("stock_reserved")
+  stockCommitted      Boolean        @default(false) @map("stock_committed")
   // Vencimento do PIX (fonte unica p/ o pg_cron expirar pendentes; derivado de
   // PIX_DUE_DAYS no checkout). Null em pedidos legados/sem cobranca.
-  dueDate             DateTime? @map("due_date") @db.Timestamptz(6)
-  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  dueDate             DateTime?      @map("due_date") @db.Timestamptz(6)
+  createdAt           DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
 
   items            OrderItem[]
   couponRedemption CouponRedemption?
@@ -195,13 +199,13 @@ model Order {
 
 model OrderItem {
   // PK interno (o dominio OrderItem nao expoe id).
-  id             String  @id @default(uuid()) @db.Uuid
-  orderId        Int     @map("order_id")
-  productId      String  @map("product_id") @db.Uuid
+  id             String @id @default(uuid()) @db.Uuid
+  orderId        Int    @map("order_id")
+  productId      String @map("product_id") @db.Uuid
   // Snapshots no momento da compra (sobrevivem a alteracoes do produto).
-  productName    String  @map("product_name")
+  productName    String @map("product_name")
   quantity       Int
-  unitPriceCents Int     @map("unit_price_cents")
+  unitPriceCents Int    @map("unit_price_cents")
 
   order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id])
@@ -373,4 +377,17 @@ model CouponRedemption {
   @@index([couponId])
   @@index([userId])
   @@map("coupon_redemptions")
+}
+
+model Category {
+  // Catalogo informativo (nome/descricao), DESACOPLADO de Product.category (que
+  // continua String validada contra CATEGORIES em lib/data/types.ts). Nao ha FK
+  // entre as duas — mudar aqui nao afeta produtos.
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("categories")
 }
