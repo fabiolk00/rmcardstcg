@@ -23,6 +23,15 @@ type DbClient = Prisma.TransactionClient | typeof prisma;
  * Upsert do usuario vindo do Clerk. Nunca rebaixa um admin existente. Aceita um
  * `db` opcional (o `tx` do ledger do webhook) para rodar na MESMA transacao do
  * registro do evento — evita "evento registrado mas efeito nao aplicado".
+ *
+ * AUTO-HEAL de admin por e-mail: a role e 'admin' se QUALQUER das condicoes valer:
+ *   (1) o e-mail esta em ADMIN_EMAILS (bootstrap por allowlist);
+ *   (2) esta MESMA linha (mesmo clerk_user_id) ja era admin (nunca rebaixa);
+ *   (3) OUTRA linha nao-deletada com o MESMO e-mail ja e admin.
+ * O (3) cobre a TROCA de clerk_user_id (conta recriada no Clerk ganha um id novo,
+ * gerando uma 2a linha): sem ele, o role=admin ficaria preso no id antigo e o login
+ * novo entraria como cliente. Mesmo modelo de confianca do fallback por e-mail
+ * (isAdminEmail) — o Clerk verifica a posse do e-mail no cadastro.
  */
 export async function upsertUserFromClerk(
   input: {
@@ -37,7 +46,24 @@ export async function upsertUserFromClerk(
     where: { clerkUserId: input.clerkUserId },
     select: { role: true },
   });
-  const role: Role = input.emailIsAdmin || existing?.role === "admin" ? "admin" : "cliente";
+
+  // (3): so consulta quando ainda nao e admin pelas vias baratas (1)/(2).
+  let siblingIsAdmin = false;
+  if (!input.emailIsAdmin && existing?.role !== "admin") {
+    const sibling = await db.user.findFirst({
+      where: {
+        email: { equals: input.email, mode: "insensitive" },
+        role: "admin",
+        deletedAt: null,
+        clerkUserId: { not: input.clerkUserId },
+      },
+      select: { id: true },
+    });
+    siblingIsAdmin = sibling !== null;
+  }
+
+  const role: Role =
+    input.emailIsAdmin || existing?.role === "admin" || siblingIsAdmin ? "admin" : "cliente";
 
   // deletedAt: null em create e update revive um id que reaparece no Clerk (um
   // usuario re-criado com o mesmo clerk_user_id volta a ter acesso).
@@ -144,10 +170,11 @@ export type SetUserRoleResult = { ok: true; user: AdminUser } | { ok: false; err
  * Guarda anti-lockout: o admin NAO pode alterar a PROPRIA role (auto-rebaixamento
  * deixaria o sistema sem admin se for o ultimo / trancaria o proprio acesso).
  *
- * NUANCE (ADMIN_EMAILS): se o e-mail do alvo estiver na allowlist ADMIN_EMAILS, o
- * proximo sync do Clerk (upsertUserFromClerk) o RE-PROMOVE a admin (bootstrap por
- * allowlist, que "nunca rebaixa"). Para rebaixar em definitivo, remova o e-mail de
- * ADMIN_EMAILS. Isso e esperado — por isso NAO mexemos no sync.
+ * NUANCE (re-promocao no sync): o proximo sync do Clerk (upsertUserFromClerk) RE-PROMOVE
+ * o alvo a admin se o e-mail estiver em ADMIN_EMAILS OU se OUTRA linha nao-deletada com
+ * o mesmo e-mail ainda for admin (auto-heal por e-mail). Para rebaixar em definitivo:
+ * remova o e-mail de ADMIN_EMAILS E rebaixe TODAS as linhas daquele e-mail. Isso e
+ * esperado — por isso NAO mexemos no sync.
  */
 export async function setUserRole(
   actor: AuditActor,
