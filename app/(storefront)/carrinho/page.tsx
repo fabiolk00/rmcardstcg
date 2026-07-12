@@ -1,4 +1,4 @@
-import { redirectClienteToPainel } from "@/lib/auth/resolveViewer";
+import { redirectLoggedInFromStorefront } from "@/lib/auth/resolveViewer";
 import { CartView } from "@/components/cart/CartView";
 import styles from "./carrinho.module.css";
 
@@ -7,7 +7,7 @@ import styles from "./carrinho.module.css";
 export const dynamic = "force-dynamic";
 
 export default async function CarrinhoPage() {
-  await redirectClienteToPainel("/painel/carrinho");
+  await redirectLoggedInFromStorefront("/painel/carrinho");
   return (
     <section>
       <h1 className={styles.title}>Carrinho</h1>

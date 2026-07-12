@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { redirectClienteToPainel } from "@/lib/auth/resolveViewer";
+import { redirectLoggedInFromStorefront } from "@/lib/auth/resolveViewer";
 import { getActiveProducts } from "@/lib/data/products";
 import { selectCarouselProducts } from "@/lib/data/carousel";
 import { ProductGrid } from "@/components/product/ProductGrid";
@@ -14,9 +14,9 @@ import styles from "./page.module.css";
 export const dynamic = "force-dynamic";
 
 export default async function LandingPage() {
-  // Cliente logado vive no painel: abrir o site cai direto nos pedidos (a
-  // vitrine publica e para anonimos; admin navega a loja normalmente).
-  await redirectClienteToPainel("/painel/pedidos");
+  // Quem esta logado vive na sua area: cliente cai direto nos pedidos do painel,
+  // admin no /admin. A vitrine publica e so para anonimos.
+  await redirectLoggedInFromStorefront("/painel/pedidos");
 
   const products = await getActiveProducts();
   // Carrossel "Em destaque": produtos marcados (isLanding) e com estoque; cai para

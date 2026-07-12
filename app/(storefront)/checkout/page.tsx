@@ -1,4 +1,4 @@
-import { redirectClienteToPainel } from "@/lib/auth/resolveViewer";
+import { redirectLoggedInFromStorefront } from "@/lib/auth/resolveViewer";
 import { CheckoutView } from "@/components/checkout/CheckoutView";
 import styles from "./checkout.module.css";
 
@@ -8,7 +8,7 @@ import styles from "./checkout.module.css";
 export const dynamic = "force-dynamic";
 
 export default async function CheckoutPage() {
-  await redirectClienteToPainel("/painel/checkout");
+  await redirectLoggedInFromStorefront("/painel/checkout");
   return (
     <section>
       <h1 className={styles.title}>Finalizar compra</h1>

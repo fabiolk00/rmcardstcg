@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// Roteador vitrine -> painel (lib/auth/resolveViewer): papel EFETIVO do
+import { storefrontRedirectTarget, type Viewer } from "../../lib/auth/resolveViewer";
+
+// Roteador vitrine -> area logada (lib/auth/resolveViewer): papel EFETIVO do
 // visitante. DB-free: boundaries (Clerk, config, users) mockados por caso.
 //
-// Regra provada: cliente logado => "cliente" (paginas redirecionam ao painel);
-// admin NUNCA e redirecionado; soft-deleted vira "deleted" (fica na vitrine —
-// mandar ao painel seria loop com o guard de la); falha de leitura => "anon"
-// (a vitrine nunca cai por causa do roteamento).
+// Regra provada: cliente logado => "cliente"; admin => "admin"; soft-deleted vira
+// "deleted" (fica na vitrine — mandar a area logada seria loop com o guard de la);
+// falha de leitura => "anon" (a vitrine nunca cai por causa do roteamento). O
+// DESTINO do redirect por papel e provado a parte em storefrontRedirectTarget.
 
 const authMock = vi.fn();
 const currentUserMock = vi.fn();
@@ -74,7 +76,7 @@ describe("resolveViewer", () => {
     expect(isUserSoftDeletedMock).not.toHaveBeenCalled();
   });
 
-  it("role 'admin' => admin (nunca redirecionado da vitrine)", async () => {
+  it("role 'admin' => admin (classificacao; o redirect manda para /admin)", async () => {
     isClerkConfiguredMock.mockReturnValue(true);
     authMock.mockResolvedValue({ userId: "u2" });
     getUserRoleMock.mockResolvedValue("admin");
@@ -137,5 +139,31 @@ describe("resolveViewer", () => {
     getUserRoleMock.mockRejectedValue(new Error("db fora"));
     const { resolveViewer } = await load();
     expect(await resolveViewer()).toEqual({ kind: "anon" });
+  });
+});
+
+// Decisao PURA do destino de redirect por papel (sem I/O). Prova a regra nova
+// "quem esta logado vive na sua area": admin -> /admin, cliente -> espelho no
+// painel, anon/deleted ficam na vitrine (null).
+describe("storefrontRedirectTarget", () => {
+  const DEST = "/painel/pedidos";
+
+  it("admin => /admin (ignora o destino de cliente)", () => {
+    const viewer: Viewer = { kind: "admin", userId: "u1" };
+    expect(storefrontRedirectTarget(viewer, DEST)).toBe("/admin");
+  });
+
+  it("cliente => espelho no painel (o destino recebido)", () => {
+    const viewer: Viewer = { kind: "cliente", userId: "u2" };
+    expect(storefrontRedirectTarget(viewer, DEST)).toBe(DEST);
+    expect(storefrontRedirectTarget(viewer, "/painel/carrinho")).toBe("/painel/carrinho");
+  });
+
+  it("anon => null (fica na vitrine publica)", () => {
+    expect(storefrontRedirectTarget({ kind: "anon" }, DEST)).toBeNull();
+  });
+
+  it("deleted => null (fica na vitrine; area logada devolveria = loop)", () => {
+    expect(storefrontRedirectTarget({ kind: "deleted" }, DEST)).toBeNull();
   });
 });

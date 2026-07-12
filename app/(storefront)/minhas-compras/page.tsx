@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { requireActiveUser } from "@/lib/auth/requireActiveUser";
-import { redirectClienteToPainel } from "@/lib/auth/resolveViewer";
+import { redirectLoggedInFromStorefront } from "@/lib/auth/resolveViewer";
 import { getOrdersByUserId } from "@/lib/data/orders";
 import { formatBRL } from "@/lib/utils/currency";
 import { PAYMENT_LABEL, SHIPPING_LABEL } from "./labels";
@@ -21,8 +21,9 @@ function formatDate(iso: string): string {
 
 export default async function MinhasComprasPage() {
   // A LISTA de pedidos do cliente agora vive no painel — redireciona o cliente
-  // logado (links antigos continuam funcionando). Detalhe/recibo permanecem aqui.
-  await redirectClienteToPainel("/painel/pedidos");
+  // logado (links antigos continuam funcionando); admin vai para o /admin.
+  // Detalhe/recibo permanecem aqui.
+  await redirectLoggedInFromStorefront("/painel/pedidos");
 
   // Pedidos do usuario AUTENTICADO E ATIVO. Fecha o vazamento de IDOR (NUNCA
   // getOrders() global) e bloqueia sessao de usuario soft-deleted (o espelho

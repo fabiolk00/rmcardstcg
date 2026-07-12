@@ -1,6 +1,6 @@
 import { unstable_cache } from "next/cache";
 
-import { redirectClienteToPainel } from "@/lib/auth/resolveViewer";
+import { redirectLoggedInFromStorefront } from "@/lib/auth/resolveViewer";
 import { FEATURED_AVG_RATING } from "@/lib/config/site";
 import { getActiveProducts } from "@/lib/data/products";
 import { ColecoesView } from "@/components/product/ColecoesView";
@@ -23,8 +23,9 @@ export default async function ColecoesPage({
   searchParams: Promise<{ cat?: string }>;
 }) {
   const { cat } = await searchParams;
-  // Cliente logado navega as colecoes DENTRO do painel (mesma tela, mesmo ?cat=).
-  await redirectClienteToPainel(
+  // Cliente logado navega as colecoes DENTRO do painel (mesma tela, mesmo ?cat=);
+  // admin vai para o /admin.
+  await redirectLoggedInFromStorefront(
     cat ? `/painel/colecoes?cat=${encodeURIComponent(cat)}` : "/painel/colecoes",
   );
 

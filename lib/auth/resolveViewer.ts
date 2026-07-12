@@ -6,12 +6,12 @@ import { getUserRole, isUserSoftDeleted } from "@/lib/data/users";
 import { isClerkConfigured } from "@/lib/services/clerk/config";
 
 /**
- * Papel EFETIVO do visitante para roteamento de vitrine -> painel.
+ * Papel EFETIVO do visitante para roteamento de vitrine -> area logada.
  *
- * Regra de produto: cliente LOGADO vive no painel (/painel/*) — a vitrine
- * publica e para anonimos. Admin NAO e redirecionado (o dono precisa navegar a
- * propria loja logado). Soft-deleted nao e redirecionado para o painel (o guard
- * de la o devolveria para a home: seria loop) — fica na vitrine como anonimo.
+ * Regra de produto: quem esta LOGADO vive na sua area — cliente no painel
+ * (/painel/*), admin no /admin. A vitrine publica e so para anonimos. Soft-deleted
+ * nao e roteado (o guard da area o devolveria para a home: seria loop) — fica na
+ * vitrine como anonimo.
  *
  * Custo: anon/mock-first = so auth() (JWT local, sem rede); logado = 1 leitura
  * de role no banco (o fallback ADMIN_EMAILS via currentUser so roda quando a
@@ -57,11 +57,23 @@ export async function resolveViewer(): Promise<Viewer> {
 }
 
 /**
- * Roteia o CLIENTE logado da vitrine para o equivalente no painel (regra
- * "tudo direciona pro dashboard sendo cliente"). Anon/admin/deleted seguem na
- * vitrine. Chamar no TOPO das pages publicas com espelho no painel.
+ * Destino de redirect da vitrine para um visitante LOGADO (PURA — testavel sem
+ * I/O): admin -> /admin; cliente -> espelho no painel (`clienteDest`); anon e
+ * deleted ficam na vitrine (null = sem redirect).
  */
-export async function redirectClienteToPainel(dest: string): Promise<void> {
-  const viewer = await resolveViewer();
-  if (viewer.kind === "cliente") redirect(dest);
+export function storefrontRedirectTarget(viewer: Viewer, clienteDest: string): string | null {
+  if (viewer.kind === "admin") return "/admin";
+  if (viewer.kind === "cliente") return clienteDest;
+  return null;
+}
+
+/**
+ * Roteia o visitante LOGADO da vitrine para a sua area (regra "quem esta logado
+ * vive na sua area"): admin -> /admin; cliente -> espelho no painel
+ * (`clienteDest`). Anon/deleted seguem na vitrine. Chamar no TOPO das pages
+ * publicas da vitrine que tem espelho na area logada.
+ */
+export async function redirectLoggedInFromStorefront(clienteDest: string): Promise<void> {
+  const target = storefrontRedirectTarget(await resolveViewer(), clienteDest);
+  if (target) redirect(target);
 }
