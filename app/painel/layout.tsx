@@ -63,7 +63,8 @@ export default async function PainelLayout({ children }: Readonly<{ children: Re
             <span className={styles.topbarTitle}>Painel do cliente</span>
           </header>
           {/* Corpo em duas colunas: conteudo + rail do carrinho (o rail se
-              esconde sozinho em /painel/carrinho e /painel/conta). */}
+              esconde sozinho em /painel/carrinho, /painel/conta e
+              /painel/checkout — la o Resumo do CheckoutView ja cobre). */}
           <div className={styles.body}>
             <main className={styles.content}>{children}</main>
             <PainelCartRail />

@@ -46,7 +46,7 @@ test("/painel redireciona para Meus Pedidos e monta o shell com sidebar", async 
   await expect(page.getByText("Você ainda não tem compras.")).toBeVisible();
 });
 
-test("rail do carrinho aparece em pedidos/colecoes/checkout e SOME em carrinho/conta", async ({
+test("rail do carrinho aparece em pedidos/colecoes e SOME em carrinho/conta/checkout", async ({
   page,
 }) => {
   await page.goto("/painel/pedidos");
@@ -56,15 +56,17 @@ test("rail do carrinho aparece em pedidos/colecoes/checkout e SOME em carrinho/c
   await page.goto("/painel/colecoes");
   await expect(rail(page)).toBeVisible();
 
-  await page.goto("/painel/checkout");
-  await expect(rail(page)).toBeVisible();
-
   // Regra: NAO aparece na tela de carrinho (redundante) nem na de conta.
   await page.goto("/painel/carrinho");
   await expect(page.getByRole("heading", { name: "Carrinho" })).toBeVisible();
   await expect(rail(page)).toHaveCount(0);
 
   await page.goto("/painel/conta");
+  await expect(rail(page)).toHaveCount(0);
+
+  // No checkout o Resumo do CheckoutView ja cobre — rail some para nao duplicar.
+  await page.goto("/painel/checkout");
+  await expect(page.getByRole("heading", { name: "Finalizar compra" })).toBeVisible();
   await expect(rail(page)).toHaveCount(0);
 });
 

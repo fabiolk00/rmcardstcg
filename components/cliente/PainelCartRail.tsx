@@ -9,14 +9,15 @@ import { formatBRL } from "@/lib/utils/currency";
 import { Icon } from "@/components/ui/Icon";
 import styles from "./PainelCartRail.module.css";
 
-// Telas onde o rail NAO aparece: carrinho (redundante — e a propria tela) e
-// conta (formulario; sem contexto de compra).
-const HIDDEN_PREFIXES = ["/painel/carrinho", "/painel/conta"];
+// Telas onde o rail NAO aparece: carrinho (redundante — e a propria tela),
+// conta (formulario; sem contexto de compra) e checkout (o proprio Resumo do
+// CheckoutView ja faz esse papel — o rail duplicaria a informacao).
+const HIDDEN_PREFIXES = ["/painel/carrinho", "/painel/conta", "/painel/checkout"];
 
 /**
  * Rail lateral DIREITO com o resumo do carrinho, presente em todas as telas do
- * painel do cliente exceto Carrinho e Conta. Le o MESMO CartContext das telas
- * (adds das Colecoes refletem na hora) e leva ao checkout do painel.
+ * painel do cliente exceto Carrinho, Conta e Checkout. Le o MESMO CartContext
+ * das telas (adds das Colecoes refletem na hora) e leva ao checkout do painel.
  */
 export function PainelCartRail() {
   const pathname = usePathname();
