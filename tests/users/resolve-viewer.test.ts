@@ -16,7 +16,13 @@ const isClerkConfiguredMock = vi.fn();
 const getUserRoleMock = vi.fn();
 const isUserSoftDeletedMock = vi.fn();
 const isAdminEmailMock = vi.fn();
+const redirectMock = vi.fn();
 
+vi.mock("next/navigation", () => ({
+  // O redirect real lanca NEXT_REDIRECT para abortar o render; no teste so
+  // capturamos o destino (as funcoes nao tem codigo apos o redirect).
+  redirect: (url: string) => redirectMock(url),
+}));
 vi.mock("@clerk/nextjs/server", () => ({
   auth: () => authMock(),
   currentUser: () => currentUserMock(),
@@ -45,6 +51,7 @@ beforeEach(() => {
     getUserRoleMock,
     isUserSoftDeletedMock,
     isAdminEmailMock,
+    redirectMock,
   ]) {
     m.mockReset();
   }
@@ -165,5 +172,35 @@ describe("storefrontRedirectTarget", () => {
 
   it("deleted => null (fica na vitrine; area logada devolveria = loop)", () => {
     expect(storefrontRedirectTarget({ kind: "deleted" }, DEST)).toBeNull();
+  });
+});
+
+// Guard de layout da vitrine: admin logado NUNCA renderiza a vitrine — vai direto
+// para /admin (cobre TODAS as rotas do grupo, inclusive as sem redirect por-pagina).
+// Cliente/anon seguem na vitrine (o espelho do cliente e feito por-pagina).
+describe("redirectAdminAwayFromStorefront", () => {
+  it("admin => redirect('/admin')", async () => {
+    isClerkConfiguredMock.mockReturnValue(true);
+    authMock.mockResolvedValue({ userId: "adm" });
+    getUserRoleMock.mockResolvedValue("admin");
+    const { redirectAdminAwayFromStorefront } = await load();
+    await redirectAdminAwayFromStorefront();
+    expect(redirectMock).toHaveBeenCalledWith("/admin");
+  });
+
+  it("cliente => NAO redireciona (o espelho no painel e feito por-pagina)", async () => {
+    isClerkConfiguredMock.mockReturnValue(true);
+    authMock.mockResolvedValue({ userId: "cli" });
+    getUserRoleMock.mockResolvedValue("cliente");
+    const { redirectAdminAwayFromStorefront } = await load();
+    await redirectAdminAwayFromStorefront();
+    expect(redirectMock).not.toHaveBeenCalled();
+  });
+
+  it("anon (mock-first) => NAO redireciona", async () => {
+    isClerkConfiguredMock.mockReturnValue(false);
+    const { redirectAdminAwayFromStorefront } = await load();
+    await redirectAdminAwayFromStorefront();
+    expect(redirectMock).not.toHaveBeenCalled();
   });
 });

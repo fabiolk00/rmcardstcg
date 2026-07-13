@@ -77,3 +77,16 @@ export async function redirectLoggedInFromStorefront(clienteDest: string): Promi
   const target = storefrontRedirectTarget(await resolveViewer(), clienteDest);
   if (target) redirect(target);
 }
+
+/**
+ * Guard de LAYOUT da vitrine: admin logado NUNCA permanece na vitrine — vai
+ * DIRETO para /admin (regra do dono: logado como admin => painel, sempre, sem
+ * nem renderizar a landing). Cobre TODA rota do grupo (storefront), inclusive
+ * as que nao tem redirect por-pagina (/produto/[slug], termos, privacidade).
+ * Cliente e anon seguem na vitrine: o espelho do cliente no painel continua
+ * sendo feito por redirectLoggedInFromStorefront em cada page (destino por-pagina).
+ */
+export async function redirectAdminAwayFromStorefront(): Promise<void> {
+  const viewer = await resolveViewer();
+  if (viewer.kind === "admin") redirect("/admin");
+}
