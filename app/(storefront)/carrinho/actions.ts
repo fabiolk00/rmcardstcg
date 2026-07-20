@@ -64,6 +64,10 @@ export type CheckoutCustomer = {
   cpfCnpj?: string;
   cep: string;
   street: string;
+  /** Numero e bairro: exigidos pela etiqueta (ver lib/checkout/customer). */
+  number: string;
+  complement?: string;
+  district: string;
   city: string;
   state: string;
 };
@@ -424,6 +428,7 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
   // cai no flat se a cotacao nao vier. O cliente NUNCA define o preco do frete.
   let quotedShippingCents: number | null = null;
   let shippingService: string | null = null;
+  let shippingServiceCode: number | null = null;
   let shippingDays: string | null = null;
   if (!isFreeShipping(totals.merchandiseCents)) {
     const quoteItems = input.items.flatMap((i) => {
@@ -453,6 +458,8 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
       if (chosen) {
         quotedShippingCents = chosen.priceCents;
         shippingService = chosen.name;
+        // Codigo NUMERICO tambem: e o que a emissao de etiqueta exige depois.
+        shippingServiceCode = chosen.serviceCode;
         shippingDays = chosen.days != null ? `${chosen.days} dias úteis` : null;
       }
     } else {
@@ -491,9 +498,13 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
       customerName: input.customer.name,
       customerEmail: input.customer.email,
       customerPhone: input.customer.phone,
+      customerDocument: input.customer.cpfCnpj ? onlyDigits(input.customer.cpfCnpj) : null,
       address: {
         cep: input.customer.cep,
         street: input.customer.street,
+        number: input.customer.number,
+        complement: input.customer.complement ?? null,
+        district: input.customer.district,
         city: input.customer.city,
         state: input.customer.state,
       },
@@ -504,6 +515,7 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
       couponDiscountCents: appliedCouponDiscountCents,
       shippingCents,
       shippingService,
+      shippingServiceCode,
       shippingDays,
       totalCents: finalTotalCents,
       paymentMethod,

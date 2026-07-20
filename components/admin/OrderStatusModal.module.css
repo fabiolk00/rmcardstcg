@@ -62,3 +62,18 @@
   font-size: 13px;
   color: var(--red-strong);
 }
+
+/* Etiqueta de envio: acao imediata (fora do fluxo de "Salvar"), por isso os
+   botoes ficam agrupados e a mensagem de resultado vem logo abaixo. */
+.labelActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.labelInfo {
+  margin: 6px 0 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--muted, #6b7280);
+}

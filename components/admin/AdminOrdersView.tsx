@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  cancelLabelAction,
+  issueLabelAction,
+  printLabelAction,
+} from "@/app/admin/pedidos/labelActions";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import type { Order, PaymentStatus, ShippingStatus } from "@/lib/data/types";
 import { paymentMethodLabel } from "@/lib/payments/method";
@@ -262,6 +267,9 @@ export function AdminOrdersView({ orders: initialOrders }: { orders: Order[] }) 
             onPayment: (to, reason) => adjustPaymentStatusAction(editing.id, to, reason),
             onNote: (note) => updateInternalNoteAction(editing.id, note),
             onTracking: (code, carrier) => updateTrackingAction(editing.id, code, carrier),
+            onIssueLabel: () => issueLabelAction(editing.id),
+            onPrintLabel: (format) => printLabelAction(editing.id, format),
+            onCancelLabel: () => cancelLabelAction(editing.id),
           }}
         />
       )}

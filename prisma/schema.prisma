@@ -149,14 +149,26 @@ model Order {
   // Snapshot do endereco de entrega (achatado; remontado em objeto no F10).
   addressCep          String         @map("address_cep")
   addressStreet       String         @map("address_street")
+  // Numero/bairro/complemento: EXIGIDOS pela etiqueta (o provedor rejeita sem
+  // numero e bairro). Nullable por causa dos pedidos legados, anteriores a
+  // coleta desses campos no checkout — para eles o admin completa ao emitir.
+  addressNumber       String?        @map("address_number")
+  addressComplement   String?        @map("address_complement")
+  addressDistrict     String?        @map("address_district")
   addressCity         String         @map("address_city")
   addressState        String         @map("address_state")
+  // CPF/CNPJ do destinatario (so digitos) — obrigatorio na etiqueta. Antes ia
+  // so para o Asaas e se perdia; agora fica no snapshot do pedido.
+  customerDocument    String?        @map("customer_document")
   subtotalCents       Int            @map("subtotal_cents")
   discountCents       Int            @default(0) @map("discount_cents")
   shippingCents       Int            @default(0) @map("shipping_cents")
   // total = subtotal - desconto + frete.
   totalCents          Int            @map("total_cents")
   shippingService     String?        @map("shipping_service")
+  // Codigo NUMERICO da modalidade cotada (1=PAC, 2=SEDEX, 31=Loggi). O nome
+  // sozinho nao serve para emitir a etiqueta — o provedor exige o codigo.
+  shippingServiceCode Int?           @map("shipping_service_code")
   shippingDays        String?        @map("shipping_days")
   paymentStatus       PaymentStatus  @default(pending) @map("payment_status")
   paymentMethod       String         @map("payment_method")
@@ -189,6 +201,7 @@ model Order {
 
   items            OrderItem[]
   couponRedemption CouponRedemption?
+  shippingLabel    ShippingLabel?
 
   @@index([userId])
   @@index([createdAt])
@@ -267,6 +280,33 @@ model CustomerProfile {
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("customer_profiles")
+}
+
+model ShippingLabel {
+  // Etiqueta de envio emitida no SuperFrete. UMA linha por pedido (upsert): o
+  // historico de emissao/cancelamento vive no audit_log, aqui fica o estado atual.
+  //
+  // Esta tabela E o store de IDEMPOTENCIA do modulo de etiqueta (LabelStore):
+  // antes ele era em memoria, entao um deploy no meio de um retry podia PAGAR A
+  // MESMA ETIQUETA DUAS VEZES. externalRef ("pedido-123") e a chave estavel.
+  id           String   @id @default(uuid()) @db.Uuid
+  orderId      Int      @unique @map("order_id")
+  order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  externalRef  String   @unique @map("external_ref")
+  // Id do envio no provedor. Muda se a etiqueta for cancelada e reemitida.
+  superFreteId String   @map("superfrete_id")
+  // Espelho do ciclo do provedor: pending | released | posted | delivered | canceled.
+  // String (nao enum) de proposito: o vocabulario e do provedor, nao nosso.
+  status       String
+  // true depois do checkout no provedor (etiqueta paga com saldo da carteira).
+  paid         Boolean  @default(false)
+  costCents    Int      @default(0) @map("cost_cents")
+  labelUrl     String?  @map("label_url")
+  trackingCode String?  @map("tracking_code")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("shipping_labels")
 }
 
 model AuditLog {

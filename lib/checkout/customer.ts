@@ -17,6 +17,10 @@ export type CheckoutCustomerInput = {
   cpfCnpj?: string;
   cep: string;
   street: string;
+  /** Numero e bairro: exigidos pela transportadora para emitir a etiqueta. */
+  number: string;
+  complement?: string;
+  district: string;
   city: string;
   state: string;
 };
@@ -55,7 +59,15 @@ export function validateCheckoutCustomer(c: CheckoutCustomerInput | undefined): 
     return { ok: false, field: "cep", error: "Informe um CEP válido (8 dígitos)." };
   }
   if (text(c.street).length < 3) {
-    return { ok: false, field: "street", error: "Informe o endereço de entrega." };
+    return { ok: false, field: "street", error: "Informe a rua do endereço de entrega." };
+  }
+  // Sem numero e bairro a transportadora recusa a etiqueta — barrar aqui evita
+  // pedido pago que nao consegue ser despachado.
+  if (text(c.number).length === 0) {
+    return { ok: false, field: "number", error: "Informe o número do endereço." };
+  }
+  if (text(c.district).length < 2) {
+    return { ok: false, field: "district", error: "Informe o bairro." };
   }
   if (text(c.city).length < 2) {
     return { ok: false, field: "city", error: "Informe a cidade." };

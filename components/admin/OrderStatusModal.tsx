@@ -15,12 +15,21 @@ const SHIP_LABEL: Record<ShippingStatus, string> = {
   cancelled: "Cancelado",
 };
 
+type LabelResult = { ok: true; order: Order; message: string } | { ok: false; error: string };
+type PrintResult = { ok: true; url: string } | { ok: false; error: string };
+
 type Handlers = {
   onShipping: (to: ShippingStatus) => Promise<OrderActionResult>;
   onPayment: (to: PaymentStatus, reason: string) => Promise<OrderActionResult>;
   onNote: (note: string) => Promise<OrderActionResult>;
   onTracking: (trackingCode: string, carrier: string) => Promise<OrderActionResult>;
+  /** Emite a etiqueta no SuperFrete (PAGA com o saldo da carteira). */
+  onIssueLabel: () => Promise<LabelResult>;
+  onPrintLabel: (format: "A4" | "A6") => Promise<PrintResult>;
+  onCancelLabel: () => Promise<LabelResult>;
 };
+
+const brl = (cents: number) => `R$ ${(cents / 100).toFixed(2).replace(".", ",")}`;
 
 type Props = {
   order: Order;
@@ -39,6 +48,11 @@ export function OrderStatusModal({ order, onClose, onSaved, handlers }: Props) {
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Etiqueta: estado proprio (a acao e imediata, nao entra no "Salvar").
+  const [label, setLabel] = useState(order.shippingLabel);
+  const [labelBusy, setLabelBusy] = useState(false);
+  const [labelMsg, setLabelMsg] = useState<string | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState(false);
 
   // Destinos de envio validos a partir do estado atual (+ o proprio, p/ "nao mudar").
   const shipOptions = useMemo<ShippingStatus[]>(
@@ -102,6 +116,77 @@ export function OrderStatusModal({ order, onClose, onSaved, handlers }: Props) {
       setError("Não foi possível salvar. Tente novamente.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleIssue() {
+    setLabelBusy(true);
+    setLabelMsg(null);
+    setError(null);
+    try {
+      const res = await handlers.onIssueLabel();
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setLabel(res.order.shippingLabel);
+      setLabelMsg(res.message);
+      setShipping(res.order.shippingStatus);
+      setTrackingCode(res.order.trackingCode ?? "");
+      setCarrier(res.order.shippingCarrier ?? "");
+      onSaved(res.order);
+    } catch {
+      setError("Não foi possível emitir a etiqueta. Tente novamente.");
+    } finally {
+      setLabelBusy(false);
+    }
+  }
+
+  async function handlePrint(format: "A4" | "A6") {
+    setLabelBusy(true);
+    setLabelMsg(null);
+    setError(null);
+    try {
+      const res = await handlers.onPrintLabel(format);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      // Abre o PDF em nova aba; se o navegador bloquear, o link fica na mensagem.
+      window.open(res.url, "_blank", "noopener,noreferrer");
+      setLabelMsg(`Etiqueta ${format} aberta em nova aba.`);
+    } catch {
+      setError("Não foi possível gerar o PDF da etiqueta.");
+    } finally {
+      setLabelBusy(false);
+    }
+  }
+
+  /** Dois cliques: cancelar etiqueta paga vira credito, nao dinheiro de volta. */
+  async function handleCancelLabel() {
+    if (!confirmCancel) {
+      setConfirmCancel(true);
+      return;
+    }
+    setLabelBusy(true);
+    setLabelMsg(null);
+    setError(null);
+    try {
+      const res = await handlers.onCancelLabel();
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setLabel(null);
+      setLabelMsg(res.message);
+      setTrackingCode(res.order.trackingCode ?? "");
+      setCarrier(res.order.shippingCarrier ?? "");
+      onSaved(res.order);
+    } catch {
+      setError("Não foi possível cancelar a etiqueta.");
+    } finally {
+      setLabelBusy(false);
+      setConfirmCancel(false);
     }
   }
 
@@ -211,6 +296,66 @@ export function OrderStatusModal({ order, onClose, onSaved, handlers }: Props) {
           placeholder="Ex.: AA123456789BR"
           onChange={(e) => setTrackingCode(e.target.value)}
         />
+      </div>
+
+      <div className={styles.field}>
+        <span className={styles.label}>Etiqueta de envio</span>
+        {label && label.status !== "canceled" ? (
+          <>
+            <p className={styles.labelInfo}>
+              Emitida por {brl(label.costCents)} — {label.status}
+              {label.trackingCode ? ` · rastreio ${label.trackingCode}` : " · rastreio ainda não emitido"}
+            </p>
+            <div className={styles.labelActions}>
+              <button
+                type="button"
+                className={styles.secondary}
+                disabled={labelBusy}
+                onClick={() => handlePrint("A4")}
+              >
+                Imprimir A4
+              </button>
+              <button
+                type="button"
+                className={styles.secondary}
+                disabled={labelBusy}
+                onClick={() => handlePrint("A6")}
+              >
+                Imprimir A6
+              </button>
+              <button
+                type="button"
+                className={styles.secondary}
+                disabled={labelBusy}
+                onClick={handleCancelLabel}
+              >
+                {confirmCancel ? "Confirmar cancelamento" : "Cancelar etiqueta"}
+              </button>
+            </div>
+            {confirmCancel && (
+              <p className={styles.labelInfo}>
+                O valor volta como crédito na carteira SuperFrete, não para a conta bancária.
+              </p>
+            )}
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              className={styles.secondary}
+              disabled={labelBusy || order.paymentStatus !== "paid"}
+              onClick={handleIssue}
+            >
+              {labelBusy ? "Emitindo…" : "Gerar etiqueta"}
+            </button>
+            <p className={styles.labelInfo}>
+              {order.paymentStatus !== "paid"
+                ? "Disponível só para pedido pago."
+                : "Debita o saldo da carteira SuperFrete e preenche o rastreio."}
+            </p>
+          </>
+        )}
+        {labelMsg && <p className={styles.labelInfo}>{labelMsg}</p>}
       </div>
 
       <div className={styles.field}>

@@ -13,7 +13,10 @@ const VALID = {
   phone: "(41) 99999-9999",
   cpfCnpj: "123.456.789-09",
   cep: "80010-000",
-  street: "Rua XV de Novembro, 100",
+  street: "Rua XV de Novembro",
+  number: "100",
+  complement: "sala 3",
+  district: "Centro",
   city: "Curitiba",
   state: "PR",
 };
@@ -21,6 +24,10 @@ const VALID = {
 describe("validateCheckoutCustomer", () => {
   it("aceita um cliente completo (com mascaras)", () => {
     expect(validateCheckoutCustomer(VALID)).toEqual({ ok: true });
+  });
+
+  it("aceita sem complemento (opcional)", () => {
+    expect(validateCheckoutCustomer({ ...VALID, complement: undefined })).toEqual({ ok: true });
   });
 
   it("aceita sem CPF/CNPJ (opcional no contrato mock-first)", () => {
@@ -45,6 +52,8 @@ describe("validateCheckoutCustomer", () => {
     ["CEP com 7 digitos", { ...VALID, cep: "8001000" }, "cep"],
     ["CEP nao-string", { ...VALID, cep: null as unknown as string }, "cep"],
     ["rua vazia", { ...VALID, street: "" }, "street"],
+    ["sem número", { ...VALID, number: "  " }, "number"],
+    ["sem bairro", { ...VALID, district: "" }, "district"],
     ["cidade vazia", { ...VALID, city: "" }, "city"],
     ["UF com 3 letras", { ...VALID, state: "PRR" }, "state"],
     ["UF vazia", { ...VALID, state: "" }, "state"],

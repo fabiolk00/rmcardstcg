@@ -3,8 +3,8 @@ import type { Form } from "@/components/checkout/CheckoutView";
 /**
  * Mapeamento PURO perfil (Conta) -> Form do checkout (contrato do
  * app/painel/CONTRACT.md). Extraido da page para teste sem Next:
- *  - street do checkout = street + ", " + number (+ " " + complement) quando
- *    number existir;
+ *  - street/number/complement/district 1:1 (o checkout tem campo proprio para
+ *    cada um desde que a etiqueta passou a exigir numero e bairro separados);
  *  - cep salvo sem mascara (8 digitos) -> exibicao NNNNN-NNN;
  *  - demais campos 1:1 (null -> "").
  */
@@ -17,6 +17,7 @@ export type CustomerProfileLike = {
   street: string;
   number: string | null;
   complement: string | null;
+  district: string | null;
   city: string;
   state: string;
 };
@@ -29,16 +30,16 @@ export function formatCep(cep: string): string {
 
 /** Perfil -> valores iniciais do form do checkout. */
 export function toInitialCustomer(profile: CustomerProfileLike): Partial<Form> {
-  const street = profile.number
-    ? `${profile.street}, ${profile.number}${profile.complement ? ` ${profile.complement}` : ""}`
-    : profile.street;
   return {
     name: profile.name,
     email: profile.email ?? "",
     phone: profile.phone,
     cpfCnpj: profile.cpfCnpj ?? "",
     cep: formatCep(profile.cep),
-    street,
+    street: profile.street,
+    number: profile.number ?? "",
+    complement: profile.complement ?? "",
+    district: profile.district ?? "",
     city: profile.city,
     state: profile.state,
   };

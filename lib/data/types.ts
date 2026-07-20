@@ -129,8 +129,25 @@ export interface OrderItem {
 export interface OrderAddress {
   cep: string;
   street: string;
+  /** Numero e bairro: exigidos pela etiqueta. null em pedidos legados. */
+  number: string | null;
+  complement: string | null;
+  district: string | null;
   city: string;
   state: string;
+}
+
+/** Etiqueta de envio emitida no SuperFrete (estado atual do pedido). */
+export interface OrderShippingLabel {
+  superFreteId: string;
+  /** pending | released | posted | delivered | canceled (vocabulario do provedor). */
+  status: string;
+  paid: boolean;
+  /** Custo pago pela loja, em centavos. */
+  costCents: number;
+  /** PDF imprimivel, quando o provedor ja emitiu. */
+  labelUrl: string | null;
+  trackingCode: string | null;
 }
 
 export interface Order {
@@ -141,6 +158,8 @@ export interface Order {
   customerName: string;
   customerEmail: string;
   customerPhone: string;
+  /** CPF/CNPJ do destinatario (so digitos); null em pedidos legados. */
+  customerDocument: string | null;
   /** Snapshot do endereco de entrega. */
   address: OrderAddress;
   items: OrderItem[];
@@ -155,6 +174,8 @@ export interface Order {
   /** total = subtotal - discountCents - couponDiscountCents + frete. */
   totalCents: number;
   shippingService: string | null;
+  /** Codigo numerico da modalidade cotada (1=PAC, 2=SEDEX, 31=Loggi). */
+  shippingServiceCode: number | null;
   shippingDays: string | null;
   paymentStatus: PaymentStatus;
   paymentMethod: string;
@@ -164,6 +185,8 @@ export interface Order {
   /** Id do transportador (lib/data/carriers); null se nao definido. */
   shippingCarrier: string | null;
   internalNote: string | null;
+  /** Etiqueta emitida, quando houver. */
+  shippingLabel: OrderShippingLabel | null;
   /** ISO 8601. */
   createdAt: string;
 }

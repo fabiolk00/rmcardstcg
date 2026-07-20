@@ -1,7 +1,7 @@
 import { prisma } from "../db";
 import { Prisma } from "../generated/prisma/client";
 import { AuditAction, AuditEntityType } from "../generated/prisma/enums";
-import type { OrderItemModel, OrderModel } from "../generated/prisma/models";
+import type { OrderItemModel, OrderModel, ShippingLabelModel } from "../generated/prisma/models";
 import { type AuditActor, writeAuditLog } from "./audit";
 import { isCarrierId } from "./carriers";
 import { commitStock, releaseStock, reserveStock, restockUnits } from "./inventory";
@@ -16,9 +16,9 @@ import type { Order, OrderAddress, OrderItem, PaymentStatus, ShippingStatus } fr
  * - colunas address_* achatadas -> objeto address aninhado;
  * - itens (relacao) -> OrderItem[] do contrato.
  */
-type OrderRow = OrderModel & { items: OrderItemModel[] };
+type OrderRow = OrderModel & { items: OrderItemModel[]; shippingLabel?: ShippingLabelModel | null };
 
-const withItems = { items: true } as const;
+const withItems = { items: true, shippingLabel: true } as const;
 
 function toOrder(row: OrderRow): Order {
   return {
@@ -27,9 +27,13 @@ function toOrder(row: OrderRow): Order {
     customerName: row.customerName,
     customerEmail: row.customerEmail,
     customerPhone: row.customerPhone,
+    customerDocument: row.customerDocument,
     address: {
       cep: row.addressCep,
       street: row.addressStreet,
+      number: row.addressNumber,
+      complement: row.addressComplement,
+      district: row.addressDistrict,
       city: row.addressCity,
       state: row.addressState,
     },
@@ -46,6 +50,7 @@ function toOrder(row: OrderRow): Order {
     shippingCents: row.shippingCents,
     totalCents: row.totalCents,
     shippingService: row.shippingService,
+    shippingServiceCode: row.shippingServiceCode,
     shippingDays: row.shippingDays,
     paymentStatus: row.paymentStatus as PaymentStatus,
     paymentMethod: row.paymentMethod,
@@ -53,6 +58,16 @@ function toOrder(row: OrderRow): Order {
     trackingCode: row.trackingCode,
     shippingCarrier: row.shippingCarrier,
     internalNote: row.internalNote,
+    shippingLabel: row.shippingLabel
+      ? {
+          superFreteId: row.shippingLabel.superFreteId,
+          status: row.shippingLabel.status,
+          paid: row.shippingLabel.paid,
+          costCents: row.shippingLabel.costCents,
+          labelUrl: row.shippingLabel.labelUrl,
+          trackingCode: row.shippingLabel.trackingCode,
+        }
+      : null,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -107,6 +122,8 @@ export type CreateOrderInput = {
   customerName: string;
   customerEmail: string;
   customerPhone: string;
+  /** CPF/CNPJ (so digitos) — snapshot para a etiqueta. */
+  customerDocument?: string | null;
   address: OrderAddress;
   items: OrderItem[];
   subtotalCents: number;
@@ -118,6 +135,8 @@ export type CreateOrderInput = {
   totalCents: number;
   paymentMethod: string;
   shippingService?: string | null;
+  /** Codigo numerico da modalidade cotada (necessario para emitir a etiqueta). */
+  shippingServiceCode?: number | null;
   shippingDays?: string | null;
   /** Vencimento do PIX (fonte unica p/ o pg_cron); derivado de PIX_DUE_DAYS. */
   dueDate?: Date | null;
@@ -251,8 +270,12 @@ export async function createOrderWithReservation(
             customerName: input.customerName,
             customerEmail: input.customerEmail,
             customerPhone: input.customerPhone,
+            customerDocument: input.customerDocument ?? null,
             addressCep: input.address.cep,
             addressStreet: input.address.street,
+            addressNumber: input.address.number,
+            addressComplement: input.address.complement,
+            addressDistrict: input.address.district,
             addressCity: input.address.city,
             addressState: input.address.state,
             subtotalCents: input.subtotalCents,
@@ -263,6 +286,7 @@ export async function createOrderWithReservation(
             totalCents: input.totalCents,
             paymentMethod: input.paymentMethod,
             shippingService: input.shippingService ?? null,
+            shippingServiceCode: input.shippingServiceCode ?? null,
             shippingDays: input.shippingDays ?? null,
             dueDate: input.dueDate ?? null,
             stockReserved: true,

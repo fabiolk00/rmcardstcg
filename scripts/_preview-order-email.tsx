@@ -22,7 +22,8 @@ const SAMPLE_ORDER: Order = {
   customerName: "Fábio",
   customerEmail: "cliente@example.com",
   customerPhone: "41999999999",
-  address: { cep: "81310160", street: "Rua das Araucárias, 123", city: "Curitiba", state: "PR" },
+  customerDocument: null,
+  address: { cep: "81310160", street: "Rua das Araucárias, 123", number: "100", complement: null, district: "Centro", city: "Curitiba", state: "PR" },
   items: [
     {
       productId: "p1",
@@ -39,6 +40,7 @@ const SAMPLE_ORDER: Order = {
   shippingCents: 0,
   totalCents: 85473, // 99970 - 5000 - 9497 + 0
   shippingService: "PAC",
+  shippingServiceCode: null,
   shippingDays: "5 a 8 dias úteis",
   paymentStatus: "paid",
   paymentMethod: "pix",
@@ -46,6 +48,7 @@ const SAMPLE_ORDER: Order = {
   trackingCode: null,
   shippingCarrier: null,
   internalNote: null,
+  shippingLabel: null,
   createdAt: new Date().toISOString(),
 };
 

@@ -7,7 +7,9 @@ import {
 } from "@/app/painel/checkout/prefill";
 
 // Mapeamento PURO perfil (Conta) -> Form do checkout (contrato do
-// app/painel/CONTRACT.md): street composto com number/complement, cep mascarado
+// app/painel/CONTRACT.md): campos 1:1 — rua, numero, complemento e bairro tem
+// campo PROPRIO no checkout desde que a etiqueta passou a exigir numero e bairro
+// separados (antes o mapeamento concatenava tudo em street). cep mascarado
 // NNNNN-NNN, nulls viram "" (o form nao aceita null).
 
 function profile(overrides: Partial<CustomerProfileLike> = {}): CustomerProfileLike {
@@ -20,6 +22,7 @@ function profile(overrides: Partial<CustomerProfileLike> = {}): CustomerProfileL
     street: "Rua XV de Novembro",
     number: "285",
     complement: "Sala 3",
+    district: "Centro",
     city: "Curitiba",
     state: "PR",
     ...overrides,
@@ -41,27 +44,31 @@ describe("formatCep", () => {
 });
 
 describe("toInitialCustomer", () => {
-  it("perfil completo: street = rua + numero + complemento; cep mascarado; 1:1 no resto", () => {
+  it("perfil completo: cada campo no seu campo; cep mascarado; 1:1 no resto", () => {
     expect(toInitialCustomer(profile())).toEqual({
       name: "Maria Colecionadora",
       email: "maria@exemplo.com",
       phone: "(41) 99999-0000",
       cpfCnpj: "52998224725",
       cep: "80010-000",
-      street: "Rua XV de Novembro, 285 Sala 3",
+      street: "Rua XV de Novembro",
+      number: "285",
+      complement: "Sala 3",
+      district: "Centro",
       city: "Curitiba",
       state: "PR",
     });
   });
 
-  it("sem number: street puro (nao concatena virgula orfa nem complemento)", () => {
+  it("sem number: rua intacta e numero vazio (o checkout cobra o campo)", () => {
     const out = toInitialCustomer(profile({ number: null, complement: "Fundos" }));
     expect(out.street).toBe("Rua XV de Novembro");
+    expect(out.number).toBe("");
+    expect(out.complement).toBe("Fundos");
   });
 
-  it("com number e sem complement: rua + numero", () => {
-    const out = toInitialCustomer(profile({ complement: null }));
-    expect(out.street).toBe("Rua XV de Novembro, 285");
+  it("sem bairro no perfil: campo vazio (o checkout cobra)", () => {
+    expect(toInitialCustomer(profile({ district: null })).district).toBe("");
   });
 
   it("nulls opcionais viram '' (o form do checkout nao aceita null)", () => {

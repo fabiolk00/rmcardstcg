@@ -56,6 +56,11 @@ export type Form = {
   cpfCnpj: string;
   cep: string;
   street: string;
+  // Numero e bairro em campos PROPRIOS: a transportadora exige os dois
+  // separados na etiqueta — juntar tudo em "rua" impedia emitir o envio.
+  number: string;
+  complement: string;
+  district: string;
   city: string;
   state: string;
 };
@@ -69,6 +74,9 @@ const EMPTY: Form = {
   street: "",
   city: "",
   state: "",
+  number: "",
+  complement: "",
+  district: "",
 };
 
 // initialCustomer: prefill opcional do form (painel do cliente injeta o perfil
@@ -167,7 +175,9 @@ export function CheckoutView({ initialCustomer }: { initialCustomer?: Partial<Fo
       ["phone", "Informe o telefone."],
       ["cpfCnpj", "Informe o CPF/CNPJ."],
       ["cep", "Informe o CEP."],
-      ["street", "Informe o endereço."],
+      ["street", "Informe a rua."],
+      ["number", "Informe o número."],
+      ["district", "Informe o bairro."],
       ["city", "Informe a cidade."],
       ["state", "Informe o estado."],
     ];
@@ -313,12 +323,38 @@ export function CheckoutView({ initialCustomer }: { initialCustomer?: Partial<Fo
               autoComplete="address-level2"
             />
           </Field>
-          <Field className={styles.full} label="Endereço (rua, número, complemento)">
+          <Field className={styles.full} label="Rua / avenida">
             <input
               className={styles.input}
               value={form.street}
               onChange={set("street")}
-              autoComplete="street-address"
+              autoComplete="address-line1"
+            />
+          </Field>
+          <Field label="Número">
+            <input
+              className={styles.input}
+              value={form.number}
+              onChange={set("number")}
+              placeholder="123"
+              inputMode="numeric"
+            />
+          </Field>
+          <Field label="Complemento (opcional)">
+            <input
+              className={styles.input}
+              value={form.complement}
+              onChange={set("complement")}
+              placeholder="apto 42"
+              autoComplete="address-line2"
+            />
+          </Field>
+          <Field label="Bairro">
+            <input
+              className={styles.input}
+              value={form.district}
+              onChange={set("district")}
+              autoComplete="address-level3"
             />
           </Field>
           <Field label="Estado (UF)">
