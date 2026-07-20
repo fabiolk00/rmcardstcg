@@ -489,3 +489,13 @@
     padding: var(--space-6);
   }
 }
+
+/* Dica sob um campo do formulario (ex.: complemento). Mesma escala da dica de
+   frete (.shipHint), mas dentro do <label> do campo. */
+.fieldHint {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink-3);
+}

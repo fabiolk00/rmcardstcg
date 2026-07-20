@@ -348,6 +348,11 @@ export function CheckoutView({ initialCustomer }: { initialCustomer?: Partial<Fo
               placeholder="apto 42"
               autoComplete="address-line2"
             />
+            {/* Endereco incompleto e causa comum de devolucao em predio: o
+                entregador nao acha o morador e o pacote volta. */}
+            <span className={styles.fieldHint}>
+              Apartamento, bloco ou sala — importante para prédios.
+            </span>
           </Field>
           <Field label="Bairro">
             <input

@@ -38,6 +38,13 @@ test("endereço de entrega tem campos próprios de número, bairro e complemento
   await expect(form.getByText("Número", { exact: true })).toBeVisible();
   await expect(form.getByText("Bairro", { exact: true })).toBeVisible();
   await expect(form.getByText("Complemento (opcional)", { exact: true })).toBeVisible();
+
+  // Dica sob o complemento: endereco incompleto e causa comum de devolucao em
+  // predio. Renderizada de verdade (nao so no JSX) e legivel.
+  const hint = form.getByText("Apartamento, bloco ou sala — importante para prédios.");
+  await expect(hint).toBeVisible();
+  const size = await hint.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+  expect(size).toBeGreaterThanOrEqual(11);
 });
 
 test("submit sem o número do endereço é bloqueado com mensagem específica", async ({ page }) => {
