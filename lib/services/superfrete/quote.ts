@@ -341,6 +341,36 @@ export type QuoteOutcome =
       detail?: string;
     };
 
+/** Mensagens do mapa `errors` do provedor (por campo), achatadas em texto. */
+function providerMessages(body: unknown): string[] {
+  const errors = (body as { errors?: Record<string, unknown> } | null)?.errors;
+  if (!errors || typeof errors !== "object") return [];
+  return Object.entries(errors).flatMap(([field, msgs]) =>
+    (Array.isArray(msgs) ? msgs : [msgs]).map((m) => `${field}: ${String(m)}`),
+  );
+}
+
+/**
+ * "Nao entregamos ai" NAO tem status dedicado no provedor. CONFIRMADO contra a
+ * API de PRODUCAO (2026-07-20): CEP sem cobertura/inexistente volta HTTP **400**
+ * com `correios.destination_postcode ... e invalido` e/ou
+ * `ms-freight-calculator.no_result` — nao 409. Tratar isso como falha do
+ * provedor faria a loja (a) vender frete flat para um destino que ela nao
+ * atende e (b) alertar o admin por um erro que e do cliente. O 409 fica coberto
+ * por seguranca (documentado, nunca observado nesse caso).
+ *
+ * Um 400 por payload NOSSO (peso/medida invalidos) nao casa essas assinaturas e
+ * continua como provider_error — que e o alerta legitimo.
+ */
+function noCoverageReason(err: SuperFreteError): string | null {
+  if (err.status !== 400 && err.status !== 409) return null;
+  const messages = providerMessages(err.body);
+  const text = [err.message, ...messages].join(" | ");
+  if (err.status === 409) return err.message;
+  if (!/destination_postcode|no_result|nenhum frete/i.test(text)) return null;
+  return messages.join(" | ") || err.message;
+}
+
 export async function quoteShippingResult(
   toCep: string,
   items: QuoteItem[],
@@ -354,10 +384,12 @@ export async function quoteShippingResult(
   try {
     fetched = await fetchQuote(toCep, items);
   } catch (err) {
-    // 409 = rota/pacote fora de cobertura (o provedor respondeu NAO, e nao vai
-    // mudar em re-tentativa). Qualquer outro erro e falha nossa/do provedor.
-    if (err instanceof SuperFreteError && err.status === 409) {
-      return { status: "unavailable", reason: err.message };
+    // Destino fora de cobertura (400 com assinatura de postcode/no_result, ou
+    // 409): o provedor respondeu NAO e re-tentar nao muda. Qualquer outro erro e
+    // falha nossa/do provedor.
+    if (err instanceof SuperFreteError) {
+      const reason = noCoverageReason(err);
+      if (reason !== null) return { status: "unavailable", reason };
     }
     return {
       status: "unquoted",

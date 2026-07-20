@@ -71,6 +71,45 @@ describe("quoteShippingResult — classificacao", () => {
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
+  // Payload REAL capturado contra a API de producao (2026-07-20) para os CEPs
+  // 69900000 (Rio Branco) e 99999999: o provedor devolve 400 — nunca 409 — quando
+  // nao ha cobertura. Se isso for lido como falha do provedor, a loja vende flat
+  // para um destino que nao atende E spama alerta de admin.
+  it("400 com destination_postcode/no_result (CEP sem cobertura) = SEM ENTREGA, nao provider_error", async () => {
+    const fn = mockFetch(
+      json(
+        {
+          errors: {
+            "correios.destination_postcode": ["(correios.destination_postcode) é inválido."],
+            "ms-freight-calculator.no_result": [
+              "Nenhum frete válido encontrado para esse serviço.",
+            ],
+          },
+          message: "Ocorreu um ou mais erros.",
+        },
+        400,
+      ),
+    );
+    const res = await quoteShippingResult("69900000", ITEMS);
+    expect(res.status).toBe("unavailable");
+    if (res.status === "unavailable") expect(res.reason).toContain("destination_postcode");
+    expect(fn).toHaveBeenCalledTimes(1); // 400 nunca re-tenta
+  });
+
+  it("400 por payload NOSSO (peso invalido) continua provider_error — alerta legitimo", async () => {
+    mockFetch(
+      json(
+        {
+          errors: { "products.0.weight": ["(products.0.weight) é inválido."] },
+          message: "Ocorreu um ou mais erros.",
+        },
+        400,
+      ),
+    );
+    const res = await quoteShippingResult("80010000", ITEMS);
+    expect(res).toMatchObject({ status: "unquoted", cause: "provider_error" });
+  });
+
   it("todas as modalidades como item-erro (ex.: 31kg) = SEM ENTREGA, com o motivo do provedor", async () => {
     mockFetch(
       json([
