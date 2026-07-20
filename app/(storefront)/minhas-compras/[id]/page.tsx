@@ -1,3 +1,4 @@
+import { formatCityLine, formatStreetLine } from "@/lib/data/address";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -162,9 +163,9 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           <h2 className={styles.sectionTitle}>Entrega</h2>
           <div className={styles.address}>
             <div className={styles.addrName}>{order.customerName}</div>
-            <div>{order.address.street}</div>
+            <div>{formatStreetLine(order.address)}</div>
             <div>
-              {order.address.city}/{order.address.state} — CEP {order.address.cep}
+              {formatCityLine(order.address)} — CEP {order.address.cep}
             </div>
           </div>
           <p className={styles.shipStatus}>

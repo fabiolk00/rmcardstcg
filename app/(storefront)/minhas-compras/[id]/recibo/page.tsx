@@ -1,3 +1,4 @@
+import { formatAddressOneLine } from "@/lib/data/address";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -86,7 +87,7 @@ export default async function ReciboPage({ params }: { params: Promise<{ id: str
             <br />
             {order.customerEmail} · {order.customerPhone}
             <br />
-            {order.address.street} — {order.address.city}/{order.address.state} — CEP{" "}
+            {formatAddressOneLine(order.address)} — CEP{" "}
             {order.address.cep}
           </p>
         </section>

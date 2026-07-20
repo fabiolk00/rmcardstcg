@@ -1,3 +1,4 @@
+import { formatAddressOneLine } from "@/lib/data/address";
 import {
   Body,
   Button,
@@ -108,7 +109,7 @@ export function OrderEmail({ order, kind }: { order: Order; kind: OrderEmailKind
 
           <Hr style={hr} />
           <Text style={muted}>
-            Entrega para {order.address.street}, {order.address.city}-{order.address.state}, CEP{" "}
+            Entrega para {formatAddressOneLine(order.address)}, CEP{" "}
             {formatCep(order.address.cep)}.
           </Text>
           <Text style={muted}>

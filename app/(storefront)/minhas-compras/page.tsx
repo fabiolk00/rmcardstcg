@@ -1,3 +1,4 @@
+import { formatAddressOneLine } from "@/lib/data/address";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -63,7 +64,7 @@ export default async function MinhasComprasPage() {
                 <div>
                   <dt>Endereço</dt>
                   <dd>
-                    {latest.address.street} — {latest.address.city}/{latest.address.state}
+                    {formatAddressOneLine(latest.address)}
                   </dd>
                 </div>
               </dl>
