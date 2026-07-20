@@ -75,13 +75,11 @@ afterEach(() => {
 });
 
 describe("2.1 CEP", () => {
-  // GAP documentado: quoteShipping NAO e null-safe (onlyDigits chama .replace direto).
-  // Nao vaza para producao — quoteShippingAction normaliza com `?.` antes e o checkout
-  // chama dentro de try/catch (cai no flat) — mas a lib sozinha quebra. Este teste
-  // registra o comportamento ATUAL; troque para `.toEqual([])` quando corrigir.
-  it("T1 CEP null -> LANCA TypeError (gap: sem guard na lib) e nao chama a API", async () => {
+  // CORRIGIDO (gap T1): a lib era null-unsafe (onlyDigits chamava .replace direto).
+  // Agora CEP ausente/nao-string simplesmente nao cota. Ver tests/shipping/quote-outcome.
+  it("T1 CEP null -> nao cota, [] e ZERO chamadas externas", async () => {
     const fn = mockFetch();
-    await expect(quoteShipping(null as unknown as string, ITEMS)).rejects.toBeInstanceOf(TypeError);
+    expect(await quoteShipping(null as unknown as string, ITEMS)).toEqual([]);
     expect(fn).not.toHaveBeenCalled();
   });
 
@@ -159,7 +157,10 @@ describe("2.2 Peso e dimensoes", () => {
     expect(bodyOf(fn).services).toBe("1,2");
   });
 
-  it("T8b provedor recusa a modalidade (item-erro) -> options [] -> checkout cai no FLAT", async () => {
+  // NOTA: `quoteShipping` (compat) continua devolvendo [] aqui. Quem decide o que
+  // fazer com isso agora e `quoteShippingResult` — que classifica como SEM ENTREGA
+  // e faz a action/checkout BLOQUEAR em vez de cobrar o flat (ver quote-outcome).
+  it("T8b provedor recusa a modalidade (item-erro) -> options []", async () => {
     mockFetch(
       json([
         { id: 1, name: "PAC", error: "Peso acima do limite" },
@@ -193,14 +194,15 @@ describe("2.3 Erros da API", () => {
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
-  it("T12 429 -> re-tenta com Retry-After e depois lanca 429", async () => {
+  // Orcamento de tempo: a COTACAO usa 2 tentativas (6s cada) p/ nao estourar o
+  // limite de execucao do checkout; o cliente cru segue em 3 (ver superfrete-client).
+  it("T12 429 -> re-tenta com Retry-After e depois lanca 429 (2 tentativas na cotacao)", async () => {
     const fn = mockFetch(
-      json({ message: "rate limited" }, 429, { "retry-after": "0" }),
       json({ message: "rate limited" }, 429, { "retry-after": "0" }),
       json({ message: "rate limited" }, 429, { "retry-after": "0" }),
     );
     await expect(quoteShipping("80010000", ITEMS)).rejects.toMatchObject({ status: 429 });
-    expect(fn).toHaveBeenCalledTimes(3);
+    expect(fn).toHaveBeenCalledTimes(2);
   });
 
   it("T13 409 -> NAO re-tenta e NAO e diferenciado de outros erros", async () => {
@@ -209,10 +211,10 @@ describe("2.3 Erros da API", () => {
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
-  it("T14 500 -> re-tenta 3x e lanca", async () => {
-    const fn = mockFetch(json({ message: "boom" }, 500), json({ message: "boom" }, 500), json({ message: "boom" }, 500));
+  it("T14 500 -> re-tenta e lanca (2 tentativas na cotacao)", async () => {
+    const fn = mockFetch(json({ message: "boom" }, 500), json({ message: "boom" }, 500));
     await expect(quoteShipping("80010000", ITEMS)).rejects.toMatchObject({ status: 500 });
-    expect(fn).toHaveBeenCalledTimes(3);
+    expect(fn).toHaveBeenCalledTimes(2);
   });
 
   it("T14b 500 seguido de 200 -> a re-tentativa RECUPERA a cotacao", async () => {

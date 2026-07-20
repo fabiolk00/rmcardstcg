@@ -10,6 +10,11 @@ import styles from "./checkout.module.css";
 // salvo em /painel/conta. Sempre ao vivo — o perfil pode mudar entre acessos.
 export const dynamic = "force-dynamic";
 
+// Orcamento de execucao da rota (a server action de checkout roda aqui): cobranca
+// no Asaas + cotacao de frete + transacao de pedido. Sem isso vale o default da
+// plataforma, que a cotacao lenta conseguia estourar — derrubando a compra inteira.
+export const maxDuration = 60;
+
 // Ponte de integracao com o modulo do agente B (lib/data/profile nasce em
 // paralelo): import dinamico + checagem da funcao. Se getCustomerProfile
 // ainda nao existir (ou falhar), o prefill degrada para form vazio — o

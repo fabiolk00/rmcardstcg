@@ -147,6 +147,67 @@ export async function sendWebhookRejectionAlertEmail(input: WebhookRejectionAler
   }
 }
 
+// Janela de silencio do alerta de cotacao (por instancia). Uma instabilidade do
+// SuperFrete atinge TODA visita ao checkout — sem isso um outage vira centenas de
+// e-mails. 30min e curto o bastante para o admin agir e longo o bastante p/ nao
+// inundar a caixa.
+const QUOTE_ALERT_WINDOW_MS = 30 * 60_000;
+let lastQuoteAlertAt = 0;
+
+/**
+ * Alerta o(s) admin(s) quando a loja esta COTANDO NO ESCURO: a cotacao do
+ * SuperFrete falhou (timeout/5xx/401/token ausente) e o checkout caiu no frete
+ * flat. Sem isso a loja passa a vender frete abaixo do custo em silencio — o
+ * unico sinal era uma linha de console que ninguem le.
+ *
+ * NAO alerta quando o provedor responde que nao ha entrega (isso e do cliente, e
+ * o checkout ja bloqueia). Mock-first, tolerante a falha e com janela de silencio.
+ */
+export async function sendShippingQuoteFailureAlertEmail(input: {
+  /** not_configured | provider_error */
+  cause: string;
+  /** Detalhe tecnico (status HTTP / requestId / mensagem) — nunca inclui CEP. */
+  detail?: string;
+}): Promise<void> {
+  if (!isResendConfigured()) return;
+  const admins = adminRecipients();
+  if (admins.length === 0) return;
+
+  const now = Date.now();
+  if (now - lastQuoteAlertAt < QUOTE_ALERT_WINDOW_MS) return;
+  lastQuoteAlertAt = now;
+
+  try {
+    const { apiKey, from } = getResendConfig();
+    const { error } = await new Resend(apiKey).emails.send({
+      from,
+      to: admins,
+      subject: "Cotação de frete falhando — a loja está cobrando o frete padrão",
+      text:
+        `A cotação do SuperFrete falhou e o checkout está usando o FRETE FLAT como fallback.\n\n` +
+        `Causa: ${input.cause}\n` +
+        (input.detail ? `Detalhe: ${input.detail}\n` : "") +
+        `\nEnquanto isso, todo pedido abaixo do limite de frete grátis cobra o valor fixo — ` +
+        `que pode ficar abaixo do custo real de postagem.\n\n` +
+        `Verifique SUPERFRETE_TOKEN / SUPERFRETE_FROM_CEP / SUPERFRETE_API_URL na Vercel e ` +
+        `o status do SuperFrete. Novos alertas ficam suprimidos por 30 minutos.`,
+    });
+    if (error) {
+      console.error("[resend] falha ao alertar cotacao de frete:", error.message);
+    }
+  } catch (err) {
+    console.error(
+      "[resend] erro ao alertar cotacao de frete:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
+/** Zera a janela de silencio do alerta de cotacao (uso em teste). */
+export function resetShippingQuoteAlertThrottle(): void {
+  lastQuoteAlertAt = 0;
+}
+
 /**
  * Alerta o(s) admin(s) quando a RECONCILIACAO corrige um pedido que o webhook
  * deveria ter atualizado: o pedido ficou 'pending' por mais de 30min enquanto o

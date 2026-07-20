@@ -76,6 +76,14 @@ export type SuperFreteFetchInit = RequestInit & {
    * (a cotacao /calculator e read-only). Default: false.
    */
   retry?: boolean;
+  /**
+   * Orcamento de tempo POR TENTATIVA (ms). Default SUPERFRETE_TIMEOUT_MS (12s).
+   * A cotacao aperta esse valor porque roda DENTRO do checkout: 3x12s estouraria
+   * o limite de execucao da funcao e derrubaria o checkout inteiro, nao so o frete.
+   */
+  timeoutMs?: number;
+  /** Re-tentativas alem da primeira (so com `retry`). Default MAX_RETRIES (2). */
+  maxRetries?: number;
 };
 
 /** Metadados de observabilidade de UMA chamada (anexados ao registro normalizado). */
@@ -104,6 +112,14 @@ export async function superFreteRequest<T>(
   const { apiUrl, token, userAgent } = getSuperFreteConfig();
   const requestId = newRequestId();
   const retry = init?.retry === true;
+  const timeoutMs =
+    Number.isFinite(init?.timeoutMs) && (init?.timeoutMs ?? 0) > 0
+      ? (init!.timeoutMs as number)
+      : SUPERFRETE_TIMEOUT_MS;
+  const maxRetries =
+    Number.isInteger(init?.maxRetries) && (init?.maxRetries ?? -1) >= 0
+      ? (init!.maxRetries as number)
+      : MAX_RETRIES;
   const method = (init?.method ?? "GET").toUpperCase();
   const startedAt = Date.now();
 
@@ -114,7 +130,7 @@ export async function superFreteRequest<T>(
         ...init,
         // signal/cache fixados DEPOIS do spread: um caller nao pode desligar o timeout
         // (12s, que protege o checkout) nem reativar o cache do Next por engano via init.
-        signal: AbortSignal.timeout(SUPERFRETE_TIMEOUT_MS),
+        signal: AbortSignal.timeout(timeoutMs),
         headers: {
           Authorization: `Bearer ${token}`,
           "User-Agent": userAgent,
@@ -127,7 +143,7 @@ export async function superFreteRequest<T>(
       });
     } catch (err) {
       // Timeout ou falha de rede: transitorio. Re-tenta se opt-in; senao vira erro claro.
-      if (retry && attempt < MAX_RETRIES) {
+      if (retry && attempt < maxRetries) {
         await sleep(backoffMs(attempt, null));
         continue;
       }
@@ -152,7 +168,7 @@ export async function superFreteRequest<T>(
 
     // 429/5xx sao transitorios: re-tenta (opt-in) com backoff antes de ler o corpo.
     // 401/400 (credencial/payload) NUNCA re-tentam — cairiam de novo igual.
-    if (retry && !res.ok && (res.status === 429 || res.status >= 500) && attempt < MAX_RETRIES) {
+    if (retry && !res.ok && (res.status === 429 || res.status >= 500) && attempt < maxRetries) {
       // Drena o corpo nao consumido antes de re-tentar: devolve o socket (undici) ao
       // pool em vez de segura-lo ate o GC no caminho quente de instabilidade.
       await res.body?.cancel().catch(() => {});

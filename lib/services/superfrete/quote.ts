@@ -1,5 +1,5 @@
 import { getInsuranceLimits, getSuperFreteConfig, isSuperFreteConfigured } from "./config";
-import { superFreteRequest, type SuperFreteCallMeta } from "./client";
+import { SuperFreteError, superFreteRequest, type SuperFreteCallMeta } from "./client";
 import { cacheGet, cacheSet, quoteCacheKey } from "./cache";
 import type { PackageDims } from "./dimensions";
 
@@ -77,7 +77,12 @@ type RawOption = {
   company?: RawCompany;
 };
 
-const onlyDigits = (s: string) => s.replace(/\D/g, "");
+/**
+ * So digitos. Tolera null/undefined/nao-string: a cotacao e chamada com dados que
+ * vem do client (CEP de formulario) e nunca deve quebrar por tipo — CEP ausente
+ * simplesmente nao cota (o chamador cai no flat / pede o CEP de novo).
+ */
+const onlyDigits = (s: unknown) => (typeof s === "string" ? s.replace(/\D/g, "") : "");
 
 /**
  * Converte preco -> centavos Int; null se invalido/<=0. Aceita numero ou string em
@@ -167,8 +172,8 @@ export function parseShippingOptions(raw: unknown): ShippingOption[] {
  * carrinho. Peso em GRAMAS -> KG (a API espera kg); dimensoes em CM.
  */
 export function buildProductsPayload(items: QuoteItem[]) {
-  return items
-    .filter((i) => Number.isInteger(i.quantity) && i.quantity > 0)
+  return (Array.isArray(items) ? items : [])
+    .filter((i) => i != null && Number.isInteger(i.quantity) && i.quantity > 0)
     .map((i) => ({
       quantity: i.quantity,
       weight: i.pkg.weightGrams / 1000,
@@ -186,8 +191,8 @@ export function buildProductsPayload(items: QuoteItem[]) {
  * (nenhum item com valor, ou valores invalidos).
  */
 export function declaredValueCents(items: QuoteItem[]): number {
-  const raw = items
-    .filter((i) => Number.isInteger(i.quantity) && i.quantity > 0)
+  const raw = (Array.isArray(items) ? items : [])
+    .filter((i) => i != null && Number.isInteger(i.quantity) && i.quantity > 0)
     .reduce((sum, i) => {
       const unit = i.unitPriceCents;
       return typeof unit === "number" && Number.isInteger(unit) && unit > 0
@@ -272,6 +277,13 @@ export async function fetchQuote(toCep: string, items: QuoteItem[]): Promise<Fet
   const { data, meta } = await superFreteRequest<unknown>("/api/v0/calculator", {
     method: "POST",
     retry: true,
+    // ORCAMENTO DE TEMPO: a cotacao roda dentro do checkout (server action). Com o
+    // default (12s x 3 tentativas) o pior caso passava de 36s e estourava o limite
+    // de execucao da funcao — o checkout INTEIRO morria por causa do frete. 6s x 2
+    // tentativas mantem o pior caso em ~13s, ainda dentro do limite, e o frete
+    // degrada para o flat em vez de derrubar a compra.
+    timeoutMs: 6_000,
+    maxRetries: 1,
     body: JSON.stringify({
       from: { postal_code: fromCep },
       to: { postal_code: dest },
@@ -302,4 +314,70 @@ export async function quoteShipping(toCep: string, items: QuoteItem[]): Promise<
   const fetched = await fetchQuote(toCep, items);
   if (!fetched) return [];
   return parseQuote(fetched.raw).options;
+}
+
+/**
+ * Resultado CLASSIFICADO da cotacao — a diferenca entre "o provedor disse NAO" e
+ * "nao conseguimos perguntar":
+ *
+ *  - `quoted`      : ha modalidade com preco.
+ *  - `unavailable` : o provedor RESPONDEU e nao ha entrega para este CEP/pacote
+ *                    (409 de cobertura, todas as modalidades como item-erro, ou
+ *                    lista vazia). Vender aqui gera pedido que a etiqueta nao
+ *                    emite — o chamador deve BLOQUEAR, nao cair no flat.
+ *  - `unquoted`    : nao houve resposta utilizavel (ambiente sem token, entrada
+ *                    invalida, timeout/5xx/401). O frete ainda e vendavel pelo
+ *                    flat, mas `provider_error` merece alerta: e a loja cotando
+ *                    no escuro.
+ *
+ * Sem essa distincao TODA falha virava o mesmo R$ 25,00 silencioso.
+ */
+export type QuoteOutcome =
+  | { status: "quoted"; options: ShippingOption[] }
+  | { status: "unavailable"; reason: string }
+  | {
+      status: "unquoted";
+      cause: "not_configured" | "invalid_input" | "provider_error";
+      detail?: string;
+    };
+
+export async function quoteShippingResult(
+  toCep: string,
+  items: QuoteItem[],
+): Promise<QuoteOutcome> {
+  if (!isSuperFreteConfigured()) return { status: "unquoted", cause: "not_configured" };
+  if (onlyDigits(toCep).length !== 8 || buildProductsPayload(items).length === 0) {
+    return { status: "unquoted", cause: "invalid_input" };
+  }
+
+  let fetched: FetchedQuote | null;
+  try {
+    fetched = await fetchQuote(toCep, items);
+  } catch (err) {
+    // 409 = rota/pacote fora de cobertura (o provedor respondeu NAO, e nao vai
+    // mudar em re-tentativa). Qualquer outro erro e falha nossa/do provedor.
+    if (err instanceof SuperFreteError && err.status === 409) {
+      return { status: "unavailable", reason: err.message };
+    }
+    return {
+      status: "unquoted",
+      cause: "provider_error",
+      detail:
+        err instanceof SuperFreteError
+          ? `HTTP ${err.status} (requestId ${err.requestId})`
+          : err instanceof Error
+            ? err.message
+            : String(err),
+    };
+  }
+  if (!fetched) return { status: "unquoted", cause: "invalid_input" };
+
+  const { options, unavailable } = parseQuote(fetched.raw);
+  if (options.length > 0) return { status: "quoted", options };
+  return {
+    status: "unavailable",
+    // Texto cru do provedor quando houver (ex.: "Peso acima do limite"); senao
+    // uma razao generica — em ambos os casos o pedido NAO deve ser aceito.
+    reason: unavailable[0]?.reason ?? "Nenhuma modalidade de entrega para este CEP.",
+  };
 }

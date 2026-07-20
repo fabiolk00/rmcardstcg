@@ -7,6 +7,11 @@ import styles from "./checkout.module.css";
 // nesta rota quando o Clerk esta ativo).
 export const dynamic = "force-dynamic";
 
+// Orcamento de execucao da rota (a server action de checkout roda aqui): cobranca
+// no Asaas + cotacao de frete + transacao de pedido. Sem isso vale o default da
+// plataforma, que a cotacao lenta conseguia estourar — derrubando a compra inteira.
+export const maxDuration = 60;
+
 export default async function CheckoutPage() {
   await redirectLoggedInFromStorefront("/painel/checkout");
   return (

@@ -5,9 +5,18 @@ import { auth } from "@clerk/nextjs/server";
 import { DEACTIVATED_ACCOUNT_ERROR, requireActiveUser } from "@/lib/auth/requireActiveUser";
 import { couponDiscountCents, couponErrorMessage } from "@/lib/cart/coupon";
 import { cartTotals, FLAT_SHIPPING_CENTS, type CartLine } from "@/lib/cart/totals";
-import { isFreeShipping, resolveShippingCents } from "@/lib/cart/shipping";
+import {
+  isFreeShipping,
+  resolveShippingCents,
+  SHIPPING_UNAVAILABLE_ERROR,
+} from "@/lib/cart/shipping";
+import { validateCheckoutCustomer } from "@/lib/checkout/customer";
 import { effectivePackage } from "@/lib/services/superfrete/dimensions";
-import { quoteShipping, type ShippingOption } from "@/lib/services/superfrete/quote";
+import {
+  quoteShippingResult,
+  type QuoteOutcome,
+  type ShippingOption,
+} from "@/lib/services/superfrete/quote";
 import { redeemCoupon, validateCoupon } from "@/lib/data/coupons";
 import {
   createOrderWithReservation,
@@ -27,7 +36,10 @@ import {
   paymentBillingType,
 } from "@/lib/payments/method";
 import { isClerkConfigured } from "@/lib/services/clerk/config";
-import { sendOrderConfirmationEmail } from "@/lib/services/resend";
+import {
+  sendOrderConfirmationEmail,
+  sendShippingQuoteFailureAlertEmail,
+} from "@/lib/services/resend";
 import { clientRateLimitKey } from "@/lib/security/clientKey";
 import { checkRateLimit } from "@/lib/security/rateLimit";
 
@@ -262,15 +274,21 @@ export async function quoteShippingAction(input: {
         ]
       : [];
   });
-  let options: ShippingOption[] = [];
-  try {
-    options = await quoteShipping(input.cep, quoteItems);
-  } catch (err) {
-    console.error("[shipping-quote] falhou:", err instanceof Error ? err.message : err);
+  const outcome = await quoteShippingResult(input.cep, quoteItems);
+  if (outcome.status === "quoted") return { ok: true, free: false, options: outcome.options };
+  if (outcome.status === "unavailable") {
+    // O provedor RESPONDEU que nao entrega (cobertura/peso/medida). Nao oferecemos
+    // flat aqui: seria vender um envio que a etiqueta nao emite.
+    console.warn("[shipping-quote] sem entrega para o destino:", outcome.reason);
+    return { ok: false, error: SHIPPING_UNAVAILABLE_ERROR };
   }
-  if (options.length === 0) {
-    // Mock-first / indisponivel: frete flat como opcao unica (serviceCode 0).
-    options = [
+  reportQuoteFallback(outcome);
+  // Nao conseguimos cotar (mock-first / falha do provedor): frete flat como opcao
+  // unica (serviceCode 0) para a venda seguir.
+  return {
+    ok: true,
+    free: false,
+    options: [
       {
         serviceCode: 0,
         name: "Frete padrão",
@@ -278,9 +296,23 @@ export async function quoteShippingAction(input: {
         priceCents: FLAT_SHIPPING_CENTS,
         days: null,
       },
-    ];
-  }
-  return { ok: true, free: false, options };
+    ],
+  };
+}
+
+/**
+ * Loga e (quando e falha do provedor, nao mock-first) alerta o admin de que a loja
+ * caiu no frete flat. O alerta tem janela de silencio propria no modulo de e-mail.
+ * Best-effort: nunca derruba a cotacao nem o checkout.
+ */
+function reportQuoteFallback(outcome: Extract<QuoteOutcome, { status: "unquoted" }>): void {
+  if (outcome.cause === "invalid_input") return;
+  console.error("[shipping-quote] sem cotacao; usando frete flat:", outcome.cause, outcome.detail);
+  if (outcome.cause !== "provider_error") return;
+  void sendShippingQuoteFailureAlertEmail({
+    cause: outcome.cause,
+    detail: outcome.detail,
+  }).catch(() => {});
 }
 
 export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
@@ -297,6 +329,11 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
       error: "É necessário aceitar os Termos de uso e a Política de privacidade.",
     };
   }
+  // Dados de entrega RE-validados no server (defense in depth, como o aceite): a
+  // action e publica e um pedido com CEP/endereco invalido so falharia la na
+  // emissao da etiqueta — com o dinheiro cobrado e o estoque reservado.
+  const customerCheck = validateCheckoutCustomer(input.customer);
+  if (!customerCheck.ok) return { ok: false, error: customerCheck.error };
 
   // Usuario: Clerk quando configurado (login + espelho ATIVO — conta desativada
   // NAO cria pedido novo); senao "guest" (mock-first).
@@ -389,33 +426,39 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
   let shippingService: string | null = null;
   let shippingDays: string | null = null;
   if (!isFreeShipping(totals.merchandiseCents)) {
-    try {
-      const quoteItems = input.items.flatMap((i) => {
-        const product = productById.get(i.productId);
-        return product
-          ? [
-              {
-                quantity: i.quantity,
-                pkg: effectivePackage(product),
-                // Mesmo valor unitario que compoe a mercadoria cobrada (com desconto).
-                unitPriceCents: finalPriceCents(product),
-              },
-            ]
-          : [];
-      });
-      const options = await quoteShipping(input.customer.cep, quoteItems);
-      const chosen = options.find((o) => o.serviceCode === input.shippingServiceCode) ?? options[0];
+    const quoteItems = input.items.flatMap((i) => {
+      const product = productById.get(i.productId);
+      return product
+        ? [
+            {
+              quantity: i.quantity,
+              pkg: effectivePackage(product),
+              // Mesmo valor unitario que compoe a mercadoria cobrada (com desconto).
+              unitPriceCents: finalPriceCents(product),
+            },
+          ]
+        : [];
+    });
+    const outcome = await quoteShippingResult(input.customer.cep, quoteItems);
+    if (outcome.status === "unavailable") {
+      // ANTES de criar pedido/reserva/cobranca: o provedor disse que nao entrega
+      // nesse destino. Cobrar o flat aqui geraria um pedido pago sem etiqueta.
+      console.warn("[checkout] sem entrega para o destino:", outcome.reason);
+      return { ok: false, error: SHIPPING_UNAVAILABLE_ERROR };
+    }
+    if (outcome.status === "quoted") {
+      const chosen =
+        outcome.options.find((o) => o.serviceCode === input.shippingServiceCode) ??
+        outcome.options[0];
       if (chosen) {
         quotedShippingCents = chosen.priceCents;
         shippingService = chosen.name;
         shippingDays = chosen.days != null ? `${chosen.days} dias úteis` : null;
       }
-    } catch (err) {
-      // Cotacao indisponivel nao derruba o checkout: cai no frete flat.
-      console.error(
-        "[checkout] cotacao de frete falhou; usando frete flat:",
-        err instanceof Error ? err.message : err,
-      );
+    } else {
+      // Sem cotacao (mock-first / falha do provedor): o checkout segue no frete
+      // flat, mas o admin e avisado de que estamos cobrando no escuro.
+      reportQuoteFallback(outcome);
     }
   }
   const shippingCents = resolveShippingCents({
