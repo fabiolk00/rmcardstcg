@@ -22,8 +22,34 @@ import type { PackageDims } from "./dimensions";
  * quanto o registro normalizado (pipeline de dados), sem repetir a chamada externa.
  */
 
-// 1=PAC, 2=SEDEX (17=Mini Envios, 3=Jadlog, 31=Loggi disponiveis se quiser ampliar).
-const SHIPPING_SERVICES = "1,2";
+// 1=PAC, 2=SEDEX, 31=Loggi (17=Mini Envios, 3=Jadlog disponiveis se quiser ampliar).
+// Os Correios entram como REDE DE SEGURANCA da Loggi — ver preferLoggi.
+const SHIPPING_SERVICES = "1,2,31";
+
+/** Codigo da Loggi no SuperFrete. */
+const LOGGI_SERVICE_CODE = 31;
+
+const isLoggi = (o: ShippingOption) =>
+  o.serviceCode === LOGGI_SERVICE_CODE || /loggi/i.test(`${o.name} ${o.carrier ?? ""}`);
+
+/**
+ * POLITICA DE TRANSPORTADORA: a loja vende pela **Loggi**. Quando ela cota, e a
+ * unica modalidade oferecida; os Correios ficam como REDE DE SEGURANCA para os
+ * destinos que a Loggi nao atende.
+ *
+ * Por que nao pedir so `services=31`: medido contra a API de producao
+ * (2026-07-20), ha destino real onde a Loggi devolve 400 e o PAC cota normal
+ * (ex.: Toledo/PR — PAC R$ 24,62). Como "nenhuma opcao" hoje BLOQUEIA a venda,
+ * pedir so Loggi custaria esses pedidos. Nos 10 destinos com cobertura Loggi ela
+ * apareceu em todos, quase sempre mais barata (Curitiba R$ 13,34 x PAC R$ 24,85)
+ * — entao a rede de seguranca e rara na pratica.
+ *
+ * Puro e exportado para teste. Preserva a ordem (ja vem por preco asc).
+ */
+export function preferLoggi(options: ShippingOption[]): ShippingOption[] {
+  const loggi = options.filter(isLoggi);
+  return loggi.length > 0 ? loggi : options;
+}
 
 /** Uma linha do carrinho para cotacao: quantidade + medidas do pacote. */
 export type QuoteItem = {
@@ -313,7 +339,7 @@ export async function fetchQuote(toCep: string, items: QuoteItem[]): Promise<Fet
 export async function quoteShipping(toCep: string, items: QuoteItem[]): Promise<ShippingOption[]> {
   const fetched = await fetchQuote(toCep, items);
   if (!fetched) return [];
-  return parseQuote(fetched.raw).options;
+  return preferLoggi(parseQuote(fetched.raw).options);
 }
 
 /**
@@ -405,7 +431,9 @@ export async function quoteShippingResult(
   if (!fetched) return { status: "unquoted", cause: "invalid_input" };
 
   const { options, unavailable } = parseQuote(fetched.raw);
-  if (options.length > 0) return { status: "quoted", options };
+  // Politica de transportadora aplicada AQUI (nao no parser): o registro
+  // normalizado do pipeline (record.ts) continua vendo TODAS as modalidades.
+  if (options.length > 0) return { status: "quoted", options: preferLoggi(options) };
   return {
     status: "unavailable",
     // Texto cru do provedor quando houver (ex.: "Peso acima do limite"); senao

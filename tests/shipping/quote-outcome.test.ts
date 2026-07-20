@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { cacheClear } from "@/lib/services/superfrete/cache";
-import { quoteShipping, quoteShippingResult } from "@/lib/services/superfrete/quote";
+import { preferLoggi, quoteShipping, quoteShippingResult } from "@/lib/services/superfrete/quote";
 
 /**
  * T1 / T13 / T15 / T20 do documento de investigacao: antes, TODA falha (409 de
@@ -190,6 +190,65 @@ describe("quoteShippingResult — classificacao", () => {
       cause: "invalid_input",
     });
     expect(fn).not.toHaveBeenCalled();
+  });
+});
+
+describe("politica de transportadora — Loggi com Correios de rede", () => {
+  const PAC = { serviceCode: 1, name: "PAC", carrier: "Correios", priceCents: 2776, days: 5 };
+  const SEDEX = { serviceCode: 2, name: "SEDEX", carrier: "Correios", priceCents: 3854, days: 1 };
+  const LOGGI = { serviceCode: 31, name: "LOGGI", carrier: "loggi", priceCents: 1934, days: 2 };
+
+  it("com Loggi cotada, oferece SO a Loggi", () => {
+    expect(preferLoggi([LOGGI, PAC, SEDEX])).toEqual([LOGGI]);
+  });
+
+  it("sem Loggi (ex.: Toledo/PR), mantem os Correios — nao bloqueia a venda", () => {
+    expect(preferLoggi([PAC, SEDEX])).toEqual([PAC, SEDEX]);
+  });
+
+  it("reconhece a Loggi pelo nome/transportadora, nao so pelo id 31", () => {
+    const outroId = { ...LOGGI, serviceCode: 99 };
+    expect(preferLoggi([outroId, PAC])).toEqual([outroId]);
+  });
+
+  it("lista vazia continua vazia (quem bloqueia e o outcome)", () => {
+    expect(preferLoggi([])).toEqual([]);
+  });
+
+  it("ponta a ponta: resposta com PAC+SEDEX+LOGGI devolve so a Loggi", async () => {
+    mockFetch(
+      json([
+        { id: 1, name: "PAC", company: { name: "Correios" }, price: "27.76", delivery_time: 5 },
+        { id: 2, name: "SEDEX", company: { name: "Correios" }, price: "38.54", delivery_time: 1 },
+        { id: 31, name: "LOGGI", company: { name: "loggi" }, price: "19.34", delivery_time: 2 },
+      ]),
+    );
+    const res = await quoteShippingResult("01310100", ITEMS);
+    expect(res.status).toBe("quoted");
+    if (res.status === "quoted") {
+      expect(res.options).toHaveLength(1);
+      expect(res.options[0].name).toBe("LOGGI");
+    }
+  });
+
+  it("ponta a ponta: Loggi como item-erro cai nos Correios", async () => {
+    mockFetch(
+      json([
+        { id: 1, name: "PAC", company: { name: "Correios" }, price: "24.62", delivery_time: 5 },
+        { id: 31, name: "LOGGI", error: "Não atendemos este CEP" },
+      ]),
+    );
+    const res = await quoteShippingResult("85902100", ITEMS);
+    expect(res.status).toBe("quoted");
+    if (res.status === "quoted") expect(res.options.map((o) => o.name)).toEqual(["PAC"]);
+  });
+
+  it("pede as tres modalidades ao provedor (1,2,31)", async () => {
+    const fn = mockFetch(json([{ id: 31, name: "LOGGI", price: "19.34", delivery_time: 2 }]));
+    await quoteShippingResult("01310100", ITEMS);
+    const init = (fn.mock.calls[0] as unknown[])?.[1] as RequestInit | undefined;
+    const body = JSON.parse(String(init?.body));
+    expect(body.services).toBe("1,2,31");
   });
 });
 

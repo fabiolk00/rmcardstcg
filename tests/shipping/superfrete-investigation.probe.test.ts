@@ -151,10 +151,10 @@ describe("2.2 Peso e dimensoes", () => {
     expect(fn).toHaveBeenCalledTimes(2);
   });
 
-  it("T9 Mini Envios (17) nunca e solicitado — services fixo em '1,2'", async () => {
+  it("T9 Mini Envios (17) nunca e solicitado — services fixo em '1,2,31' (PAC/SEDEX/Loggi)", async () => {
     const fn = mockFetch(json(OK_QUOTE));
     await quoteShipping("80010000", [{ quantity: 1, pkg: { ...PKG, weightGrams: 2100 } }]);
-    expect(bodyOf(fn).services).toBe("1,2");
+    expect(bodyOf(fn).services).toBe("1,2,31");
   });
 
   // NOTA: `quoteShipping` (compat) continua devolvendo [] aqui. Quem decide o que
