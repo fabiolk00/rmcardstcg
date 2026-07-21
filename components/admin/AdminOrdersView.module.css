@@ -232,6 +232,24 @@
   border-color: var(--ink);
 }
 
+/* Acoes da linha (status + etiqueta). Quebra em duas linhas em tela estreita
+   em vez de estourar a largura da tabela. */
+.rowActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.statusBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.statusBtn:disabled:hover {
+  border-color: var(--border);
+}
+
 .emptyCell {
   padding: var(--space-9) var(--space-6);
   text-align: center;

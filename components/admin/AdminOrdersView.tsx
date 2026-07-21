@@ -6,8 +6,8 @@ import {
   printLabelAction,
 } from "@/app/admin/pedidos/labelActions";
 import { useEffect, useMemo, useState, useTransition } from "react";
+import { orderLabelState } from "@/lib/admin/orderLabelActions";
 import type { Order, PaymentStatus, ShippingStatus } from "@/lib/data/types";
-import { paymentMethodLabel } from "@/lib/payments/method";
 import { formatBRL } from "@/lib/utils/currency";
 import { Icon } from "@/components/ui/Icon";
 import { Pagination } from "@/components/ui/Pagination";
@@ -51,12 +51,15 @@ export function AdminOrdersView({ orders: initialOrders }: { orders: Order[] }) 
   const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<Order | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // Etiqueta: uma acao por vez, travada POR PEDIDO (emitir gasta dinheiro — um
+  // duplo-clique nao pode virar duas chamadas).
+  const [labelBusyId, setLabelBusyId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 2800);
-    return () => clearTimeout(t);
+  return () => clearTimeout(t);
   }, [toast]);
 
   const kpis = useMemo(
@@ -99,13 +102,114 @@ export function AdminOrdersView({ orders: initialOrders }: { orders: Order[] }) 
 
   // Servidor e a fonte de verdade: aplica na lista o Order retornado pela action
   // (ja com os campos persistidos), em vez de adivinhar o novo estado no client.
-  const handleSaved = (updated: Order) => {
+  const applyOrder = (updated: Order) => {
     startTransition(() => {
       setOrders((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
-      setEditing(null);
-      setToast("Status atualizado.");
     });
   };
+
+  const handleSaved = (updated: Order) => {
+    applyOrder(updated);
+    setEditing(null);
+    setToast("Status atualizado.");
+  };
+
+  async function handleIssue(order: Order) {
+    setLabelBusyId(order.id);
+    try {
+      const res = await issueLabelAction(order.id);
+      setToast(res.ok ? res.message : res.error);
+      if (res.ok) applyOrder(res.order);
+    } catch {
+      setToast("Não foi possível emitir a etiqueta.");
+    } finally {
+      setLabelBusyId(null);
+    }
+  }
+
+  async function handlePrint(order: Order, format: "A4" | "A6") {
+    setLabelBusyId(order.id);
+    try {
+      const res = await printLabelAction(order.id, format);
+      if (!res.ok) {
+        setToast(res.error);
+        return;
+      }
+      window.open(res.url, "_blank", "noopener,noreferrer");
+    } catch {
+      setToast("Não foi possível gerar o PDF da etiqueta.");
+    } finally {
+      setLabelBusyId(null);
+    }
+  }
+
+  async function handleCancelLabel(order: Order) {
+    // Cancelar etiqueta paga vira CREDITO na carteira, nunca dinheiro de volta —
+    // por isso confirma antes.
+    if (!window.confirm("Cancelar a etiqueta? O valor volta como crédito na carteira SuperFrete.")) {
+      return;
+    }
+    setLabelBusyId(order.id);
+    try {
+      const res = await cancelLabelAction(order.id);
+      setToast(res.ok ? res.message : res.error);
+      if (res.ok) applyOrder(res.order);
+    } catch {
+      setToast("Não foi possível cancelar a etiqueta.");
+    } finally {
+      setLabelBusyId(null);
+    }
+  }
+
+  function renderLabelActions(order: Order) {
+    const state = orderLabelState(order);
+    if (state.kind === "none") return null;
+    const busy = labelBusyId === order.id;
+
+    if (state.kind === "manage") {
+      return (
+        <>
+          <button
+            type="button"
+            className={styles.statusBtn}
+            disabled={busy}
+            onClick={() => handlePrint(order, "A4")}
+          >
+            Imprimir A4
+          </button>
+          <button
+            type="button"
+            className={styles.statusBtn}
+            disabled={busy}
+            onClick={() => handlePrint(order, "A6")}
+          >
+            A6
+          </button>
+          <button
+            type="button"
+            className={styles.statusBtn}
+            disabled={busy}
+            onClick={() => handleCancelLabel(order)}
+          >
+            Cancelar etiqueta
+          </button>
+        </>
+      );
+    }
+
+    return (
+      <button
+        type="button"
+        className={styles.statusBtn}
+        disabled={busy || state.disabled}
+        // Desabilitado explica o motivo no hover em vez de sumir sem dizer nada.
+        title={state.disabled ? state.reason : "Emite e paga a etiqueta no SuperFrete"}
+        onClick={() => handleIssue(order)}
+      >
+        {busy ? "Emitindo…" : "Gerar etiqueta"}
+      </button>
+    );
+  }
 
   return (
     <section>
@@ -212,13 +316,8 @@ export function AdminOrdersView({ orders: initialOrders }: { orders: Order[] }) 
                     {formatBRL(o.totalCents)}
                   </td>
                   <td className={styles.left}>
-                    <span className={styles.customer}>
-                      <span className={`${styles.pill} ${payClass(o.paymentStatus)}`}>
-                        {PAY_LABEL[o.paymentStatus]}
-                      </span>
-                      <span className={styles.customerSub}>
-                        {paymentMethodLabel(o.paymentMethod)}
-                      </span>
+                    <span className={`${styles.pill} ${payClass(o.paymentStatus)}`}>
+                      {PAY_LABEL[o.paymentStatus]}
                     </span>
                   </td>
                   <td className={styles.left}>
@@ -227,13 +326,16 @@ export function AdminOrdersView({ orders: initialOrders }: { orders: Order[] }) 
                     </span>
                   </td>
                   <td className={styles.right}>
-                    <button
-                      type="button"
-                      className={styles.statusBtn}
-                      onClick={() => setEditing(o)}
-                    >
-                      Mudar status
-                    </button>
+                    <div className={styles.rowActions}>
+                      <button
+                        type="button"
+                        className={styles.statusBtn}
+                        onClick={() => setEditing(o)}
+                      >
+                        Mudar status
+                      </button>
+                      {renderLabelActions(o)}
+                    </div>
                   </td>
                 </tr>
               );
@@ -267,9 +369,6 @@ export function AdminOrdersView({ orders: initialOrders }: { orders: Order[] }) 
             onPayment: (to, reason) => adjustPaymentStatusAction(editing.id, to, reason),
             onNote: (note) => updateInternalNoteAction(editing.id, note),
             onTracking: (code, carrier) => updateTrackingAction(editing.id, code, carrier),
-            onIssueLabel: () => issueLabelAction(editing.id),
-            onPrintLabel: (format) => printLabelAction(editing.id, format),
-            onCancelLabel: () => cancelLabelAction(editing.id),
           }}
         />
       )}
