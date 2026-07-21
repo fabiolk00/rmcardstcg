@@ -1,0 +1,71 @@
+/* Analitico do pedido: leitura em blocos, sem campos editaveis. Rotulo a
+   esquerda e valor a direita para o olho varrer a coluna de valores. */
+.block + .block {
+  margin-top: var(--space-5);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border);
+}
+
+.blockTitle {
+  margin: 0 0 var(--space-3);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.rows {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.rowLabel {
+  flex: 0 0 auto;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.rowValue {
+  margin: 0;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+/* Campo vazio nao pode parecer preenchido: pedido legado sem CPF/numero e o
+   motivo de a etiqueta nao emitir, entao o vazio precisa saltar. */
+.missing {
+  font-weight: 400;
+  font-style: italic;
+  color: var(--ink-3);
+}
+
+.secondary {
+  min-height: 36px;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  background: var(--card);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.secondary:hover {
+  border-color: var(--ink);
+}

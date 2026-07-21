@@ -11,6 +11,7 @@ import type { Order, PaymentStatus, ShippingStatus } from "@/lib/data/types";
 import { formatBRL } from "@/lib/utils/currency";
 import { Icon } from "@/components/ui/Icon";
 import { Pagination } from "@/components/ui/Pagination";
+import { OrderDetailsModal } from "./OrderDetailsModal";
 import { OrderStatusModal } from "./OrderStatusModal";
 import {
   adjustPaymentStatusAction,
@@ -50,6 +51,8 @@ export function AdminOrdersView({ orders: initialOrders }: { orders: Order[] }) 
   const [seg, setSeg] = useState<PaySeg>("all");
   const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<Order | null>(null);
+  // Analitico (somente leitura) — separado de `editing`, que abre o modal de status.
+  const [viewing, setViewing] = useState<Order | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   // Etiqueta: uma acao por vez, travada POR PEDIDO (emitir gasta dinheiro — um
   // duplo-clique nao pode virar duas chamadas).
@@ -330,6 +333,13 @@ export function AdminOrdersView({ orders: initialOrders }: { orders: Order[] }) 
                       <button
                         type="button"
                         className={styles.statusBtn}
+                        onClick={() => setViewing(o)}
+                      >
+                        Ver analítico
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.statusBtn}
                         onClick={() => setEditing(o)}
                       >
                         Mudar status
@@ -358,6 +368,8 @@ export function AdminOrdersView({ orders: initialOrders }: { orders: Order[] }) 
         onChange={setPage}
         label="pedidos"
       />
+
+      {viewing && <OrderDetailsModal order={viewing} onClose={() => setViewing(null)} />}
 
       {editing && (
         <OrderStatusModal
