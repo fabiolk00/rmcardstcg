@@ -24,6 +24,7 @@
  */
 import {
   createProduct,
+  deleteProduct,
   setProductActive,
   updateProduct,
   type ProductInput,
@@ -83,6 +84,18 @@ type UpdateArgs = { actor: AuditActor; id: string; input: ProductInput; original
 // teste: usa a funcao de PRODUCAO sem mock — espelha o que setProductActiveAction
 // (app/admin/produtos/actions.ts) delega apos requireAdmin().
 type SetActiveArgs = { actor: AuditActor; id: string; isActive: boolean };
+// Exclusao PERMANENTE de produto pelo admin: chama deleteProduct(actor, id) de PRODUCAO
+// (lib/data/products.ts). Numa MESMA prisma.$transaction a funcao: le o produto (before);
+// se inexistente -> 'not_found'; CONTA order_items WHERE product_id=id e, se > 0, retorna
+// 'in_use' SEM apagar (historico de pedido protegido pela FK OrderItem.product = Restrict);
+// senao faz tx.product.delete (hard-delete, reviews caem por cascade) + writeAuditLog
+// (product.delete, before=snapshot, after=null) na MESMA tx; pos-commit remove a imagem
+// orfa do bucket (best-effort). Corrida (order_item inserido entre a contagem e o delete)
+// dispara FK Restrict, tratada como 'in_use'. Devolve o ProductDeleteResult ({ ok:true, id }
+// | { ok:false, error }). A server action so DELEGA apos requireAdmin() (contexto de
+// request), por isso chamamos a funcao de lib/data direto. INFRA de teste: usa a funcao de
+// PRODUCAO sem mock; a spec assertaa o estado real via pg.
+type DeleteProductArgs = { actor: AuditActor; id: string };
 // Espelha o call site de PRODUCAO (createPendingOrderWithReservation, orders.ts
 // L193-221): numa MESMA transacao, chama reserveStock(tx, items) e — se ok —
 // vira a flag stockReserved=true do pedido. Se reserveStock devolver ok:false, o
@@ -459,6 +472,15 @@ async function main(): Promise<void> {
         // via a funcao de PRODUCAO. Devolve o Product resultante (ou o before, se no-op).
         const { actor, id, isActive } = payload as SetActiveArgs;
         result = await setProductActive(actor, id, isActive);
+        break;
+      }
+      case "deleteProduct": {
+        // Exclusao permanente de produto (hard-delete SO se nunca vendido + audit
+        // product.delete na MESMA tx; produto vendido -> { ok:false } pela guarda/FK
+        // Restrict), via a funcao de PRODUCAO. Devolve o ProductDeleteResult
+        // ({ ok:true, id } | { ok:false, error }); a spec assertaa o estado real via pg.
+        const { actor, id } = payload as DeleteProductArgs;
+        result = await deleteProduct(actor, id);
         break;
       }
       case "reserveStockForOrder": {

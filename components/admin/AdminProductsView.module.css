@@ -377,6 +377,14 @@
   color: var(--ink-2);
 }
 
+/* Botao de exclusao permanente: destaca em vermelho no hover (acao destrutiva).
+   A confirmacao real vive no DeleteProductModal; aqui so a affordance visual. */
+.actDanger:hover {
+  border-color: var(--red-strong);
+  background: var(--bg-soft);
+  color: var(--red-strong);
+}
+
 .toast {
   position: fixed;
   right: 24px;

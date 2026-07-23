@@ -520,9 +520,10 @@ export async function updateProduct(
  * estado pedido, no-op (nao grava audit ruidoso). Audita product_inactivate /
  * product_reactivate na MESMA transacao.
  *
- * "Excluir" e deliberadamente NAO implementado neste ciclo: a UI so oferece
- * inativar/reativar, e OrderItem guarda snapshot com FK Restrict — hard-delete
- * de produto vendido quebraria o historico. Inativar e o soft-delete efetivo.
+ * Inativar e o soft-delete reversivel (tira da loja, preserva historico). A
+ * exclusao PERMANENTE (deleteProduct, abaixo) e um caminho separado, BLOQUEADO
+ * para produto ja vendido — OrderItem guarda snapshot com FK Restrict e hard-delete
+ * quebraria o historico. Produto vendido deve ser inativado, nao excluido.
  */
 export async function setProductActive(
   actor: AuditActor,
@@ -550,4 +551,105 @@ export async function setProductActive(
 
     return product;
   });
+}
+
+export type ProductDeleteResult = { ok: true; id: string } | { ok: false; error: string };
+
+/** Mensagem unica para "ja vendido": NUNCA exclui produto com historico de pedido. */
+const PRODUCT_IN_USE =
+  "Produto já foi vendido e não pode ser excluído. Inative-o para tirá-lo da loja." as const;
+
+/**
+ * Detecta violacao de FK por RESTRICT no delete de produto (um order_item referencia
+ * o produto), reconhecendo os DOIS shapes do Prisma 7 — GEMEO de isForeignKeyViolation
+ * em lib/data/coupons.ts (mesma migracao de shape do adapter-pg). Mantido local (as
+ * duas guardas de dominio sao independentes) em vez de compartilhado:
+ *  - compat (Prisma <=6): PrismaClientKnownRequestError com code "P2003".
+ *  - Prisma 7 + @prisma/adapter-pg: a violacao chega como `DriverAdapterError` CRU,
+ *    cujo `.cause` carrega o erro do driver pg ({ code/originalCode }) — 23001
+ *    (restrict_violation, o caso da FK OrderItem.product = Restrict por default) ou
+ *    23503 (foreign_key_violation). Nesse shape NAO ha `.code` no topo nem `instanceof
+ *    PrismaClientKnownRequestError`. Opcionalmente casa o nome da constraint para so
+ *    tratar a FK esperada (order_items -> products) como "em uso".
+ */
+function isForeignKeyViolation(err: unknown, constraint?: string): boolean {
+  const hit = (value: unknown): boolean =>
+    constraint === undefined || String(value ?? "").includes(constraint);
+
+  // Compat: PrismaClientKnownRequestError P2003 (Prisma <=6 / engine que mapeia).
+  if (err instanceof Prisma.PrismaClientKnownRequestError) {
+    if (err.code !== "P2003") return false;
+    if (constraint === undefined) return true;
+    return hit((err.meta as { target?: unknown } | undefined)?.target) || hit(err.message);
+  }
+
+  // Prisma 7 (driver adapter): DriverAdapterError cru com .cause do pg (23001/23503).
+  const e = err as {
+    message?: string;
+    cause?: { code?: string; originalCode?: string; message?: string; detail?: string };
+  };
+  const pgCode = e?.cause?.code ?? e?.cause?.originalCode;
+  if (pgCode !== "23001" && pgCode !== "23503") return false;
+  if (constraint === undefined) return true;
+  return hit(e.cause?.message) || hit(e.cause?.detail) || hit(e.message);
+}
+
+/**
+ * Exclui um produto PERMANENTEMENTE (o "D" do CRUD). Diferente de setProductActive
+ * (inativacao reversivel), o registro deixa de existir.
+ *
+ * Guarda de integridade: so exclui se o produto NUNCA foi vendido. OrderItem guarda o
+ * snapshot da compra (nome/preco no momento) com FK onDelete: Restrict (default do
+ * Prisma p/ relacao obrigatoria) — apagar um produto vendido destruiria o historico de
+ * pedidos. Produto ja vendido deve ser INATIVADO, nao excluido. Avaliacoes (Review) tem
+ * FK onDelete: Cascade e somem junto com o produto (sao denormalizadas em rating/
+ * reviewCount, que morrem com a linha).
+ *
+ * A contagem de order_items e o delete correm na MESMA transacao (SELECT count + DELETE
+ * serializados), fechando a corrida "conta 0, pedido novo entra, deleta"; um order_item
+ * inserido nesse meio dispara a FK Restrict (pg 23001 / P2003), tratada como "em uso" via
+ * isForeignKeyViolation. Grava audit_log (product_delete, before=snapshot, after=null) na
+ * MESMA transacao (invariante 3). Pos-commit, remove a imagem orfa do bucket (best-effort,
+ * mesmo helper do updateProduct — o Storage nao e transacional com o Postgres).
+ */
+export async function deleteProduct(actor: AuditActor, id: string): Promise<ProductDeleteResult> {
+  let outcome: { kind: "not_found" } | { kind: "in_use" } | { kind: "ok"; imageUrl: string };
+  try {
+    outcome = await prisma.$transaction(async (tx) => {
+      const existing = await tx.product.findUnique({ where: { id } });
+      if (!existing) return { kind: "not_found" as const };
+
+      const soldUnits = await tx.orderItem.count({ where: { productId: id } });
+      if (soldUnits > 0) return { kind: "in_use" as const };
+
+      const before = toProduct(existing);
+      await tx.product.delete({ where: { id } }); // reviews caem por cascade (onDelete: Cascade)
+      await writeAuditLog(tx, {
+        actor,
+        action: AuditAction.product_delete,
+        entityType: AuditEntityType.product,
+        entityId: id,
+        before: auditSnapshot(before),
+        after: null,
+      });
+      return { kind: "ok" as const, imageUrl: before.imageUrl };
+    });
+  } catch (err) {
+    // Corrida: order_item gravado entre a contagem e o delete -> FK Restrict. Sob Prisma 7
+    // + adapter-pg isso chega como DriverAdapterError cru (pg 23001 restrict_violation),
+    // NAO como PrismaClientKnownRequestError P2003 — por isso reconhecemos ambos os shapes.
+    if (isForeignKeyViolation(err, "order_items_product_id_fkey")) {
+      return { ok: false, error: PRODUCT_IN_USE };
+    }
+    throw err;
+  }
+
+  if (outcome.kind === "not_found") return { ok: false, error: "Produto não encontrado." };
+  if (outcome.kind === "in_use") return { ok: false, error: PRODUCT_IN_USE };
+
+  // PÓS-COMMIT (fora da transação — o Storage não é transacional com o Postgres): remove
+  // o objeto do bucket agora que nenhum produto o referencia. Best-effort e nunca lança;
+  // uma falha aqui deixa um órfão que o reconcile varre depois — jamais quebra o delete.
+  await cleanupReplacedImage(outcome.imageUrl);
+  return { ok: true, id };
 }

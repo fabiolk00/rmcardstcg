@@ -10,8 +10,10 @@ import { Icon } from "@/components/ui/Icon";
 import { Pagination } from "@/components/ui/Pagination";
 import { ProductFormModal, type ProductFormPayload } from "./ProductFormModal";
 import { InactivateModal } from "./InactivateModal";
+import { DeleteProductModal } from "./DeleteProductModal";
 import {
   createProductAction,
+  deleteProductAction,
   setProductActiveAction,
   updateProductAction,
 } from "@/app/admin/produtos/actions";
@@ -61,6 +63,7 @@ export function AdminProductsView({
   const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<Product | null>(null);
   const [confirmInactivate, setConfirmInactivate] = useState<Product | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Product | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   // Reativacoes em voo. O ref e a fonte de verdade SINCRONA do guard anti
   // double-click: `busyId` (useState) so muda no proximo render, entao dois cliques
@@ -179,6 +182,19 @@ export function AdminProductsView({
     setProducts((prev) => prev.map((x) => (x.id === saved.id ? saved : x)));
     setConfirmInactivate(null);
     setToast("Produto inativado.");
+    return null;
+  };
+
+  // Excluir e PERMANENTE (hard-delete). O servidor (deleteProduct) e a fonte de verdade
+  // e RECUSA produto ja vendido (order_items) com mensagem amigavel, que o modal exibe.
+  // Em sucesso, tira o produto da lista local (o revalidatePath ja atualizou o SSR).
+  const handleDelete = async (): Promise<string | null> => {
+    if (!confirmDelete) return null;
+    const res = await deleteProductAction(confirmDelete.id);
+    if (!res.ok) return res.error;
+    setProducts((prev) => prev.filter((x) => x.id !== confirmDelete.id));
+    setConfirmDelete(null);
+    setToast("Produto excluído.");
     return null;
   };
 
@@ -372,6 +388,15 @@ export function AdminProductsView({
                         </button>
                       );
                     })}
+                    <button
+                      type="button"
+                      className={`${styles.act} ${styles.actDanger}`}
+                      onClick={() => setConfirmDelete(p)}
+                      aria-label={`Excluir ${p.name}`}
+                      title="Excluir"
+                    >
+                      <Icon name="trash" size={15} />
+                    </button>
                   </div>
                 </td>
               </tr>
@@ -402,6 +427,13 @@ export function AdminProductsView({
           product={confirmInactivate}
           onClose={() => setConfirmInactivate(null)}
           onConfirm={handleInactivate}
+        />
+      )}
+      {confirmDelete && (
+        <DeleteProductModal
+          product={confirmDelete}
+          onClose={() => setConfirmDelete(null)}
+          onConfirm={handleDelete}
         />
       )}
       {toast && (

@@ -6,8 +6,10 @@ import { requireAdmin } from "@/lib/auth/requireAdmin";
 import {
   ProductValidationError,
   createProduct,
+  deleteProduct,
   setProductActive,
   updateProduct,
+  type ProductDeleteResult,
   type ProductInput,
 } from "@/lib/data/products";
 import type { Product } from "@/lib/data/types";
@@ -84,6 +86,20 @@ export async function setProductActiveAction(
   } catch (err) {
     return { ok: false, error: toErrorMessage(err) };
   }
+}
+
+/**
+ * Exclusao permanente (o "D" do CRUD). Bloqueada para produto ja vendido: a data layer
+ * conta order_items e recusa com mensagem amigavel (produto vendido deve ser inativado).
+ */
+export async function deleteProductAction(id: string): Promise<ProductDeleteResult> {
+  const guard = await requireAdmin();
+  if (!guard.ok) return { ok: false, error: guard.error };
+  if (!id) return { ok: false, error: "Produto inválido." };
+
+  const result = await deleteProduct(guard.actor, id);
+  if (result.ok) revalidatePath(ADMIN_PATH);
+  return result;
 }
 
 /**
