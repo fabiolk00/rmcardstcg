@@ -42,6 +42,8 @@ function toActionResult(res: AdminOrderUpdate): OrderActionResult {
       return { ok: false, error: "Pedido não encontrado." };
     case "invalid_transition":
       return { ok: false, error: `Transição de envio inválida (${res.from} → ${res.to}).` };
+    case "payment_required":
+      return { ok: false, error: "Só é possível marcar como enviado um pedido pago." };
   }
 }
 

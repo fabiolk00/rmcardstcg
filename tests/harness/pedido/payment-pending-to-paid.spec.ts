@@ -211,13 +211,23 @@ test("pedido.payment.pending-to-paid: commit concilia estoque e audita na mesma 
     // --- assert 1: orders.payment_status == 'paid' (transicao legal pending->paid).
     const ord = await client.query<{
       payment_status: string;
+      shipping_status: string;
       stock_reserved: boolean;
       stock_committed: boolean;
-    }>(`SELECT payment_status, stock_reserved, stock_committed FROM "orders" WHERE id = $1`, [
-      orderId,
-    ]);
+    }>(
+      `SELECT payment_status, shipping_status, stock_reserved, stock_committed FROM "orders" WHERE id = $1`,
+      [orderId],
+    );
     expect(ord.rowCount).toBe(1);
     expect(ord.rows[0].payment_status, "payment_status deve virar 'paid'").toBe("paid");
+    // REGRA (rastreio de envio e responsabilidade exclusiva do admin): confirmar o
+    // pagamento NUNCA avanca o envio sozinho — shipping_status segue 'pending' ("a
+    // enviar" pro cliente) ate o admin marcar 'sent' explicitamente (ver
+    // shipping-sent-requires-payment.spec.ts, que prova o inverso: 'sent' exige 'paid').
+    expect(
+      ord.rows[0].shipping_status,
+      "pagar o pedido NAO avanca o envio sozinho — shipping_status continua 'pending'",
+    ).toBe("pending");
 
     // --- assert 2: estoque conciliado (commitStock): stock-=QTY, reserved-=QTY;
     //     stockCommitted=true, stockReserved=false.

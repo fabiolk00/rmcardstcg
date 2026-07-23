@@ -134,6 +134,8 @@ test("pedido.shipping.skip-blocked: pending->delivered barrado (invalid_transiti
 
     // --- setup C: PEDIDO PROPRIO com shippingStatus=pending + 1 item (QTY) deste produto.
     //     stockReserved=true reflete a reserva ativa (anti-trivialidade do "nada gravado").
+    //     paymentStatus='paid': a CONTRA-PROVA no fim deste teste (pending->sent legal)
+    //     agora EXIGE pagamento confirmado (shipping-sent-requires-payment.spec.ts).
     const subtotal = UNIT_PRICE * QTY;
     const ins = await client.query<{ id: number }>(
       `INSERT INTO "orders" (
@@ -146,7 +148,7 @@ test("pedido.shipping.skip-blocked: pending->delivered barrado (invalid_transiti
          $1, $2, $3, $4,
          $5, $6, $7, $8,
          $9, 0, 0, $10,
-         'pending', 'pix', 'pending',
+         'paid', 'pix', 'pending',
          true, false
        ) RETURNING id`,
       [
@@ -234,7 +236,7 @@ test("pedido.shipping.skip-blocked: pending->delivered barrado (invalid_transiti
     expect(ord.rowCount).toBe(1);
     expect(ord.rows[0].shipping_status, "shipping_status permanece 'pending'").toBe("pending");
     // payment_status nao e tocado pela maquina de envio.
-    expect(ord.rows[0].payment_status, "payment_status inalterado (pending)").toBe("pending");
+    expect(ord.rows[0].payment_status, "payment_status inalterado (paid)").toBe("paid");
     // Flags do pedido intactas (transicao barrada nao concilia estoque).
     expect(ord.rows[0].stock_reserved, "stockReserved INALTERADO (true)").toBe(true);
     expect(ord.rows[0].stock_committed, "stockCommitted INALTERADO (false)").toBe(false);

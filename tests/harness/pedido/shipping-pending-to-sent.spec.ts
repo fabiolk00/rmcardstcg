@@ -46,6 +46,11 @@ import { Client } from "pg";
  * Invariantes cobertas: order-state-machine (pending->sent legal via
  * SHIPPING_TRANSITIONS, CAS), audit-same-tx (1 linha order.shipping_status_update na
  * MESMA tx, before/after corretos).
+ *
+ * PRECONDICAO 'paid': desde a regra "nunca despachar o que nao foi pago"
+ * (shipping-sent-requires-payment.spec.ts), 'sent' exige paymentStatus='paid' — por
+ * isso o pedido nasce ja pago aqui. O bloqueio pending->sent SEM pagamento tem spec
+ * proprio; este arquivo prova so o caminho feliz (pago -> pode enviar).
  */
 
 const SEAM_RUNNER = path.join(__dirname, "..", "estoque", "_run-seam.ts");
@@ -125,6 +130,9 @@ test("pedido.shipping.pending-to-sent: transicao legal auditada na mesma tx, sem
 
     // --- setup C: PEDIDO PROPRIO com shippingStatus=pending + 1 item (QTY) deste produto.
     //     stockReserved=true reflete a reserva ativa (anti-trivialidade do "sem efeito").
+    //     paymentStatus='paid': 'sent' agora EXIGE pagamento confirmado (ver
+    //     shipping-sent-requires-payment.spec.ts) — sem isso este spec provaria pending->sent
+    //     legal com um pedido que nao poderia mesmo ser despachado.
     const subtotal = UNIT_PRICE * QTY;
     const ins = await client.query<{ id: number }>(
       `INSERT INTO "orders" (
@@ -137,7 +145,7 @@ test("pedido.shipping.pending-to-sent: transicao legal auditada na mesma tx, sem
          $1, $2, $3, $4,
          $5, $6, $7, $8,
          $9, 0, 0, $10,
-         'pending', 'pix', 'pending',
+         'paid', 'pix', 'pending',
          true, false
        ) RETURNING id`,
       [
@@ -220,8 +228,8 @@ test("pedido.shipping.pending-to-sent: transicao legal auditada na mesma tx, sem
     );
     expect(ord.rowCount).toBe(1);
     expect(ord.rows[0].shipping_status, "shipping_status deve virar 'sent'").toBe("sent");
-    // payment_status nao e tocado pela maquina de envio.
-    expect(ord.rows[0].payment_status, "payment_status inalterado (pending)").toBe("pending");
+    // payment_status nao e tocado pela maquina de envio (precondicao 'paid' inalterada).
+    expect(ord.rows[0].payment_status, "payment_status inalterado (paid)").toBe("paid");
 
     // --- assert 3: NENHUM efeito de estoque (so cancelamento concilia). stock/reserved
     //     do produto e as flags do pedido ficam INTACTOS apesar da reserva ativa.

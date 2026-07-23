@@ -636,6 +636,7 @@ function orderAuditSnapshot(row: {
 export type AdminOrderUpdate =
   | { ok: false; reason: "not_found" }
   | { ok: false; reason: "invalid_transition"; from: ShippingStatus; to: ShippingStatus }
+  | { ok: false; reason: "payment_required"; from: ShippingStatus; to: ShippingStatus }
   | { ok: true; changed: boolean; order: Order };
 
 /** Select padrao p/ os writes de admin: estado + flags/itens p/ conciliar estoque. */
@@ -659,6 +660,15 @@ async function reloadOrder(tx: Prisma.TransactionClient, orderId: number): Promi
  * e grava audit_log na MESMA transacao. Ao CANCELAR, concilia o estoque (libera a
  * reserva ou repoe o estoque ja baixado) — idempotente via flags. Idempotente:
  * pedir o estado atual = no-op.
+ *
+ * REGRA: 'sent' exige paymentStatus='paid' — nunca despachamos o que nao foi pago.
+ * O pagamento so muda por conta propria (webhook/reconcile/ajuste manual); virar
+ * 'paid' NUNCA avanca o envio sozinho (o admin decide quando de fato despachou), e
+ * o inverso tambem vale: marcar 'sent' exige o pagamento JA confirmado. Checado
+ * ANTES do CAS (fail-fast com motivo claro) e REPETIDO no WHERE do UPDATE — fecha a
+ * corrida com um refund/cancelamento de pagamento concorrente entre a leitura e a
+ * escrita (senao o CAS de shippingStatus sozinho aceitaria despachar um pedido que
+ * acabou de ser estornado no meio do caminho).
  */
 export async function updateOrderShippingStatus(
   orderId: number,
@@ -681,12 +691,34 @@ export async function updateOrderShippingStatus(
       if (!SHIPPING_TRANSITIONS[from].includes(to)) {
         return { ok: false, reason: "invalid_transition", from, to } as const;
       }
+      if (to === "sent" && existing.paymentStatus !== "paid") {
+        return { ok: false, reason: "payment_required", from, to } as const;
+      }
 
       const res = await tx.order.updateMany({
-        where: { id: orderId, shippingStatus: from },
+        where: {
+          id: orderId,
+          shippingStatus: from,
+          ...(to === "sent" ? { paymentStatus: "paid" } : {}),
+        },
         data: { shippingStatus: to },
       });
       if (res.count === 0) {
+        // count=0 tem duas causas possiveis: (a) outra chamada ja mudou o
+        // shippingStatus (no-op benigno, comportamento pre-existente) ou (b), so
+        // possivel quando to==='sent', o pagamento deixou de ser 'paid' ENTRE a
+        // checagem acima e este UPDATE (refund/cancelamento concorrente) — nesse
+        // caso NAO e um no-op qualquer, e a mesma rejeicao payment_required, so
+        // que descoberta so na corrida.
+        if (to === "sent") {
+          const fresh = await tx.order.findUnique({
+            where: { id: orderId },
+            select: { shippingStatus: true, paymentStatus: true },
+          });
+          if (fresh?.shippingStatus === from && fresh.paymentStatus !== "paid") {
+            return { ok: false, reason: "payment_required", from, to } as const;
+          }
+        }
         return { ok: true, changed: false, order: await reloadOrder(tx, orderId) } as const;
       }
 
