@@ -38,17 +38,37 @@ export function Topbar() {
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
           >
+            <defs>
+              <linearGradient
+                id="instagramGradient"
+                x1="0"
+                y1="24"
+                x2="24"
+                y2="0"
+                gradientUnits="userSpaceOnUse"
+              >
+                <stop offset="0" stopColor="#f9ce34" />
+                <stop offset="0.3" stopColor="#ee2a7b" />
+                <stop offset="0.6" stopColor="#6228d7" />
+                <stop offset="1" stopColor="#6228d7" />
+              </linearGradient>
+            </defs>
             <rect
               x="2"
               y="2"
               width="20"
               height="20"
               rx="5"
-              stroke="currentColor"
-              strokeWidth="2"
+              fill="url(#instagramGradient)"
             />
-            <circle cx="12" cy="12" r="4.5" stroke="currentColor" strokeWidth="2" />
-            <circle cx="17.2" cy="6.8" r="1.2" fill="currentColor" />
+            <circle
+              cx="12"
+              cy="12"
+              r="4.5"
+              stroke="white"
+              strokeWidth="1.6"
+            />
+            <circle cx="17.2" cy="6.8" r="1.1" fill="white" />
           </svg>
         </a>
 
