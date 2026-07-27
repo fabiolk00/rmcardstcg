@@ -24,6 +24,34 @@ export function Topbar() {
 
         <div className={styles.spacer} />
 
+        <a
+          href="https://www.instagram.com/rmcardstcg"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Instagram"
+          className={styles.instagram}
+        >
+          <svg
+            width="22"
+            height="22"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <rect
+              x="2"
+              y="2"
+              width="20"
+              height="20"
+              rx="5"
+              stroke="currentColor"
+              strokeWidth="2"
+            />
+            <circle cx="12" cy="12" r="4.5" stroke="currentColor" strokeWidth="2" />
+            <circle cx="17.2" cy="6.8" r="1.2" fill="currentColor" />
+          </svg>
+        </a>
+
         {isClerkConfigured() ? (
           <AuthControls />
         ) : (

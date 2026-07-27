@@ -85,6 +85,20 @@
   font-weight: 700;
 }
 
+.instagram {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-pill);
+  color: var(--ink);
+}
+
+.instagram:hover {
+  background: var(--bg-soft);
+}
+
 .auth {
   display: flex;
   align-items: center;
