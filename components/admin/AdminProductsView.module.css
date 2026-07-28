@@ -211,10 +211,14 @@
   text-align: center;
 }
 
+.left {
+  text-align: left;
+}
+
 .product {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: var(--space-3);
 }
 
@@ -240,8 +244,8 @@
 .productText {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  text-align: center;
+  align-items: flex-start;
+  text-align: left;
 }
 
 .name {

@@ -270,7 +270,7 @@ export function AdminProductsView({
         <table className={styles.table}>
           <thead>
             <tr>
-              <th scope="col" className={styles.center}>
+              <th scope="col" className={styles.left}>
                 Produto
               </th>
               <th scope="col" className={styles.center}>
@@ -302,7 +302,7 @@ export function AdminProductsView({
           <tbody>
             {paged.map((p) => (
               <tr key={p.id} className={p.isActive ? undefined : styles.inactive}>
-                <td className={styles.center}>
+                <td className={styles.left}>
                   <div className={styles.product}>
                     <span className={styles.thumb}>
                       <Image
