@@ -1,4 +1,5 @@
 import { currentUser } from "@clerk/nextjs/server";
+import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AdminProfileCard } from "@/components/admin/AdminProfileCard";
@@ -64,12 +65,17 @@ export default async function PainelLayout({ children }: Readonly<{ children: Re
             <span className={styles.topbarTitle}>Painel do cliente</span>
             {/* So aparece no mobile (CSS): a sidebar vira barra fixa de baixo
                 sem marca, entao a logo migra pra um header fixo em cima,
-                clicavel de volta pra loja (home). */}
+                clicavel de volta pra loja (home). Mesma logo/imagem da Topbar
+                da vitrine (nao a marca RM/CARDS da sidebar). */}
             <Link href="/" className={styles.topbarBrand} aria-label="Ir para a loja">
-              <span className={styles.brandMark}>
-                <span className={styles.brandMarkRM}>RM</span>
-                <span className={styles.brandMarkSub}>CARDS</span>
-              </span>
+              <Image
+                src="/logo-rm.png"
+                alt="RM Cards"
+                width={120}
+                height={40}
+                className={styles.topbarLogo}
+                priority
+              />
             </Link>
           </header>
           {/* Corpo em duas colunas: conteudo + rail do carrinho (o rail se

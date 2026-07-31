@@ -168,18 +168,9 @@
     display: inline-flex;
   }
 
-  .topbarBrand .brandMark {
-    width: 56px;
+  .topbarLogo {
     height: 56px;
-    border-radius: 15px;
-  }
-
-  .topbarBrand .brandMarkRM {
-    font-size: 19px;
-  }
-
-  .topbarBrand .brandMarkSub {
-    font-size: 6.5px;
+    width: auto;
   }
 
   /* Respiro p/ o conteudo nao terminar escondido atras da barra fixa. */
