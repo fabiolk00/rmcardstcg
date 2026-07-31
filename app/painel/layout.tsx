@@ -62,6 +62,15 @@ export default async function PainelLayout({ children }: Readonly<{ children: Re
         <div className={styles.main}>
           <header className={styles.topbar}>
             <span className={styles.topbarTitle}>Painel do cliente</span>
+            {/* So aparece no mobile (CSS): a sidebar vira barra fixa de baixo
+                sem marca, entao a logo migra pra um header fixo em cima,
+                clicavel de volta pra loja (home). */}
+            <Link href="/" className={styles.topbarBrand} aria-label="Ir para a loja">
+              <span className={styles.brandMark}>
+                <span className={styles.brandMarkRM}>RM</span>
+                <span className={styles.brandMarkSub}>CARDS</span>
+              </span>
+            </Link>
           </header>
           {/* Corpo em duas colunas: conteudo + rail do carrinho (o rail se
               esconde sozinho em /painel/carrinho, /painel/conta e
