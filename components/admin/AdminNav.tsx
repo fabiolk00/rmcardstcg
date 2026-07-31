@@ -8,7 +8,7 @@ import styles from "./AdminNav.module.css";
 
 // Avaliacoes ocultas do frontend em 2026-07-06 (flag NEXT_PUBLIC_REVIEWS_ENABLED):
 // o item so aparece no menu quando a flag esta ligada (a rota tambem 404 quando off).
-const ITEMS: { href: string; label: string; icon: IconName }[] = [
+const ITEMS: { href: string; label: string; icon: IconName; exact?: boolean }[] = [
   { href: "/admin/produtos", label: "Produtos", icon: "grid" },
   { href: "/admin/categorias", label: "Categorias", icon: "layers" },
   { href: "/admin/estoque", label: "Estoque Baixo", icon: "box" },
@@ -18,6 +18,9 @@ const ITEMS: { href: string; label: string; icon: IconName }[] = [
     : []),
   { href: "/admin/cupons", label: "Cupons", icon: "archive" },
   { href: "/admin/usuarios", label: "Usuários", icon: "user" },
+  // Escape do painel p/ a loja publica (home) — nao e destino do painel, entao
+  // "active" e por igualdade exata (pathname nunca e "/" aqui dentro).
+  { href: "/", label: "Voltar à Loja", icon: "cart", exact: true },
 ];
 
 export function AdminNav() {
@@ -25,7 +28,7 @@ export function AdminNav() {
   return (
     <nav className={styles.nav} aria-label="Menu do painel">
       {ITEMS.map((item) => {
-        const active = pathname.startsWith(item.href);
+        const active = item.exact ? pathname === item.href : pathname.startsWith(item.href);
         return (
           <Link
             key={item.href}
