@@ -149,11 +149,14 @@
   }
 
   /* Marca migra pro topbar: fixo (sticky) no topo, clicavel de volta pra loja —
-     compensa a marca escondida na sidebar/barra de baixo. */
+     compensa a marca escondida na sidebar/barra de baixo. Header mais alto
+     (72px) pra caber a logo maior que no desktop (destaque, ponto de retorno
+     unico no mobile). */
   .topbar {
     position: sticky;
     top: 0;
     z-index: 30;
+    height: 72px;
     justify-content: center;
   }
 
@@ -163,6 +166,20 @@
 
   .topbarBrand {
     display: inline-flex;
+  }
+
+  .topbarBrand .brandMark {
+    width: 56px;
+    height: 56px;
+    border-radius: 15px;
+  }
+
+  .topbarBrand .brandMarkRM {
+    font-size: 19px;
+  }
+
+  .topbarBrand .brandMarkSub {
+    font-size: 6.5px;
   }
 
   /* Respiro p/ o conteudo nao terminar escondido atras da barra fixa. */
