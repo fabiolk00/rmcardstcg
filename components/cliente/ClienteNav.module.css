@@ -60,8 +60,7 @@
     display: none;
   }
 
-  /* Compacto o bastante p/ os itens caberem (e centralizarem) em ~390px; com
-     5 itens (Conta/Colecoes/Pedidos/Carrinho/Voltar a Loja) ja rola na horizontal. */
+  /* Compacto o bastante p/ os 4 itens caberem (e centralizarem) em ~390px. */
   .item {
     flex: none;
     padding: 10px;

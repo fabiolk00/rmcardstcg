@@ -60,8 +60,7 @@
     display: none;
   }
 
-  /* Compacto como o ClienteNav; com 7-8 itens (Avaliacoes so com a flag) rola
-     na horizontal, "Voltar a Loja" incluido. */
+  /* Compacto como o ClienteNav; com 6 itens ainda rola na horizontal. */
   .item {
     flex: none;
     padding: 10px;
