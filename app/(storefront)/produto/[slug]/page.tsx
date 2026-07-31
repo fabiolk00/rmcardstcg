@@ -5,6 +5,7 @@ import { cache } from "react";
 
 import { REVIEWS_ENABLED } from "@/lib/config/features";
 import { SITE_NAME, absoluteUrl } from "@/lib/config/site";
+import { redirectAdminAwayFromStorefront } from "@/lib/auth/resolveViewer";
 import { finalPriceCents } from "@/lib/data/pricing";
 import { getProductBySlug, getRelatedProducts } from "@/lib/data/products";
 import { getApprovedReviews, getReviewStats } from "@/lib/data/reviews";
@@ -100,6 +101,10 @@ function productJsonLd(product: Product): string {
 }
 
 export default async function ProdutoPage({ params }: { params: Promise<{ slug: string }> }) {
+  // Nao tem espelho no painel (o guard de admin ficava no layout, agora e por-pagina):
+  // admin logado nao ve produto individual da vitrine — vai pro /admin.
+  await redirectAdminAwayFromStorefront();
+
   const { slug } = await params;
   const product = await loadProduct(slug);
   // Produto inexistente OU inativo (soft-delete) -> 404: nao deve aparecer na

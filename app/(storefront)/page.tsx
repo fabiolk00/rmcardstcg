@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { redirectLoggedInFromStorefront } from "@/lib/auth/resolveViewer";
 import { getActiveProducts } from "@/lib/data/products";
 import { selectCarouselProducts } from "@/lib/data/carousel";
 import { ProductGrid } from "@/components/product/ProductGrid";
@@ -14,10 +13,10 @@ import styles from "./page.module.css";
 export const dynamic = "force-dynamic";
 
 export default async function LandingPage() {
-  // Quem esta logado vive na sua area: cliente cai direto nos pedidos do painel,
-  // admin no /admin. A vitrine publica e so para anonimos.
-  await redirectLoggedInFromStorefront("/painel/pedidos");
-
+  // Excecao deliberada a regra "logado vive na sua area": a home fica aberta
+  // pra qualquer um, inclusive logado — e o destino da logo da sidebar do
+  // painel/admin ("voltar a loja"). As demais paginas com espelho no painel
+  // (colecoes/carrinho/checkout/minhas-compras) continuam redirecionando.
   const products = await getActiveProducts();
   // Carrossel "Em destaque": produtos marcados (isLanding) e com estoque; cai para
   // os ativos com estoque quando ninguem esta marcado (ver selectCarouselProducts).

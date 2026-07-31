@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { redirectAdminAwayFromStorefront } from "@/lib/auth/resolveViewer";
 import { LegalDoc, type LegalSection } from "@/components/legal/LegalDoc";
 
 export const metadata: Metadata = {
@@ -182,7 +183,11 @@ const sections: LegalSection[] = [
   },
 ];
 
-export default function PoliticaDePrivacidadePage() {
+export default async function PoliticaDePrivacidadePage() {
+  // Sem espelho no painel (guard de admin ficava no layout, agora e por-pagina):
+  // admin logado nao ve a vitrine aqui tambem — vai pro /admin.
+  await redirectAdminAwayFromStorefront();
+
   return (
     <LegalDoc
       eyebrow="Legal"

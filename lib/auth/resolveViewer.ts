@@ -9,9 +9,14 @@ import { isClerkConfigured } from "@/lib/services/clerk/config";
  * Papel EFETIVO do visitante para roteamento de vitrine -> area logada.
  *
  * Regra de produto: quem esta LOGADO vive na sua area — cliente no painel
- * (/painel/*), admin no /admin. A vitrine publica e so para anonimos. Soft-deleted
- * nao e roteado (o guard da area o devolveria para a home: seria loop) — fica na
- * vitrine como anonimo.
+ * (/painel/*), admin no /admin — EXCETO na home ("/"), que fica aberta pra
+ * qualquer um de proposito (e o destino da logo da sidebar do painel/admin,
+ * "voltar a loja"). Nas demais paginas com espelho no painel (colecoes/carrinho/
+ * checkout/minhas-compras) a regra vale via redirectLoggedInFromStorefront
+ * (cobre admin E cliente); produto/[slug]/termos/privacidade (sem espelho) usam
+ * redirectAdminAwayFromStorefront so pro admin. Soft-deleted nao e roteado (o
+ * guard da area o devolveria para a home: seria loop) — fica na vitrine como
+ * anonimo.
  *
  * Custo: anon/mock-first = so auth() (JWT local, sem rede); logado = 1 leitura
  * de role no banco (o fallback ADMIN_EMAILS via currentUser so roda quando a
@@ -71,7 +76,8 @@ export function storefrontRedirectTarget(viewer: Viewer, clienteDest: string): s
  * Roteia o visitante LOGADO da vitrine para a sua area (regra "quem esta logado
  * vive na sua area"): admin -> /admin; cliente -> espelho no painel
  * (`clienteDest`). Anon/deleted seguem na vitrine. Chamar no TOPO das pages
- * publicas da vitrine que tem espelho na area logada.
+ * publicas da vitrine que tem espelho na area logada. NAO chamar na home ("/"):
+ * ela e a excecao deliberada, aberta pra logado tambem.
  */
 export async function redirectLoggedInFromStorefront(clienteDest: string): Promise<void> {
   const target = storefrontRedirectTarget(await resolveViewer(), clienteDest);
@@ -79,12 +85,13 @@ export async function redirectLoggedInFromStorefront(clienteDest: string): Promi
 }
 
 /**
- * Guard de LAYOUT da vitrine: admin logado NUNCA permanece na vitrine — vai
- * DIRETO para /admin (regra do dono: logado como admin => painel, sempre, sem
- * nem renderizar a landing). Cobre TODA rota do grupo (storefront), inclusive
- * as que nao tem redirect por-pagina (/produto/[slug], termos, privacidade).
- * Cliente e anon seguem na vitrine: o espelho do cliente no painel continua
- * sendo feito por redirectLoggedInFromStorefront em cada page (destino por-pagina).
+ * Guard POR-PAGINA (nao mais de layout) pras rotas da vitrine SEM espelho no
+ * painel: admin logado nao fica nelas — vai DIRETO para /admin. Chamado em
+ * produto/[slug], termos-de-uso e politica-de-privacidade. NAO chamado na home
+ * ("/"): ela e aberta pra admin de proposito (destino da logo "voltar a loja").
+ * Colecoes/carrinho/checkout/minhas-compras ja tem espelho e usam
+ * redirectLoggedInFromStorefront (que cobre admin E cliente), entao nao
+ * precisam deste guard tambem.
  */
 export async function redirectAdminAwayFromStorefront(): Promise<void> {
   const viewer = await resolveViewer();

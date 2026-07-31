@@ -33,7 +33,8 @@ export default async function PainelLayout({ children }: Readonly<{ children: Re
     <CartProvider>
       <div className={styles.shell}>
         <aside className={styles.sidebar}>
-          <Link href="/painel/pedidos" className={styles.brand}>
+          {/* Logo volta pra loja (home publica) — nao pro proprio painel. */}
+          <Link href="/" className={styles.brand}>
             <span className={styles.brandMark}>
               <span className={styles.brandMarkRM}>RM</span>
               <span className={styles.brandMarkSub}>CARDS</span>

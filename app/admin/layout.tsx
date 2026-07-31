@@ -52,7 +52,8 @@ export default async function AdminLayout({ children }: Readonly<{ children: Rea
   return (
     <div className={styles.shell}>
       <aside className={styles.sidebar}>
-        <Link href="/admin/produtos" className={styles.brand}>
+        {/* Logo volta pra loja (home publica) — nao pro proprio painel admin. */}
+        <Link href="/" className={styles.brand}>
           <span className={styles.brandMark}>
             <span className={styles.brandMarkRM}>RM</span>
             <span className={styles.brandMarkSub}>CARDS</span>
