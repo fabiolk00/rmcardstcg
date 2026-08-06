@@ -12,6 +12,7 @@ import {
 } from "@/lib/cart/shipping";
 import { validateCheckoutCustomer } from "@/lib/checkout/customer";
 import { effectivePackage } from "@/lib/services/superfrete/dimensions";
+import { getState as getCircuitState } from "@/lib/services/superfrete/circuitBreaker";
 import {
   quoteShippingResult,
   type QuoteOutcome,
@@ -24,6 +25,7 @@ import {
   getOrderAsaasRefs,
   setOrderAsaasRefs,
 } from "@/lib/data/orders";
+import { recordSuperfreteFailure } from "@/lib/data/webhookEvents";
 import { finalPriceCents } from "@/lib/data/pricing";
 import { getProductsByIds } from "@/lib/data/products";
 import type { Order, OrderItem } from "@/lib/data/types";
@@ -286,7 +288,7 @@ export async function quoteShippingAction(input: {
     console.warn("[shipping-quote] sem entrega para o destino:", outcome.reason);
     return { ok: false, error: SHIPPING_UNAVAILABLE_ERROR };
   }
-  reportQuoteFallback(outcome);
+  reportQuoteFallback(outcome, input.cep);
   // Nao conseguimos cotar (mock-first / falha do provedor): frete flat como opcao
   // unica (serviceCode 0) para a venda seguir.
   return {
@@ -305,11 +307,20 @@ export async function quoteShippingAction(input: {
 }
 
 /**
- * Loga e (quando e falha do provedor, nao mock-first) alerta o admin de que a loja
- * caiu no frete flat. O alerta tem janela de silencio propria no modulo de e-mail.
- * Best-effort: nunca derruba a cotacao nem o checkout.
+ * Loga, PERSISTE (diagnostico posterior) e (quando e falha do provedor, nao
+ * mock-first) alerta o admin de que a loja caiu no frete flat. O alerta tem
+ * janela de silencio propria no modulo de e-mail. Best-effort: nunca derruba
+ * a cotacao nem o checkout — e-mail e gravacao sao fire-and-forget, erro so
+ * vira console.error.
+ *
+ * `circuit_open` (superfrete/circuitBreaker) cai no mesmo log generico abaixo
+ * (distinguivel pelo `cause`) mas DELIBERADAMENTE nao dispara novo e-mail nem
+ * nova linha no ledger: a falha `provider_error` que abriu o circuito ja foi
+ * alertada/gravada uma vez; as chamadas puladas enquanto o circuito segue OPEN
+ * sao consequencia da MESMA instabilidade, nao um evento novo — registrar cada
+ * uma so inflaria o ledger sem informacao de diagnostico nova.
  */
-function reportQuoteFallback(outcome: Extract<QuoteOutcome, { status: "unquoted" }>): void {
+function reportQuoteFallback(outcome: Extract<QuoteOutcome, { status: "unquoted" }>, cep: string): void {
   if (outcome.cause === "invalid_input") return;
   console.error("[shipping-quote] sem cotacao; usando frete flat:", outcome.cause, outcome.detail);
   if (outcome.cause !== "provider_error") return;
@@ -317,6 +328,23 @@ function reportQuoteFallback(outcome: Extract<QuoteOutcome, { status: "unquoted"
     cause: outcome.cause,
     detail: outcome.detail,
   }).catch(() => {});
+  // requestId so falta se o erro nao veio de uma chamada real (SuperFreteError) —
+  // nesse caso nao ha o que correlacionar com o log [superfrete], entao nao grava.
+  if (outcome.requestId) {
+    const circuit = getCircuitState();
+    void recordSuperfreteFailure({
+      requestId: outcome.requestId,
+      toCep: cep,
+      detail: outcome.detail,
+      circuitState: circuit.state,
+      circuitFailureCount: circuit.failureCount,
+    }).catch((err) => {
+      console.error(
+        "[shipping-quote] falha ao gravar log de falha:",
+        err instanceof Error ? err.message : err,
+      );
+    });
+  }
 }
 
 export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
@@ -465,7 +493,7 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
     } else {
       // Sem cotacao (mock-first / falha do provedor): o checkout segue no frete
       // flat, mas o admin e avisado de que estamos cobrando no escuro.
-      reportQuoteFallback(outcome);
+      reportQuoteFallback(outcome, input.customer.cep);
     }
   }
   const shippingCents = resolveShippingCents({

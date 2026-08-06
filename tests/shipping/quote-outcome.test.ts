@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { cacheClear } from "@/lib/services/superfrete/cache";
+import { reset as resetCircuitBreaker } from "@/lib/services/superfrete/circuitBreaker";
 import { preferLoggi, quoteShipping, quoteShippingResult } from "@/lib/services/superfrete/quote";
 
 /**
@@ -47,6 +48,11 @@ const OK_QUOTE = [
 beforeEach(() => {
   setEnv();
   cacheClear();
+  // Varios testes deste arquivo simulam falha de provedor (409/500/timeout/401) em
+  // sequencia — sem isso, o circuit breaker (estado de modulo, ./circuitBreaker) abre
+  // no meio da suite e os testes seguintes recebem circuit_open em vez do outcome
+  // que estao de fato testando.
+  resetCircuitBreaker();
   vi.spyOn(console, "info").mockImplementation(() => {});
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
@@ -54,6 +60,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   cacheClear();
+  resetCircuitBreaker();
 });
 
 describe("quoteShippingResult — classificacao", () => {

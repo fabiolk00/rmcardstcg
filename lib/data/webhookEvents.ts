@@ -1,4 +1,5 @@
 import { Prisma } from "../generated/prisma/client";
+import { prisma } from "../db";
 
 /**
  * Ledger de eventos de webhook (FUNDACAO) — camada ADICIONAL ao anti-replay por
@@ -20,6 +21,12 @@ export const CLERK_PROVIDER = "clerk";
  * alerta admin (1x por (cobranca, motivo)) sem precisar de tabela nova.
  */
 export const RECONCILE_ALERT_PROVIDER = "reconcile-alert";
+/**
+ * provider das FALHAS de cotacao do SuperFrete (nao e webhook — reusa o ledger
+ * como log estruturado append-only pra nao precisar de tabela/migration nova;
+ * mesmo principio do RECONCILE_ALERT_PROVIDER acima). Ver recordSuperfreteFailure.
+ */
+export const SUPERFRETE_FAILURE_PROVIDER = "superfrete-failure";
 
 export type RecordWebhookEventInput = {
   provider: string;
@@ -77,5 +84,44 @@ export async function markWebhookEventProcessed(
   await tx.webhookEvent.updateMany({
     where: { provider, eventId },
     data: { processedAt: new Date() },
+  });
+}
+
+/** Uma falha de cotacao do SuperFrete, para diagnostico posterior (nao e webhook). */
+export type SuperfreteFailureInput = {
+  /** Id de correlacao com o log [superfrete] (client.ts) — chave do ledger. */
+  requestId: string;
+  /** CEP de destino (dimensional — mesma informacao ja gravada em orders.address_cep). */
+  toCep?: string;
+  /** Texto do erro (ex.: "HTTP 504 (requestId ...)"). */
+  detail?: string;
+  /** Estado do circuit breaker (closed/open/half_open) NO MOMENTO desta falha. */
+  circuitState?: string;
+  /** Contagem de falhas do circuito apos esta (ver superfrete/circuitBreaker.ts). */
+  circuitFailureCount?: number;
+};
+
+/**
+ * Registra uma falha de cotacao do SuperFrete pra permitir diagnostico depois
+ * (frequencia, destino, correlacao com o requestId do log). Reusa o ledger de
+ * webhook_events como log estruturado append-only — SUPERFRETE_FAILURE_PROVIDER
+ * nao e um webhook de verdade, mas (provider, eventId=requestId) e uma chave
+ * unica igualmente valida aqui, e evita criar tabela/migration so pra isso.
+ *
+ * Best-effort por design: SEM try/catch aqui de proposito — o chamador (ver
+ * carrinho/actions.ts, reportQuoteFallback) decide como tolerar a falha (o
+ * mesmo padrao dos e-mails de alerta: nunca deve derrubar o checkout).
+ */
+export async function recordSuperfreteFailure(input: SuperfreteFailureInput): Promise<void> {
+  await recordWebhookEvent(prisma, {
+    provider: SUPERFRETE_FAILURE_PROVIDER,
+    eventId: input.requestId,
+    type: "provider_error",
+    payload: {
+      toCep: input.toCep ?? null,
+      detail: input.detail ?? null,
+      circuitState: input.circuitState ?? null,
+      circuitFailureCount: input.circuitFailureCount ?? null,
+    } as Prisma.InputJsonValue,
   });
 }

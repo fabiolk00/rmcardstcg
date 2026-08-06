@@ -2,6 +2,12 @@ import { getInsuranceLimits, getSuperFreteConfig, isSuperFreteConfigured } from 
 import { SuperFreteError, superFreteRequest, type SuperFreteCallMeta } from "./client";
 import { cacheGet, cacheSet, quoteCacheKey } from "./cache";
 import type { PackageDims } from "./dimensions";
+import {
+  isOpen as circuitIsOpen,
+  recordFailure as recordCircuitFailure,
+  recordSuccess as recordCircuitSuccess,
+  getState as getCircuitState,
+} from "./circuitBreaker";
 
 /**
  * Cotacao de frete via SuperFrete (POST /api/v0/calculator).
@@ -25,6 +31,12 @@ import type { PackageDims } from "./dimensions";
 // 1=PAC, 2=SEDEX, 31=Loggi (17=Mini Envios, 3=Jadlog disponiveis se quiser ampliar).
 // Os Correios entram como REDE DE SEGURANCA da Loggi — ver preferLoggi.
 const SHIPPING_SERVICES = "1,2,31";
+
+// Orcamento de tempo da cotacao (ver comentario completo no fetchQuote abaixo).
+// Extraidos como constantes para o circuit breaker citar o pior caso evitado
+// no log de call_skipped_circuit_open, sem duplicar os numeros.
+const QUOTE_TIMEOUT_MS = 9_000;
+const QUOTE_MAX_RETRIES = 1;
 
 /** Codigo da Loggi no SuperFrete. */
 const LOGGI_SERVICE_CODE = 31;
@@ -303,13 +315,16 @@ export async function fetchQuote(toCep: string, items: QuoteItem[]): Promise<Fet
   const { data, meta } = await superFreteRequest<unknown>("/api/v0/calculator", {
     method: "POST",
     retry: true,
-    // ORCAMENTO DE TEMPO: a cotacao roda dentro do checkout (server action). Com o
-    // default (12s x 3 tentativas) o pior caso passava de 36s e estourava o limite
-    // de execucao da funcao — o checkout INTEIRO morria por causa do frete. 6s x 2
-    // tentativas mantem o pior caso em ~13s, ainda dentro do limite, e o frete
-    // degrada para o flat em vez de derrubar a compra.
-    timeoutMs: 6_000,
-    maxRetries: 1,
+    // ORCAMENTO DE TEMPO: a cotacao roda dentro do checkout (server action, hoje com
+    // maxDuration=60 — ver app/(storefront)/checkout/page.tsx). 6s por tentativa se
+    // mostrou curto demais: teste real em producao (requestId 07f3bbb4) mostrou a 1a
+    // tentativa consumindo perto do timeout inteiro e so emplacando no retry, ~1,5s
+    // depois — evidencia de que a variancia normal de latencia do SuperFrete encosta
+    // no limite de 6s, nao de instabilidade do lado deles. 9s x 2 tentativas mantem o
+    // pior caso em ~18-19s, ainda com folga sob os 60s (DB + Asaas rodam depois), e
+    // reduz a chance de bater timeout numa resposta que so precisava de mais tempo.
+    timeoutMs: QUOTE_TIMEOUT_MS,
+    maxRetries: QUOTE_MAX_RETRIES,
     body: JSON.stringify({
       from: { postal_code: fromCep },
       to: { postal_code: dest },
@@ -352,8 +367,9 @@ export async function quoteShipping(toCep: string, items: QuoteItem[]): Promise<
  *                    lista vazia). Vender aqui gera pedido que a etiqueta nao
  *                    emite — o chamador deve BLOQUEAR, nao cair no flat.
  *  - `unquoted`    : nao houve resposta utilizavel (ambiente sem token, entrada
- *                    invalida, timeout/5xx/401). O frete ainda e vendavel pelo
- *                    flat, mas `provider_error` merece alerta: e a loja cotando
+ *                    invalida, timeout/5xx/401, ou circuito aberto — ver
+ *                    ./circuitBreaker). O frete ainda e vendavel pelo flat,
+ *                    mas `provider_error` merece alerta: e a loja cotando
  *                    no escuro.
  *
  * Sem essa distincao TODA falha virava o mesmo R$ 25,00 silencioso.
@@ -363,8 +379,21 @@ export type QuoteOutcome =
   | { status: "unavailable"; reason: string }
   | {
       status: "unquoted";
-      cause: "not_configured" | "invalid_input" | "provider_error";
+      /**
+       * circuit_open: falhas recentes abriram o circuito (ver ./circuitBreaker) —
+       * pulamos a chamada de rede sem nem tentar. Nao dispara um NOVO alerta
+       * (reportQuoteFallback em carrinho/actions.ts so alerta em provider_error):
+       * a falha que efetivamente abriu o circuito ja alertou o admin.
+       */
+      cause: "not_configured" | "invalid_input" | "provider_error" | "circuit_open";
       detail?: string;
+      /**
+       * Id de correlacao com o log [superfrete] (client.ts) — SO em provider_error,
+       * quando o erro veio de fato de uma chamada (SuperFreteError carrega o
+       * requestId da tentativa que falhou). Chave para persistir/consultar a falha
+       * depois (ver lib/data/webhookEvents.ts, recordSuperfreteFailure).
+       */
+      requestId?: string;
     };
 
 /** Mensagens do mapa `errors` do provedor (por campo), achatadas em texto. */
@@ -406,6 +435,27 @@ export async function quoteShippingResult(
     return { status: "unquoted", cause: "invalid_input" };
   }
 
+  // Circuit breaker: falhas recentes o suficiente ja abriram o circuito (ver
+  // ./circuitBreaker) — pula a chamada de rede em vez de fazer o checkout
+  // esperar ate ~QUOTE_TIMEOUT_MS x (QUOTE_MAX_RETRIES+1) por uma cotacao que,
+  // sob instabilidade continuada, provavelmente cai no flat de qualquer jeito.
+  if (circuitIsOpen()) {
+    const skipStartedAt = Date.now();
+    const { failureCount, nextRetryAt } = getCircuitState();
+    console.warn("[superfrete] call_skipped_circuit_open", {
+      service: "superfrete",
+      elapsedMs: Date.now() - skipStartedAt,
+      avoidedMs: QUOTE_TIMEOUT_MS * (QUOTE_MAX_RETRIES + 1),
+      failureCount,
+      nextRetryAt,
+    });
+    return {
+      status: "unquoted",
+      cause: "circuit_open",
+      detail: `circuito aberto (${failureCount} falhas recentes); proxima tentativa apos ${nextRetryAt}`,
+    };
+  }
+
   let fetched: FetchedQuote | null;
   try {
     fetched = await fetchQuote(toCep, items);
@@ -415,8 +465,15 @@ export async function quoteShippingResult(
     // falha nossa/do provedor.
     if (err instanceof SuperFreteError) {
       const reason = noCoverageReason(err);
-      if (reason !== null) return { status: "unavailable", reason };
+      if (reason !== null) {
+        // Provedor RESPONDEU (so nao ha entrega) — nao e instabilidade.
+        recordCircuitSuccess();
+        return { status: "unavailable", reason };
+      }
     }
+    // Timeout nosso OU erro/5xx real deles (client.ts) — o circuito nao
+    // distingue as duas causas, so a frequencia recente de falha.
+    recordCircuitFailure();
     return {
       status: "unquoted",
       cause: "provider_error",
@@ -426,10 +483,14 @@ export async function quoteShippingResult(
           : err instanceof Error
             ? err.message
             : String(err),
+      requestId: err instanceof SuperFreteError ? err.requestId : undefined,
     };
   }
   if (!fetched) return { status: "unquoted", cause: "invalid_input" };
 
+  // Respondeu (200) — sinal de saude do provedor, independente de ter opcao
+  // cotavel pra esta rota/pacote especifico.
+  recordCircuitSuccess();
   const { options, unavailable } = parseQuote(fetched.raw);
   // Politica de transportadora aplicada AQUI (nao no parser): o registro
   // normalizado do pipeline (record.ts) continua vendo TODAS as modalidades.
